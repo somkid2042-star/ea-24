@@ -1,0 +1,19 @@
+# Dependencies
+node_modules/
+
+# Rust build
+ea-server/target/
+
+# IDE
+.vscode/
+.idea/
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Compiled EA (can be recompiled from .mq5)
+ea-server/mt5/*.ex5
+
+# Logs
+*.log
