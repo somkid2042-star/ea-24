@@ -8,8 +8,11 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::broadcast;
+use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::tungstenite::Message;
+
+/// The latest EA version shipped with this server
+const LATEST_EA_VERSION: &str = "2.01";
 
 // ──────────────────────────────────────────────
 //  Structs
@@ -23,8 +26,16 @@ struct ClientMessage {
 #[derive(Debug, Serialize)]
 struct DeployResponse {
     #[serde(rename = "type")]
-    msg_type: String, // "deploy_status"
-    status: String,   // "success", "already_connected", "error"
+    msg_type: String,
+    status: String,
+}
+
+/// Shared state for EA version tracking
+#[derive(Debug, Clone)]
+struct EaState {
+    connected: bool,
+    version: String,
+    symbol: String,
 }
 
 // ──────────────────────────────────────────────
@@ -43,16 +54,21 @@ async fn main() {
 
     info!("✅ ea-server WebSocket listening on ws://{}", ws_addr);
     info!("✅ ea-server MT5 TCP listening on {}", mt5_addr);
+    info!("📦 Latest EA version: {}", LATEST_EA_VERSION);
 
-    // Track active EA connections
     let active_eas = Arc::new(AtomicUsize::new(0));
+    let ea_state = Arc::new(RwLock::new(EaState {
+        connected: false,
+        version: "unknown".to_string(),
+        symbol: "".to_string(),
+    }));
 
-    // Channel for Ticks (MT5 -> React) and Commands (React -> MT5)
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     // Spawn MT5 TCP Listener
     let tx_mt5 = tx.clone();
     let active_eas_mt5 = active_eas.clone();
+    let ea_state_mt5 = ea_state.clone();
     tokio::spawn(async move {
         while let Ok((stream, peer_addr)) = mt5_listener.accept().await {
             let rx = tx_mt5.subscribe();
@@ -62,11 +78,12 @@ async fn main() {
                 tx_mt5.clone(),
                 rx,
                 active_eas_mt5.clone(),
+                ea_state_mt5.clone(),
             ));
         }
     });
 
-    // Accept WebSocket connection
+    // Accept WebSocket connections
     while let Ok((stream, peer_addr)) = ws_listener.accept().await {
         let rx = tx.subscribe();
         tokio::spawn(handle_ws_connection(
@@ -75,6 +92,7 @@ async fn main() {
             tx.clone(),
             rx,
             active_eas.clone(),
+            ea_state.clone(),
         ));
     }
 }
@@ -89,6 +107,7 @@ async fn handle_mt5_connection(
     tx: broadcast::Sender<String>,
     mut rx: broadcast::Receiver<String>,
     active_eas: Arc<AtomicUsize>,
+    ea_state: Arc<RwLock<EaState>>,
 ) {
     info!("🔗 [MT5] New connection from: {}", peer_addr);
     active_eas.fetch_add(1, Ordering::SeqCst);
@@ -99,7 +118,6 @@ async fn handle_mt5_connection(
 
     loop {
         tokio::select! {
-            // Read Ticks from MT5
             result = buf_reader.read_line(&mut line) => {
                 match result {
                     Ok(0) => {
@@ -109,8 +127,31 @@ async fn handle_mt5_connection(
                     Ok(_) => {
                         let text = line.trim().to_string();
                         if !text.is_empty() {
-                            info!("📊 [MT5] Received: {}", text);
-                            let _ = tx.send(text);
+                            // Check if this is ea_info message
+                            if text.contains("\"ea_info\"") {
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    let ver = val["version"].as_str().unwrap_or("unknown").to_string();
+                                    let sym = val["symbol"].as_str().unwrap_or("").to_string();
+                                    info!("📋 [MT5] EA Version: {}, Symbol: {}", ver, sym);
+                                    
+                                    let mut state = ea_state.write().await;
+                                    state.connected = true;
+                                    state.version = ver.clone();
+                                    state.symbol = sym.clone();
+
+                                    // Broadcast ea_info to UI
+                                    let info_msg = serde_json::json!({
+                                        "type": "ea_info",
+                                        "version": ver,
+                                        "latest_version": LATEST_EA_VERSION,
+                                        "symbol": sym,
+                                        "update_available": ver != LATEST_EA_VERSION,
+                                    }).to_string();
+                                    let _ = tx.send(info_msg);
+                                }
+                            } else {
+                                let _ = tx.send(text);
+                            }
                         }
                         line.clear();
                     }
@@ -121,11 +162,9 @@ async fn handle_mt5_connection(
                 }
             }
 
-            // Receive Commands from React (e.g., Panic)
             msg_result = rx.recv() => {
                 match msg_result {
                     Ok(msg) => {
-                        // Only send commands to MT5, not ticks
                         if msg.contains("\"panic\"") || msg.contains("\"action\"") {
                             let mut out = msg.clone();
                             out.push('\n');
@@ -142,6 +181,11 @@ async fn handle_mt5_connection(
         }
     }
 
+    // Reset state on disconnect
+    {
+        let mut state = ea_state.write().await;
+        state.connected = false;
+    }
     active_eas.fetch_sub(1, Ordering::SeqCst);
 }
 
@@ -155,6 +199,7 @@ async fn handle_ws_connection(
     tx: broadcast::Sender<String>,
     mut rx: broadcast::Receiver<String>,
     active_eas: Arc<AtomicUsize>,
+    ea_state: Arc<RwLock<EaState>>,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
 
@@ -168,16 +213,23 @@ async fn handle_ws_connection(
 
     let (mut write, mut read) = ws_stream.split();
 
+    // Send welcome + current EA state
+    let state = ea_state.read().await;
     let welcome = serde_json::json!({
         "type": "welcome",
         "message": "Connected to ea-server",
-        "status": "online"
+        "status": "online",
+        "latest_ea_version": LATEST_EA_VERSION,
+        "ea_connected": state.connected,
+        "ea_version": state.version,
+        "ea_symbol": state.symbol,
+        "update_available": state.connected && state.version != LATEST_EA_VERSION,
     });
+    drop(state);
     let _ = write.send(Message::Text(welcome.to_string())).await;
 
     loop {
         tokio::select! {
-            // Receive commands from UI
             msg = read.next() => {
                 match msg {
                     Some(Ok(Message::Text(text))) => {
@@ -192,14 +244,24 @@ async fn handle_ws_connection(
                                     }
                                     "deploy_ea" => {
                                         info!("📦 [UI] Deploying EA...");
-
                                         if active_eas.load(Ordering::SeqCst) > 0 {
-                                            info!("⚠️ EA is already connected.");
-                                            let resp = DeployResponse {
-                                                msg_type: "deploy_status".to_string(),
-                                                status: "already_connected".to_string(),
-                                            };
-                                            let _ = write.send(Message::Text(serde_json::to_string(&resp).unwrap())).await;
+                                            let state = ea_state.read().await;
+                                            if state.version == LATEST_EA_VERSION {
+                                                let resp = DeployResponse {
+                                                    msg_type: "deploy_status".to_string(),
+                                                    status: "already_connected".to_string(),
+                                                };
+                                                let _ = write.send(Message::Text(serde_json::to_string(&resp).unwrap())).await;
+                                            } else {
+                                                // EA connected but outdated
+                                                let resp = serde_json::json!({
+                                                    "type": "deploy_status",
+                                                    "status": "update_available",
+                                                    "current_version": state.version,
+                                                    "latest_version": LATEST_EA_VERSION,
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
                                         } else {
                                             let status = deploy_ea_to_mt5();
                                             let resp = DeployResponse {
@@ -208,6 +270,16 @@ async fn handle_ws_connection(
                                             };
                                             let _ = write.send(Message::Text(serde_json::to_string(&resp).unwrap())).await;
                                         }
+                                    }
+                                    "update_ea" => {
+                                        info!("🔄 [UI] Updating EA on MT5...");
+                                        let status = deploy_ea_to_mt5();
+                                        let resp = serde_json::json!({
+                                            "type": "update_status",
+                                            "status": if status { "success" } else { "error" },
+                                            "latest_version": LATEST_EA_VERSION,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     _ => {}
                                 }
@@ -223,12 +295,11 @@ async fn handle_ws_connection(
                 }
             }
 
-            // Receive ticks from broadcast
             tick_result = rx.recv() => {
                 match tick_result {
                     Ok(json) => {
-                        // Send only ticks back to UI
-                        if json.contains("\"tick\"") {
+                        // Forward ticks AND ea_info to UI
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;
@@ -279,7 +350,6 @@ fn deploy_ea_to_mt5() -> bool {
                         Ok(_) => {
                             info!("✅ Deployed EA source to {:?}", dest_mq5);
                             success = true;
-                            // Keep track of instance to launch
                             if target_instance.is_none() {
                                 target_instance = Some(path.clone());
                             }
@@ -310,7 +380,6 @@ fn deploy_ea_to_mt5() -> bool {
 fn launch_mt5_instance(instance_dir: &Path) {
     info!("🚀 Attempting to auto-launch MT5 from {:?}", instance_dir);
 
-    // 1. Read origin.txt
     let origin_file = instance_dir.join("origin.txt");
     if !origin_file.exists() {
         error!("origin.txt not found in {:?}", instance_dir);
@@ -325,7 +394,6 @@ fn launch_mt5_instance(instance_dir: &Path) {
         }
     };
 
-    // utf-16le decode
     let u16_chars: Vec<u16> = origin_bytes
         .chunks_exact(2)
         .map(|chunk| u16::from_le_bytes([chunk[0], chunk[1]]))
@@ -343,15 +411,13 @@ fn launch_mt5_instance(instance_dir: &Path) {
         return;
     }
 
-    // 2. Kill any running MT5 instances first (required for /config: to work)
+    // Kill any running MT5 first
     info!("⏳ Killing existing MT5 instances...");
     let _ = std::process::Command::new("taskkill")
         .args(&["/F", "/IM", "terminal64.exe"])
         .output();
-    // Wait for MT5 to fully close
     std::thread::sleep(std::time::Duration::from_secs(2));
 
-    // 3. Generate proper startup config
     let config_dir = instance_dir.join("config");
     if !config_dir.exists() {
         let _ = std::fs::create_dir_all(&config_dir);
@@ -367,24 +433,18 @@ Expert=Experts\\EATradingClient
 Symbol=XAUUSD
 Period=M1
 ";
-    info!("📝 Writing startup config to {:?}", ini_path);
     if let Err(e) = std::fs::write(&ini_path, &ini_content) {
-        error!("Failed to write ea_startup.ini: {}", e);
+        error!("Failed to write config: {}", e);
         return;
     }
 
-    // 4. Spawn MT5 with /config flag (fresh start)
     let config_arg = format!("/config:{}", ini_path.to_string_lossy());
     info!("🚀 Spawning: {:?} {}", exe_path, config_arg);
     match std::process::Command::new(&exe_path)
         .arg(&config_arg)
         .spawn()
     {
-        Ok(_) => {
-            info!("✅ Successfully launched MT5!");
-        }
-        Err(e) => {
-            error!("❌ Failed to spawn MT5 process: {}", e);
-        }
+        Ok(_) => info!("✅ Successfully launched MT5!"),
+        Err(e) => error!("❌ Failed to spawn MT5: {}", e),
     }
 }

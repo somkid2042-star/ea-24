@@ -358,3 +358,93 @@ body {
 .modal-content.warning .modal-title { color: var(--status-yellow); }
 .modal-content.error .modal-title { color: var(--status-red); }
 .modal-content.success .modal-title { color: var(--status-green); }
+
+/* Sidebar Footer - EA Version Info */
+.sidebar-footer {
+  margin-top: auto;
+  padding: 16px;
+  border-top: 1px solid var(--border-color);
+}
+
+.ea-version-info {
+  background-color: rgba(0, 0, 0, 0.2);
+  border-radius: 6px;
+  padding: 12px;
+}
+
+.version-label {
+  font-size: 0.7rem;
+  color: var(--text-muted);
+  text-transform: uppercase;
+  letter-spacing: 0.5px;
+}
+
+.version-value {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  font-size: 0.9rem;
+  font-weight: 600;
+  margin-top: 4px;
+  color: var(--text-main);
+}
+
+.version-dot {
+  width: 8px;
+  height: 8px;
+  border-radius: 50%;
+}
+
+.version-dot.online { background-color: var(--status-green); }
+.version-dot.offline { background-color: var(--status-red); }
+
+/* Update Available Banner */
+.update-banner {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 24px;
+  background: linear-gradient(90deg, rgba(245, 166, 35, 0.15), rgba(245, 166, 35, 0.05));
+  border-bottom: 1px solid rgba(245, 166, 35, 0.3);
+  animation: slideDown 0.3s ease-out;
+}
+
+@keyframes slideDown {
+  from { transform: translateY(-100%); opacity: 0; }
+  to { transform: translateY(0); opacity: 1; }
+}
+
+.update-banner-text {
+  color: var(--status-yellow);
+  font-size: 0.9rem;
+}
+
+.update-btn {
+  background-color: var(--status-yellow);
+  color: #000;
+  border: none;
+  padding: 6px 16px;
+  border-radius: 4px;
+  font-weight: 600;
+  font-size: 0.85rem;
+  cursor: pointer;
+  transition: opacity 0.2s;
+}
+
+.update-btn:hover {
+  opacity: 0.85;
+}
+
+/* Modal Update Button */
+.modal-footer {
+  gap: 8px;
+}
+
+.update-modal-btn {
+  background-color: var(--status-yellow);
+  color: #000;
+}
+
+.update-modal-btn:hover {
+  opacity: 0.85;
+}

@@ -8,10 +8,19 @@ interface ModalData {
   message: string;
 }
 
+interface EaInfo {
+  connected: boolean;
+  version: string;
+  latestVersion: string;
+  symbol: string;
+  updateAvailable: boolean;
+}
+
 function App() {
   const [ticks, setTicks] = useState<any[]>([])
   const [status, setStatus] = useState('Disconnected')
   const [modal, setModal] = useState<ModalData>({ isOpen: false, type: 'success', title: '', message: '' })
+  const [eaInfo, setEaInfo] = useState<EaInfo>({ connected: false, version: '-', latestVersion: '-', symbol: '', updateAvailable: false })
   const wsRef = useRef<WebSocket | null>(null)
 
   useEffect(() => {
@@ -33,38 +42,53 @@ function App() {
     ws.onmessage = (event) => {
       try {
         const data = JSON.parse(event.data)
-        if (data.type === 'tick') {
-          setTicks((prev) => {
-            const newTicks = [data, ...prev].slice(0, 15)
-            return newTicks
+
+        if (data.type === 'welcome') {
+          setEaInfo({
+            connected: data.ea_connected || false,
+            version: data.ea_version || '-',
+            latestVersion: data.latest_ea_version || '-',
+            symbol: data.ea_symbol || '',
+            updateAvailable: data.update_available || false,
           })
-        } else if (data.type === 'deploy_status') {
+        }
+
+        if (data.type === 'ea_info') {
+          setEaInfo({
+            connected: true,
+            version: data.version,
+            latestVersion: data.latest_version,
+            symbol: data.symbol,
+            updateAvailable: data.update_available,
+          })
+          setStatus('Connected (EA v' + data.version + ')')
+        }
+
+        if (data.type === 'tick') {
+          setTicks((prev) => [data, ...prev].slice(0, 15))
+        }
+
+        if (data.type === 'deploy_status') {
           if (data.status === 'already_connected') {
-            setModal({
-              isOpen: true,
-              type: 'warning',
-              title: 'EA Already Running',
-              message: 'The Expert Advisor is already connected and streaming live data. No need to deploy again!'
-            })
-            setStatus('Connected (EA Active)')
+            setModal({ isOpen: true, type: 'success', title: 'EA Already Running', message: 'EA is already connected and running the latest version. No update needed!' })
+          } else if (data.status === 'update_available') {
+            setModal({ isOpen: true, type: 'warning', title: 'Update Available', message: `Current: v${data.current_version} → Latest: v${data.latest_version}. Click "Update EA" to push the new version!` })
           } else if (data.status === 'success') {
-            setModal({
-              isOpen: true,
-              type: 'success',
-              title: 'Deployment Successful',
-              message: 'EA has been deployed and MT5 is automatically launching the chart. Please wait a moment...'
-            })
-            setStatus('Connected (Waiting for EA)')
+            setModal({ isOpen: true, type: 'success', title: 'Deployment Successful', message: 'EA deployed and MT5 is launching...' })
           } else {
-            setModal({
-              isOpen: true,
-              type: 'error',
-              title: 'Deployment Failed',
-              message: 'Could not find standard MT5 directory. Please attach the EA manually.'
-            })
-            setStatus('Connected')
+            setModal({ isOpen: true, type: 'error', title: 'Deployment Failed', message: 'Could not find MT5 directory.' })
           }
         }
+
+        if (data.type === 'update_status') {
+          if (data.status === 'success') {
+            setModal({ isOpen: true, type: 'success', title: 'EA Updated!', message: `EA has been updated to v${data.latest_version}. MT5 is restarting...` })
+            setEaInfo(prev => ({ ...prev, updateAvailable: false, version: data.latest_version }))
+          } else {
+            setModal({ isOpen: true, type: 'error', title: 'Update Failed', message: 'Failed to update EA files.' })
+          }
+        }
+
       } catch (e) {
         console.error(e)
       }
@@ -72,20 +96,26 @@ function App() {
 
     ws.onclose = () => {
       setStatus('Disconnected')
+      setEaInfo({ connected: false, version: '-', latestVersion: '-', symbol: '', updateAvailable: false })
       setTimeout(connect, 3000)
     }
   }
 
   const handlePanic = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ action: 'panic' }))
     }
   }
 
   const deployEa = () => {
-    if (wsRef.current && wsRef.current.readyState === WebSocket.OPEN) {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
       wsRef.current.send(JSON.stringify({ action: 'deploy_ea' }))
-      setStatus('Deploying EA...')
+    }
+  }
+
+  const updateEa = () => {
+    if (wsRef.current?.readyState === WebSocket.OPEN) {
+      wsRef.current.send(JSON.stringify({ action: 'update_ea' }))
     }
   }
 
@@ -118,6 +148,18 @@ function App() {
             <span className="icon">⚙️</span> Settings
           </a>
         </nav>
+
+        {/* EA Version Info */}
+        <div className="sidebar-footer">
+          <div className="ea-version-info">
+            <div className="version-label">EA Version</div>
+            <div className="version-value">
+              <span className={`version-dot ${eaInfo.connected ? 'online' : 'offline'}`}></span>
+              {eaInfo.connected ? `v${eaInfo.version}` : 'Not Connected'}
+            </div>
+            <div className="version-label" style={{marginTop: '4px'}}>Latest: v{eaInfo.latestVersion}</div>
+          </div>
+        </div>
       </aside>
 
       {/* Main UI */}
@@ -134,14 +176,23 @@ function App() {
           </div>
         </header>
 
+        {/* Update Available Banner */}
+        {eaInfo.updateAvailable && (
+          <div className="update-banner">
+            <div className="update-banner-text">
+              🔄 <strong>EA Update Available!</strong> Current: v{eaInfo.version} → Latest: v{eaInfo.latestVersion}
+            </div>
+            <button className="update-btn" onClick={updateEa}>
+              ⬆️ Update EA Now
+            </button>
+          </div>
+        )}
+
         <main className="content">
           <div className="header-actions">
             <h2>Active Markets</h2>
             <div style={{ display: 'flex', gap: '12px' }}>
-              <button 
-                className="panic-btn deploy-btn" 
-                onClick={deployEa}
-              >
+              <button className="panic-btn deploy-btn" onClick={deployEa}>
                 <span className="icon">📦</span> DEPLOY EA TO MT5
               </button>
               <button className="panic-btn" onClick={handlePanic}>
@@ -208,6 +259,11 @@ function App() {
               <p>{modal.message}</p>
             </div>
             <div className="modal-footer">
+              {modal.type === 'warning' && eaInfo.updateAvailable && (
+                <button className="modal-btn update-modal-btn" onClick={() => { updateEa(); closeModal(); }}>
+                  ⬆️ Update Now
+                </button>
+              )}
               <button className="modal-btn" onClick={closeModal}>OK</button>
             </div>
           </div>

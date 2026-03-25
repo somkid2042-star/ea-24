@@ -5,9 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "EA Trading"
 #property link      "https://ea-trading.local"
-#property version   "2.00"
+#property version   "2.01"
 
 #include <Trade\Trade.mqh>
+
+#define EA_VERSION "2.01"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -23,7 +25,7 @@ datetime lastReconnectAttempt = 0;
 int OnInit()
   {
    Print("====================================");
-   Print("EATradingClient v2.00 Starting...");
+   Print("EATradingClient v", EA_VERSION, " Starting...");
    Print("Server: ", ServerIP, ":", ServerPort);
    Print("====================================");
    Print("");
@@ -33,10 +35,7 @@ int OnInit()
    Print("Add:   ", ServerIP);
    Print("");
    
-   // Try to connect
    TryConnect();
-   
-   // Set timer for reconnection and reading commands (every 500ms)
    EventSetMillisecondTimer(500);
 
    return(INIT_SUCCEEDED);
@@ -47,7 +46,6 @@ int OnInit()
 //+------------------------------------------------------------------+
 void TryConnect()
   {
-   // Close old socket if exists
    if(socket != INVALID_HANDLE)
      {
       SocketClose(socket);
@@ -90,6 +88,13 @@ void TryConnect()
      
    isConnected = true;
    Print("Connected to ea-server at ", ServerIP, ":", ServerPort);
+   
+   // Send version info to server on connect
+   string versionMsg = "{\"type\":\"ea_info\",\"version\":\"" + EA_VERSION + "\",\"symbol\":\"" + _Symbol + "\"}\n";
+   uchar vData[];
+   StringToCharArray(versionMsg, vData);
+   SocketSend(socket, vData, (uint)(ArraySize(vData) - 1));
+   Print("Sent version info: v", EA_VERSION);
   }
 
 //+------------------------------------------------------------------+
@@ -135,7 +140,6 @@ void OnTick()
 //+------------------------------------------------------------------+
 void OnTimer()
   {
-   // Reconnect if disconnected (try every 5 seconds)
    if(!isConnected)
      {
       if(TimeCurrent() - lastReconnectAttempt >= 5)
