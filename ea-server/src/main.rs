@@ -74,14 +74,17 @@ fn main() {
 }
 
 async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
-    let ws_addr: std::net::SocketAddr = "127.0.0.1:8080".parse().unwrap();
-    let mt5_addr: std::net::SocketAddr = "127.0.0.1:8081".parse().unwrap();
+    let ws_addr: std::net::SocketAddr = "0.0.0.0:8080".parse().unwrap();
+    let mt5_addr: std::net::SocketAddr = "0.0.0.0:8081".parse().unwrap();
+    let http_addr: std::net::SocketAddr = "0.0.0.0:4173".parse().unwrap();
 
     let ws_listener = create_reuse_listener(ws_addr);
     let mt5_listener = create_reuse_listener(mt5_addr);
+    let http_listener = create_reuse_listener(http_addr);
 
     info!("✅ ea-server WebSocket listening on ws://{}", ws_addr);
     info!("✅ ea-server MT5 TCP listening on {}", mt5_addr);
+    info!("🌐 ea-server Web Dashboard on http://{}", http_addr);
     info!("📦 Latest EA version: {}", LATEST_EA_VERSION);
 
     let active_eas = Arc::new(AtomicUsize::new(0));
@@ -92,6 +95,14 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     }));
 
     let (tx, _rx) = broadcast::channel::<String>(100);
+
+    // Spawn HTTP static file server (serves React dist/)
+    tokio::spawn(async move {
+        info!("🌐 Serving web dashboard from dist/ folder...");
+        while let Ok((stream, peer_addr)) = http_listener.accept().await {
+            tokio::spawn(handle_http_request(stream, peer_addr));
+        }
+    });
 
     // Spawn MT5 TCP Listener
     let tx_mt5 = tx.clone();
@@ -245,7 +256,7 @@ async fn handle_ws_connection(
     peer_addr: SocketAddr,
     tx: broadcast::Sender<String>,
     mut rx: broadcast::Receiver<String>,
-    active_eas: Arc<AtomicUsize>,
+    _active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
@@ -802,6 +813,99 @@ fn is_mt5_running(install_dir: &str) -> bool {
     }
 }
 
+
+// ──────────────────────────────────────────────
+//  HTTP Static File Server (serves React dist/)
+// ──────────────────────────────────────────────
+
+async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
+    use tokio::io::AsyncReadExt;
+
+    let mut buf = vec![0u8; 4096];
+    let n = match stream.read(&mut buf).await {
+        Ok(n) if n > 0 => n,
+        _ => return,
+    };
+
+    let request = String::from_utf8_lossy(&buf[..n]);
+    let path = request
+        .lines()
+        .next()
+        .and_then(|line| line.split_whitespace().nth(1))
+        .unwrap_or("/");
+
+    // Resolve dist/ directory relative to the executable
+    let exe_dir = std::env::current_exe()
+        .ok()
+        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
+        .unwrap_or_else(|| PathBuf::from("."));
+    let dist_dir = exe_dir.join("dist");
+
+    // If dist/ not next to exe, try current working directory
+    let dist_dir = if dist_dir.exists() {
+        dist_dir
+    } else {
+        PathBuf::from("dist")
+    };
+
+    // Map URL path to file
+    let clean_path = path.split('?').next().unwrap_or(path);
+    let relative = clean_path.trim_start_matches('/');
+    let file_path = if relative.is_empty() {
+        dist_dir.join("index.html")
+    } else {
+        dist_dir.join(relative)
+    };
+
+    // SPA fallback: if file doesn't exist and has no extension, serve index.html
+    let file_path = if file_path.exists() && file_path.is_file() {
+        file_path
+    } else {
+        dist_dir.join("index.html")
+    };
+
+    let (status, body, content_type) = if file_path.exists() {
+        match std::fs::read(&file_path) {
+            Ok(data) => {
+                let ct = match file_path.extension().and_then(|e| e.to_str()) {
+                    Some("html") => "text/html; charset=utf-8",
+                    Some("js") => "application/javascript; charset=utf-8",
+                    Some("css") => "text/css; charset=utf-8",
+                    Some("json") => "application/json",
+                    Some("png") => "image/png",
+                    Some("jpg") | Some("jpeg") => "image/jpeg",
+                    Some("svg") => "image/svg+xml",
+                    Some("ico") => "image/x-icon",
+                    Some("woff") => "font/woff",
+                    Some("woff2") => "font/woff2",
+                    Some("ttf") => "font/ttf",
+                    Some("webp") => "image/webp",
+                    _ => "application/octet-stream",
+                };
+                ("200 OK", data, ct)
+            }
+            Err(_) => (
+                "500 Internal Server Error",
+                b"Internal Server Error".to_vec(),
+                "text/plain",
+            ),
+        }
+    } else {
+        (
+            "404 Not Found",
+            b"<h1>404 Not Found</h1><p>dist/ folder not found. Place the React build output next to ea-server.exe</p>".to_vec(),
+            "text/html",
+        )
+    };
+
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: {}\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n",
+        status, content_type, body.len()
+    );
+
+    let _ = stream.write_all(response.as_bytes()).await;
+    let _ = stream.write_all(&body).await;
+}
 
 // ──────────────────────────────────────────────
 //  Socket Reuse Helper (SO_REUSEADDR)

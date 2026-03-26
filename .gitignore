@@ -21,3 +21,9 @@ ea-server/mt5/*.ex5
 # Logs
 *.log
 ea-server/run_error.txt
+
+# Client build output
+ea-client/dist/
+
+# Environment files
+ea-client/.env

@@ -39,6 +39,9 @@ type ActionStatus = {
   message: string;
 };
 
+const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
+const WS_URL = `ws://${WS_HOST}:8080`;
+
 const MT5Settings = () => {
   const [instances, setInstances] = useState<Mt5Instance[]>([]);
   const [scanning, setScanning] = useState(false);
@@ -56,7 +59,7 @@ const MT5Settings = () => {
 
   // WebSocket connection
   const connectWs = useCallback(() => {
-    const ws = new WebSocket('ws://127.0.0.1:8080');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
       setWsConnected(true);
@@ -565,14 +568,14 @@ const MT5Settings = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
               <p className="text-xs font-medium uppercase text-default-400">WebSocket Server</p>
-              <p className="mt-1 font-mono text-sm text-default-900">ws://127.0.0.1:8080</p>
+              <p className="mt-1 font-mono text-sm text-default-900">{WS_URL}</p>
               <p className={`mt-1 text-xs ${wsConnected ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                 {wsConnected ? '● Connected' : '○ Disconnected'}
               </p>
             </div>
             <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
               <p className="text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
-              <p className="mt-1 font-mono text-sm text-default-900">127.0.0.1:8081</p>
+              <p className="mt-1 font-mono text-sm text-default-900">{WS_HOST}:8081</p>
               <p className={`mt-1 text-xs ${eaStatus.connected ? 'text-green-600 dark:text-green-400' : 'text-default-400'}`}>
                 {eaStatus.connected ? '● EA Connected' : '○ Waiting for EA'}
               </p>

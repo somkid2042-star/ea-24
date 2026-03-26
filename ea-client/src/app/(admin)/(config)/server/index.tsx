@@ -14,6 +14,9 @@ import {
 
 type ServerStatus = 'running' | 'stopped' | 'starting' | 'stopping' | 'restarting';
 
+const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
+const WS_URL = `ws://${WS_HOST}:8080`;
+
 const ServerSettings = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
@@ -25,7 +28,7 @@ const ServerSettings = () => {
   const uptimeStart = useRef<number | null>(null);
 
   const connectWs = useCallback(() => {
-    const ws = new WebSocket('ws://127.0.0.1:8080');
+    const ws = new WebSocket(WS_URL);
 
     ws.onopen = () => {
       setWsConnected(true);
@@ -269,7 +272,7 @@ const ServerSettings = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">WebSocket Server</p>
-              <p className="text-sm font-semibold text-default-800">ws://127.0.0.1:8080</p>
+              <p className="text-sm font-semibold text-default-800">{WS_URL}</p>
               <span className={`mt-1 inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                 <span className={`inline-block size-1.5 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
                 {wsConnected ? 'Connected' : 'Disconnected'}
@@ -277,7 +280,7 @@ const ServerSettings = () => {
             </div>
             <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
-              <p className="text-sm font-semibold text-default-800">127.0.0.1:8081</p>
+              <p className="text-sm font-semibold text-default-800">{WS_HOST}:8081</p>
               <span className={`mt-1 inline-flex items-center gap-1 text-xs ${eaConnected ? 'text-green-600 dark:text-green-400' : 'text-default-400'}`}>
                 <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-green-500' : 'bg-default-300'}`} />
                 {eaConnected ? 'EA Connected' : 'Waiting for EA'}

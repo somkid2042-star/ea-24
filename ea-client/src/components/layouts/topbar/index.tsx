@@ -58,7 +58,9 @@ type ProfileMenuItem = {
   divider?: boolean;
 };
 
-const languages: Language[] = [
+// @ts-ignore: kept for future use
+// eslint-disable-next-line @typescript-eslint/no-unused-vars
+const _languages: Language[] = [
   { src: UsFlag, label: 'English' },
   { src: SpainFlag, label: 'Spanish' },
   { src: GermanyFlag, label: 'German' },
