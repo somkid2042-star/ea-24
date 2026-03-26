@@ -3,9 +3,9 @@ import SimplebarClient from '@/components/client-wrapper/SimplebarClient';
 import AppMenu from './AppMenu';
 import HoverToggle from './HoverToggle';
 
-import logoDark from '@/assets/images/logo-dark.png';
-import logoLight from '@/assets/images/logo-light.png';
-import logoSm from '@/assets/images/logo-sm.png';
+import logoDark from '@/assets/images/logo-dark.svg';
+import logoLight from '@/assets/images/logo-light.svg';
+import logoSm from '@/assets/images/logo-sm.svg';
 
 const Sidebar = () => {
   return (

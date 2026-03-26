@@ -1,0 +1,18 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 120 28" width="120" height="28">
+  <defs>
+    <linearGradient id="gradLight" x1="0%" y1="0%" x2="100%" y2="100%">
+      <stop offset="0%" stop-color="#0284c7" stop-opacity="1" />
+      <stop offset="100%" stop-color="#1d4ed8" stop-opacity="1" />
+    </linearGradient>
+  </defs>
+
+  <g transform="translate(0, 2)">
+    <path d="M12 2 L22 7 L22 17 L12 22 L2 17 L2 7 Z" fill="none" stroke="url(#gradLight)" stroke-width="2"/>
+    <rect x="7" y="13" width="2" height="5" fill="#1e293b" rx="1" />
+    <rect x="11" y="9" width="2" height="9" fill="#1e293b" rx="1" />
+    <rect x="15" y="5" width="2" height="13" fill="#1e293b" rx="1" />
+  </g>
+  
+  <text x="32" y="19" font-family="-apple-system, BlinkMacSystemFont, 'Inter', 'Segoe UI', Roboto, Helvetica, Arial, sans-serif" font-weight="800" font-size="19" fill="#0f172a" letter-spacing="-0.5">EA-24</text>
+  <circle cx="94" cy="14" r="3" fill="#0284c7" />
+</svg>
