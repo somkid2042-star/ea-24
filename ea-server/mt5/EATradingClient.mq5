@@ -17,6 +17,7 @@ input ushort   ServerPort = 8081;
 int socket = INVALID_HANDLE;
 CTrade trade;
 bool isConnected = false;
+bool tradingEnabled = true;
 datetime lastReconnectAttempt = 0;
 
 //+------------------------------------------------------------------+
@@ -166,6 +167,16 @@ void OnTimer()
            {
             Print("PANIC COMMAND RECEIVED! Closing all positions.");
             CloseAllPositions();
+           }
+         else if(StringFind(msg, "\"stop_trading\"") >= 0)
+           {
+            tradingEnabled = false;
+            Print("STOP TRADING command received. Trading disabled.");
+           }
+         else if(StringFind(msg, "\"start_trading\"") >= 0)
+           {
+            tradingEnabled = true;
+            Print("START TRADING command received. Trading enabled.");
            }
         }
       else

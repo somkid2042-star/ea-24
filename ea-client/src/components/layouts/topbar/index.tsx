@@ -222,26 +222,8 @@ const Topbar = () => {
         </div>
 
         <div className="flex items-center gap-3">
-          <div className="topbar-item hs-dropdown [--placement:bottom-right] relative inline-flex">
-            <button
-              className="hs-dropdown-toggle btn btn-icon size-8 hover:bg-default-150 rounded-full relative"
-              type="button"
-            >
-              <img src={UsFlag} alt="us-flag" className="size-4.5 rounded" />
-            </button>
-            <div className="hs-dropdown-menu" role="menu">
-              {languages.map((lang, i) => (
-                <Link
-                  key={i}
-                  to="#"
-                  className="flex items-center gap-x-3.5 py-1.5 px-3 text-default-600 hover:bg-default-150 rounded font-medium"
-                >
-                  <img src={lang.src} alt={lang.label} className="size-4 rounded-full" />
-                  {lang.label}
-                </Link>
-              ))}
-            </div>
-          </div>
+
+
 
           <ThemeModeToggle />
 

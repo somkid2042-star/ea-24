@@ -1,70 +1,260 @@
-import { useState } from 'react';
-import { LuMonitorSmartphone, LuPlus, LuRefreshCw, LuTrash2, LuPlay, LuSquare, LuSettings, LuChartCandlestick, LuLink, LuCircleCheck, LuCircleX } from 'react-icons/lu';
+import { useState, useEffect, useRef, useCallback } from 'react';
+import {
+  LuChartCandlestick,
+  LuCircleCheck,
+  LuCircleX,
+  LuCpu,
+  LuFolderOpen,
+  LuLink,
+  LuMonitorSmartphone,
+  LuPackage,
+  LuPlay,
+  LuRefreshCw,
+  LuSquare,
+  LuWifi,
+  LuWifiOff,
+} from 'react-icons/lu';
 
-type MT5Instance = {
-  id: number;
-  name: string;
-  path: string;
-  status: 'running' | 'stopped';
-  account: string;
-  server: string;
+type Mt5Instance = {
+  id: string;
+  broker_name: string;
+  install_path: string;
+  terminal_exe: string;
+  ea_deployed: boolean;
+  ea_version: string;
+  has_experts_dir: boolean;
+  mt5_running: boolean;
 };
 
-type EAConfig = {
-  id: number;
-  name: string;
+type EaLiveStatus = {
+  connected: boolean;
+  version: string;
   symbol: string;
-  timeframe: string;
-  magicNumber: number;
-  lotSize: number;
-  riskPercent: number;
-  maxSpread: number;
-  slippage: number;
-  status: 'active' | 'inactive';
+  latestVersion: string;
+  updateAvailable: boolean;
 };
 
-// Mock data
-const mockInstances: MT5Instance[] = [
-  { id: 1, name: 'MetaTrader 5 - ICMarkets', path: 'C:\\Program Files\\MetaTrader 5 IC', status: 'running', account: '5012345', server: 'ICMarketsSC-Demo' },
-  { id: 2, name: 'MetaTrader 5 - Exness', path: 'C:\\Program Files\\MetaTrader 5 Exness', status: 'stopped', account: '7890123', server: 'Exness-MT5Real' },
-  { id: 3, name: 'MetaTrader 5 - XM', path: 'C:\\Program Files\\MetaTrader 5 XM', status: 'running', account: '1234567', server: 'XMGlobal-MT5' },
-];
-
-const mockEAs: EAConfig[] = [
-  { id: 1, name: 'EA-24 Scalper', symbol: 'EURUSD', timeframe: 'M5', magicNumber: 240001, lotSize: 0.01, riskPercent: 2, maxSpread: 15, slippage: 3, status: 'active' },
-  { id: 2, name: 'EA-24 Trend', symbol: 'GBPUSD', timeframe: 'H1', magicNumber: 240002, lotSize: 0.05, riskPercent: 3, maxSpread: 20, slippage: 5, status: 'active' },
-  { id: 3, name: 'EA-24 Grid', symbol: 'XAUUSD', timeframe: 'M15', magicNumber: 240003, lotSize: 0.02, riskPercent: 1.5, maxSpread: 30, slippage: 5, status: 'inactive' },
-];
-
-const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'XAUUSD', 'BTCUSD', 'US30', 'NAS100'];
-const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1', 'W1'];
+type ActionStatus = {
+  type: 'idle' | 'loading' | 'success' | 'error';
+  message: string;
+};
 
 const MT5Settings = () => {
-  const [instances] = useState<MT5Instance[]>(mockInstances);
-  const [eas, setEAs] = useState<EAConfig[]>(mockEAs);
-  const [showAddEA, setShowAddEA] = useState(false);
-  const [newEA, setNewEA] = useState({ name: '', symbol: 'EURUSD', timeframe: 'M5', magicNumber: 0, lotSize: 0.01, riskPercent: 2, maxSpread: 15, slippage: 3 });
-  const [connectionTest, setConnectionTest] = useState<'idle' | 'testing' | 'success' | 'failed'>('idle');
+  const [instances, setInstances] = useState<Mt5Instance[]>([]);
+  const [scanning, setScanning] = useState(false);
+  const [wsConnected, setWsConnected] = useState(false);
+  const [eaStatus, setEaStatus] = useState<EaLiveStatus>({
+    connected: false,
+    version: '-',
+    symbol: '-',
+    latestVersion: '-',
+    updateAvailable: false,
+  });
+  const [tradingEnabled, setTradingEnabled] = useState(true);
+  const [actionStatuses, setActionStatuses] = useState<Record<string, ActionStatus>>({});
+  const wsRef = useRef<WebSocket | null>(null);
 
-  const handleAddEA = () => {
-    if (!newEA.name) return;
-    setEAs([...eas, { ...newEA, id: Date.now(), status: 'inactive' }]);
-    setNewEA({ name: '', symbol: 'EURUSD', timeframe: 'M5', magicNumber: 0, lotSize: 0.01, riskPercent: 2, maxSpread: 15, slippage: 3 });
-    setShowAddEA(false);
+  // WebSocket connection
+  const connectWs = useCallback(() => {
+    const ws = new WebSocket('ws://127.0.0.1:8080');
+
+    ws.onopen = () => {
+      setWsConnected(true);
+      // Auto-scan on connect
+      ws.send(JSON.stringify({ action: 'scan_mt5' }));
+      setScanning(true);
+    };
+
+    ws.onclose = () => {
+      setWsConnected(false);
+      setEaStatus((prev) => ({ ...prev, connected: false }));
+      // Reconnect after 3 seconds
+      setTimeout(connectWs, 3000);
+    };
+
+    ws.onmessage = (evt) => {
+      try {
+        const data = JSON.parse(evt.data);
+
+        switch (data.type) {
+          case 'welcome':
+            setEaStatus({
+              connected: data.ea_connected || false,
+              version: data.ea_version || '-',
+              symbol: data.ea_symbol || '-',
+              latestVersion: data.latest_ea_version || '-',
+              updateAvailable: data.update_available || false,
+            });
+            break;
+
+          case 'ea_info':
+            setEaStatus({
+              connected: true,
+              version: data.version || '-',
+              symbol: data.symbol || '-',
+              latestVersion: data.latest_version || '-',
+              updateAvailable: data.update_available || false,
+            });
+            break;
+
+          case 'mt5_instances':
+            setInstances(data.instances || []);
+            setScanning(false);
+            // Also update EA status from scan response (real-time polling)
+            if (data.ea_connected !== undefined) {
+              setEaStatus((prev) => ({
+                ...prev,
+                connected: data.ea_connected,
+                version: data.ea_version || prev.version,
+                symbol: data.ea_symbol || prev.symbol,
+              }));
+            }
+            break;
+
+          case 'deploy_status':
+            setActionStatuses((prev) => ({
+              ...prev,
+              [`deploy_${data.instance_id || 'all'}`]: {
+                type: data.status === 'success' ? 'success' : 'error',
+                message: data.status === 'success' ? 'EA deployed!' : 'Deploy failed',
+              },
+            }));
+            // Auto re-scan after deploy
+            if (data.status === 'success' && wsRef.current?.readyState === 1) {
+              setTimeout(() => {
+                wsRef.current?.send(JSON.stringify({ action: 'scan_mt5' }));
+              }, 500);
+            }
+            break;
+
+          case 'launch_status':
+            setActionStatuses((prev) => ({
+              ...prev,
+              [`launch_${data.instance_id || ''}`]: {
+                type: data.status === 'success' ? 'success' : 'error',
+                message: data.status === 'success' ? 'MT5 launched!' : 'Launch failed',
+              },
+            }));
+            // Auto re-scan after launch to update running state & EA connection
+            if (data.status === 'success') {
+              setTimeout(() => {
+                wsRef.current?.send(JSON.stringify({ action: 'scan_mt5' }));
+              }, 3000);
+            }
+            break;
+
+          case 'setup_webrequest_status':
+            setActionStatuses((prev) => ({
+              ...prev,
+              [`webrequest_${data.instance_id || ''}`]: {
+                type: data.status === 'success' ? 'success' : 'error',
+                message: data.status === 'success' ? 'Done' : 'Failed',
+              },
+            }));
+            break;
+
+          case 'close_mt5_status':
+            setActionStatuses((prev) => ({
+              ...prev,
+              [`close_${data.instance_id || ''}`]: {
+                type: data.status === 'success' ? 'success' : 'error',
+                message: data.status === 'success' ? 'MT5 closed' : 'Failed',
+              },
+            }));
+            // Refresh instances to update running state
+            setTimeout(() => sendAction('scan_mt5'), 2000);
+            break;
+        }
+      } catch {
+        // ignore
+      }
+    };
+
+    wsRef.current = ws;
+  }, []);
+
+  useEffect(() => {
+    connectWs();
+    return () => {
+      wsRef.current?.close();
+    };
+  }, [connectWs]);
+
+  // Real-time polling: auto-refresh every 5 seconds
+  useEffect(() => {
+    const interval = setInterval(() => {
+      if (wsRef.current?.readyState === 1) {
+        wsRef.current.send(JSON.stringify({ action: 'scan_mt5' }));
+      }
+    }, 5000);
+    return () => clearInterval(interval);
+  }, []);
+
+  // Clear action status after 3 seconds
+  useEffect(() => {
+    const timers: ReturnType<typeof setTimeout>[] = [];
+    for (const key in actionStatuses) {
+      if (actionStatuses[key].type !== 'idle' && actionStatuses[key].type !== 'loading') {
+        timers.push(
+          setTimeout(() => {
+            setActionStatuses((prev) => ({
+              ...prev,
+              [key]: { type: 'idle', message: '' },
+            }));
+          }, 3000)
+        );
+      }
+    }
+    return () => timers.forEach(clearTimeout);
+  }, [actionStatuses]);
+
+  const sendAction = (action: string, extra?: Record<string, string>) => {
+    if (wsRef.current?.readyState === 1) {
+      wsRef.current.send(JSON.stringify({ action, ...extra }));
+    }
   };
 
-  const toggleEAStatus = (id: number) => {
-    setEAs(eas.map(ea => ea.id === id ? { ...ea, status: ea.status === 'active' ? 'inactive' : 'active' } : ea));
+  const handleScan = () => {
+    setScanning(true);
+    sendAction('scan_mt5');
   };
 
-  const removeEA = (id: number) => {
-    setEAs(eas.filter(ea => ea.id !== id));
+  const handleDeploy = (instanceId: string) => {
+    setActionStatuses((prev) => ({
+      ...prev,
+      [`deploy_${instanceId}`]: { type: 'loading', message: 'Deploying...' },
+    }));
+    sendAction('deploy_ea_to', { instance_id: instanceId });
   };
 
-  const testConnection = () => {
-    setConnectionTest('testing');
-    setTimeout(() => setConnectionTest('success'), 1500);
+  const handleLaunch = (instanceId: string) => {
+    setActionStatuses((prev) => ({
+      ...prev,
+      [`launch_${instanceId}`]: { type: 'loading', message: 'Launching...' },
+    }));
+    sendAction('launch_mt5', { instance_id: instanceId });
   };
+
+  const handleToggleTrading = () => {
+    const newState = !tradingEnabled;
+    setTradingEnabled(newState);
+    sendAction(newState ? 'start_trading' : 'stop_trading');
+  };
+
+  const handleToggleMt5 = (instanceId: string, isRunning: boolean) => {
+    if (isRunning) {
+      setActionStatuses((prev) => ({
+        ...prev,
+        [`close_${instanceId}`]: { type: 'loading', message: 'Closing...' },
+      }));
+      sendAction('close_mt5', { instance_id: instanceId });
+    } else {
+      handleLaunch(instanceId);
+    }
+  };
+
+  const getActionStatus = (key: string): ActionStatus =>
+    actionStatuses[key] || { type: 'idle', message: '' };
 
   return (
     <main className="space-y-6">
@@ -72,323 +262,319 @@ const MT5Settings = () => {
       <div className="flex items-center justify-between">
         <div>
           <h4 className="text-lg font-semibold text-default-900">MT5 Settings</h4>
-          <p className="mt-1 text-sm text-default-500">Manage MetaTrader 5 instances and Expert Advisors</p>
+          <p className="mt-1 text-sm text-default-500">
+            Auto-discover MetaTrader 5 instances & manage Expert Advisors
+          </p>
         </div>
-        <nav className="text-sm text-default-500">
-          Tailwick &gt; Config Server &gt; MT5 Settings
-        </nav>
+        <div className="flex items-center gap-2">
+          <span
+            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
+              wsConnected
+                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
+            }`}
+          >
+            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}
+            {wsConnected ? 'Server Connected' : 'Server Offline'}
+          </span>
+        </div>
       </div>
 
-      {/* Section 1: MT5 Instances */}
-      <div className="rounded-lg border border-default-200 bg-white p-5 dark:bg-default-50">
+      {/* Section 1: EA Live Status */}
+      <div className="rounded-xl border border-default-200 bg-white p-5 dark:bg-default-50">
+          <div className="mb-4 flex items-center gap-2">
+            <LuCpu className="size-5 text-primary" />
+            <h5 className="text-base font-semibold text-default-900">EA Live Status</h5>
+          </div>
+
+        <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
+          {/* Connection Status */}
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">Connection</p>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={`size-3 rounded-full ${eaStatus.connected ? 'bg-green-500 animate-pulse' : 'bg-red-400'}`}
+              />
+              <span className={`text-sm font-semibold ${eaStatus.connected ? 'text-green-600' : 'text-red-500'}`}>
+                {eaStatus.connected ? 'Online' : 'Offline'}
+              </span>
+            </div>
+          </div>
+
+          {/* EA Version */}
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">EA Version</p>
+            <p className="mt-2 text-sm font-semibold text-default-900">
+              v{eaStatus.version}
+              {eaStatus.updateAvailable && (
+                <span className="ml-2 rounded bg-amber-100 px-1.5 py-0.5 text-[10px] text-amber-700">
+                  Update → v{eaStatus.latestVersion}
+                </span>
+              )}
+            </p>
+          </div>
+
+          {/* Symbol */}
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">Symbol</p>
+            <p className="mt-2 text-sm font-bold text-primary">{eaStatus.symbol || '-'}</p>
+          </div>
+
+          {/* Trading Status */}
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">Trading</p>
+            <div className="mt-2 flex items-center gap-2">
+              <span
+                className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  tradingEnabled
+                    ? 'bg-green-100 text-green-700'
+                    : 'bg-red-100 text-red-700'
+                }`}
+              >
+                {tradingEnabled ? '● Enabled' : '○ Disabled'}
+              </span>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      {/* Section 2: MT5 Instances */}
+      <div className="rounded-xl border border-default-200 bg-white p-5 dark:bg-default-50">
         <div className="mb-4 flex items-center justify-between">
           <div className="flex items-center gap-2">
             <LuMonitorSmartphone className="size-5 text-primary" />
             <h5 className="text-base font-semibold text-default-900">
-              MT5 Instances ({instances.length} found)
-            </h5>
-          </div>
-          <div className="flex gap-2">
-            <button className="inline-flex items-center gap-1.5 rounded-md border border-default-200 px-3 py-1.5 text-xs font-medium text-default-700 transition hover:bg-default-100">
-              <LuRefreshCw className="size-3.5" /> Refresh
-            </button>
-            <button className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary/90">
-              <LuPlus className="size-3.5" /> Add Path
-            </button>
-          </div>
-        </div>
-
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-default-200 text-xs uppercase text-default-500">
-              <tr>
-                <th className="px-4 py-3">Instance Name</th>
-                <th className="px-4 py-3">Path</th>
-                <th className="px-4 py-3">Account</th>
-                <th className="px-4 py-3">Server</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-default-200">
-              {instances.map(inst => (
-                <tr key={inst.id} className="hover:bg-default-50/50">
-                  <td className="px-4 py-3 font-medium text-default-900">{inst.name}</td>
-                  <td className="px-4 py-3 text-default-500 font-mono text-xs">{inst.path}</td>
-                  <td className="px-4 py-3 text-default-700">{inst.account}</td>
-                  <td className="px-4 py-3 text-default-500">{inst.server}</td>
-                  <td className="px-4 py-3">
-                    <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                      inst.status === 'running' 
-                        ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' 
-                        : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
-                    }`}>
-                      <span className={`size-1.5 rounded-full ${inst.status === 'running' ? 'bg-green-500' : 'bg-red-500'}`} />
-                      {inst.status === 'running' ? 'Running' : 'Stopped'}
-                    </span>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      {inst.status === 'running' ? (
-                        <button className="rounded p-1.5 text-orange-500 hover:bg-orange-50" title="Stop">
-                          <LuSquare className="size-4" />
-                        </button>
-                      ) : (
-                        <button className="rounded p-1.5 text-green-500 hover:bg-green-50" title="Start">
-                          <LuPlay className="size-4" />
-                        </button>
-                      )}
-                      <button className="rounded p-1.5 text-default-400 hover:bg-default-100" title="Settings">
-                        <LuSettings className="size-4" />
-                      </button>
-                      <button className="rounded p-1.5 text-red-400 hover:bg-red-50" title="Remove">
-                        <LuTrash2 className="size-4" />
-                      </button>
-                    </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      </div>
-
-      {/* Section 2: EA Configuration */}
-      <div className="rounded-lg border border-default-200 bg-white p-5 dark:bg-default-50">
-        <div className="mb-4 flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <LuChartCandlestick className="size-5 text-primary" />
-            <h5 className="text-base font-semibold text-default-900">
-              Expert Advisors ({eas.length})
+              MT5 Instances
+              {instances.length > 0 && (
+                <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-normal text-primary">
+                  {instances.length} found
+                </span>
+              )}
             </h5>
           </div>
           <button
-            onClick={() => setShowAddEA(!showAddEA)}
-            className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-1.5 text-xs font-medium text-white transition hover:bg-primary/90"
+            onClick={handleScan}
+            disabled={scanning || !wsConnected}
+            className="inline-flex items-center gap-1.5 rounded-lg border border-default-200 px-3 py-1.5 text-xs font-medium text-default-700 transition hover:bg-default-100 disabled:opacity-40"
           >
-            <LuPlus className="size-3.5" /> Add EA to Chart
+            <LuRefreshCw className={`size-3.5 ${scanning ? 'animate-spin' : ''}`} />
+            {scanning ? 'Scanning...' : 'Scan Again'}
           </button>
         </div>
 
-        {/* Add EA Form */}
-        {showAddEA && (
-          <div className="mb-4 rounded-lg border border-primary/20 bg-primary/5 p-4">
-            <h6 className="mb-3 text-sm font-semibold text-default-900">Add EA to Chart</h6>
-            <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-              <div>
-                <label className="mb-1 block text-xs text-default-500">EA Name</label>
-                <input
-                  type="text"
-                  value={newEA.name}
-                  onChange={e => setNewEA({ ...newEA, name: e.target.value })}
-                  placeholder="e.g. EA-24 Scalper"
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Symbol</label>
-                <select
-                  value={newEA.symbol}
-                  onChange={e => setNewEA({ ...newEA, symbol: e.target.value })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                >
-                  {symbols.map(s => <option key={s} value={s}>{s}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Timeframe</label>
-                <select
-                  value={newEA.timeframe}
-                  onChange={e => setNewEA({ ...newEA, timeframe: e.target.value })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                >
-                  {timeframes.map(t => <option key={t} value={t}>{t}</option>)}
-                </select>
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Magic Number</label>
-                <input
-                  type="number"
-                  value={newEA.magicNumber}
-                  onChange={e => setNewEA({ ...newEA, magicNumber: Number(e.target.value) })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Lot Size</label>
-                <input
-                  type="number"
-                  step="0.01"
-                  value={newEA.lotSize}
-                  onChange={e => setNewEA({ ...newEA, lotSize: Number(e.target.value) })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Risk %</label>
-                <input
-                  type="number"
-                  step="0.5"
-                  value={newEA.riskPercent}
-                  onChange={e => setNewEA({ ...newEA, riskPercent: Number(e.target.value) })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Max Spread (pts)</label>
-                <input
-                  type="number"
-                  value={newEA.maxSpread}
-                  onChange={e => setNewEA({ ...newEA, maxSpread: Number(e.target.value) })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-              <div>
-                <label className="mb-1 block text-xs text-default-500">Slippage (pts)</label>
-                <input
-                  type="number"
-                  value={newEA.slippage}
-                  onChange={e => setNewEA({ ...newEA, slippage: Number(e.target.value) })}
-                  className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none"
-                />
-              </div>
-            </div>
-            <div className="mt-3 flex gap-2">
-              <button
-                onClick={handleAddEA}
-                className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90"
-              >
-                Add EA
-              </button>
-              <button
-                onClick={() => setShowAddEA(false)}
-                className="rounded-md border border-default-200 px-4 py-2 text-xs font-medium text-default-600 hover:bg-default-100"
-              >
-                Cancel
-              </button>
+        {/* Loading state */}
+        {scanning && instances.length === 0 && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <LuRefreshCw className="mx-auto size-8 animate-spin text-primary/50" />
+              <p className="mt-3 text-sm text-default-500">Scanning for MetaTrader 5 installations...</p>
             </div>
           </div>
         )}
 
-        {/* EA Table */}
-        <div className="overflow-x-auto">
-          <table className="w-full text-left text-sm">
-            <thead className="border-b border-default-200 text-xs uppercase text-default-500">
-              <tr>
-                <th className="px-4 py-3">EA Name</th>
-                <th className="px-4 py-3">Symbol</th>
-                <th className="px-4 py-3">TF</th>
-                <th className="px-4 py-3">Magic</th>
-                <th className="px-4 py-3">Lot</th>
-                <th className="px-4 py-3">Risk %</th>
-                <th className="px-4 py-3">Spread</th>
-                <th className="px-4 py-3">Slip</th>
-                <th className="px-4 py-3">Status</th>
-                <th className="px-4 py-3">Actions</th>
-              </tr>
-            </thead>
-            <tbody className="divide-y divide-default-200">
-              {eas.map(ea => (
-                <tr key={ea.id} className="hover:bg-default-50/50">
-                  <td className="px-4 py-3 font-medium text-default-900">{ea.name}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-primary font-semibold">{ea.symbol}</td>
-                  <td className="px-4 py-3 text-default-600">{ea.timeframe}</td>
-                  <td className="px-4 py-3 font-mono text-xs text-default-500">{ea.magicNumber}</td>
-                  <td className="px-4 py-3 text-default-700">{ea.lotSize}</td>
-                  <td className="px-4 py-3 text-default-700">{ea.riskPercent}%</td>
-                  <td className="px-4 py-3 text-default-500">{ea.maxSpread}</td>
-                  <td className="px-4 py-3 text-default-500">{ea.slippage}</td>
-                  <td className="px-4 py-3">
-                    <button onClick={() => toggleEAStatus(ea.id)}>
-                      <span className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium cursor-pointer ${
-                        ea.status === 'active'
-                          ? 'bg-green-100 text-green-700'
-                          : 'bg-default-100 text-default-500'
-                      }`}>
-                        {ea.status === 'active' ? '● Active' : '○ Inactive'}
-                      </span>
-                    </button>
-                  </td>
-                  <td className="px-4 py-3">
-                    <div className="flex gap-1">
-                      <button className="rounded p-1.5 text-default-400 hover:bg-default-100" title="Edit">
-                        <LuSettings className="size-4" />
-                      </button>
-                      <button
-                        onClick={() => removeEA(ea.id)}
-                        className="rounded p-1.5 text-red-400 hover:bg-red-50"
-                        title="Remove"
+        {/* No instances */}
+        {!scanning && instances.length === 0 && (
+          <div className="flex items-center justify-center py-12">
+            <div className="text-center">
+              <LuMonitorSmartphone className="mx-auto size-10 text-default-300" />
+              <p className="mt-3 text-sm font-medium text-default-500">No MT5 instances found</p>
+              <p className="mt-1 text-xs text-default-400">
+                Make sure MetaTrader 5 is installed on this machine
+              </p>
+            </div>
+          </div>
+        )}
+
+        {/* Instance Cards */}
+        <div className="space-y-3">
+          {instances.map((inst) => {
+            const deployStatus = getActionStatus(`deploy_${inst.id}`);
+
+            return (
+              <div
+                key={inst.id}
+                className="rounded-xl border border-default-200 bg-gradient-to-r from-white to-default-50/30 p-5 transition hover:shadow-md hover:shadow-primary/5 dark:from-default-50 dark:to-default-50"
+              >
+                <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
+                  {/* Instance Info */}
+                  <div className="flex-1 min-w-0">
+                    <div className="flex items-center gap-3">
+                      <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
+                        <LuChartCandlestick className="size-5 text-primary" />
+                      </div>
+                      <div className="min-w-0">
+                        <h6 className="truncate text-sm font-semibold text-default-900">
+                          {inst.broker_name || 'MetaTrader 5'}
+                        </h6>
+                        <div className="mt-0.5 flex items-center gap-1.5 text-xs text-default-400">
+                          <LuFolderOpen className="size-3 shrink-0" />
+                          <span className="truncate font-mono">{inst.install_path}</span>
+                        </div>
+                      </div>
+                    </div>
+
+                    {/* EA Status Badge */}
+                    <div className="mt-3 flex flex-wrap items-center gap-2">
+                      <span
+                        className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                          inst.ea_deployed
+                            ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
+                            : 'bg-default-100 text-default-500'
+                        }`}
                       >
-                        <LuTrash2 className="size-4" />
+                        {inst.ea_deployed ? (
+                          <>
+                            <LuCircleCheck className="size-3" /> EA Deployed
+                          </>
+                        ) : (
+                          <>
+                            <LuCircleX className="size-3" /> No EA
+                          </>
+                        )}
+                      </span>
+                      {inst.ea_deployed && inst.ea_version !== '-' && (
+                        <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700">
+                          v{inst.ea_version}
+                        </span>
+                      )}
+                      <span className="rounded bg-default-100 px-2 py-0.5 text-[10px] font-mono text-default-400">
+                        {inst.id.substring(0, 12)}...
+                      </span>
+                    </div>
+                   {/* Status Indicators */}
+                   <div className="mt-3 flex flex-wrap items-center gap-3">
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                        eaStatus?.connected ? 'text-green-600' : 'text-red-400'
+                      }`}>
+                        <span className={`inline-block size-2 rounded-full ${eaStatus?.connected ? 'bg-green-500' : 'bg-red-400'}`} />
+                        EA Connection
+                      </span>
+                      <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
+                        tradingEnabled ? 'text-green-600' : 'text-red-400'
+                      }`}>
+                        <span className={`inline-block size-2 rounded-full ${tradingEnabled ? 'bg-green-500' : 'bg-red-400'}`} />
+                        Algo Trading
+                      </span>
+                   </div>
+                  </div>
+
+                  {/* Action Buttons */}
+                  <div className="flex shrink-0 flex-wrap items-center gap-3">
+                    {/* Deploy EA Button - hidden if version matches server */}
+                    {(!inst.ea_deployed || inst.ea_version !== eaStatus.latestVersion) && (
+                      <button
+                        onClick={() => handleDeploy(inst.id)}
+                        disabled={deployStatus.type === 'loading' || !wsConnected}
+                        className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition disabled:opacity-40 ${
+                          inst.ea_deployed
+                            ? 'border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100'
+                            : 'bg-blue-500 text-white hover:bg-blue-600'
+                        }`}
+                      >
+                        {deployStatus.type === 'loading' ? (
+                          <><LuRefreshCw className="size-3.5 animate-spin" /> Deploying...</>
+                        ) : deployStatus.type === 'success' ? (
+                          <><LuCircleCheck className="size-3.5" /> Deployed!</>
+                        ) : (
+                          <><LuPackage className="size-3.5" /> {inst.ea_deployed ? 'Update EA' : 'Deploy EA'}</>
+                        )}
+                      </button>
+                    )}
+
+                    {/* Stop/Start Trading per instance */}
+                    <button
+                      onClick={handleToggleTrading}
+                      disabled={!eaStatus.connected || !wsConnected}
+                      className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition disabled:opacity-40 ${
+                        tradingEnabled
+                          ? 'bg-amber-500 text-white hover:bg-amber-600'
+                          : 'bg-green-500 text-white hover:bg-green-600'
+                      }`}
+                    >
+                      {tradingEnabled ? (
+                        <><LuSquare className="size-3" /> Stop Trading</>
+                      ) : (
+                        <><LuPlay className="size-3" /> Start Trading</>
+                      )}
+                    </button>
+
+                    {/* Chart + EA status */}
+                    {inst.mt5_running && (
+                      eaStatus.connected ? (
+                        <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600">
+                          <span className="inline-block size-2 rounded-full bg-green-500" />
+                          EA Active
+                        </span>
+                      ) : (
+                        <button
+                          onClick={() => handleLaunch(inst.id)}
+                          disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
+                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-white transition hover:bg-primary/90 disabled:opacity-40"
+                        >
+                          {getActionStatus(`launch_${inst.id}`).type === 'loading' ? (
+                            <><LuRefreshCw className="size-3 animate-spin" /> Opening...</>
+                          ) : (
+                            <><LuChartCandlestick className="size-3" /> Open Chart + EA</>
+                          )}
+                        </button>
+                      )
+                    )}
+
+                    {/* MT5 Toggle Switch - shows real per-instance status */}
+                    <div className="flex items-center gap-2">
+                      <span className="text-xs font-medium text-default-500">MT5</span>
+                      <button
+                        onClick={() => handleToggleMt5(inst.id, inst.mt5_running)}
+                        disabled={(!inst.ea_deployed && !inst.mt5_running) || !wsConnected}
+                        className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 ${
+                          inst.mt5_running
+                            ? 'bg-green-500'
+                            : 'bg-default-300'
+                        }`}
+                        title={inst.mt5_running ? 'MT5 is running' : 'Click to open MT5 + EA'}
+                      >
+                        <span
+                          className={`inline-block size-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                            inst.mt5_running ? 'translate-x-6' : 'translate-x-1'
+                          }`}
+                        />
                       </button>
                     </div>
-                  </td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+                  </div>
+                </div>
+              </div>
+            );
+          })}
         </div>
       </div>
 
-      {/* Section 3: Connection Settings */}
-      <div className="rounded-lg border border-default-200 bg-white p-5 dark:bg-default-50">
+      {/* Section 3: Connection Info */}
+      <div className="rounded-xl border border-default-200 bg-white p-5 dark:bg-default-50">
         <div className="mb-4 flex items-center gap-2">
           <LuLink className="size-5 text-primary" />
-          <h5 className="text-base font-semibold text-default-900">Connection Settings</h5>
+          <h5 className="text-base font-semibold text-default-900">Connection Info</h5>
         </div>
 
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-default-700">MT5 Server</label>
-            <input
-              type="text"
-              defaultValue="ICMarketsSC-Demo"
-              className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-            />
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">WebSocket Server</p>
+            <p className="mt-1 font-mono text-sm text-default-900">ws://127.0.0.1:8080</p>
+            <p className={`mt-1 text-xs ${wsConnected ? 'text-green-600' : 'text-red-500'}`}>
+              {wsConnected ? '● Connected' : '○ Disconnected'}
+            </p>
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-default-700">Login ID</label>
-            <input
-              type="text"
-              defaultValue="5012345"
-              className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-            />
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
+            <p className="mt-1 font-mono text-sm text-default-900">127.0.0.1:8081</p>
+            <p className={`mt-1 text-xs ${eaStatus.connected ? 'text-green-600' : 'text-default-400'}`}>
+              {eaStatus.connected ? '● EA Connected' : '○ Waiting for EA'}
+            </p>
           </div>
-          <div>
-            <label className="mb-1.5 block text-sm font-medium text-default-700">Password</label>
-            <input
-              type="password"
-              defaultValue="password123"
-              className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none"
-            />
+          <div className="rounded-lg border border-default-100 bg-default-50/50 p-4">
+            <p className="text-xs font-medium uppercase text-default-400">Server EA Version</p>
+            <p className="mt-1 font-mono text-sm text-default-900">v{eaStatus.latestVersion}</p>
+            <p className="mt-1 text-xs text-default-400">Latest version on server</p>
           </div>
-        </div>
-
-        <div className="mt-4 flex items-center gap-3">
-          <button
-            onClick={testConnection}
-            disabled={connectionTest === 'testing'}
-            className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-50"
-          >
-            {connectionTest === 'testing' ? (
-              <><LuRefreshCw className="size-4 animate-spin" /> Testing...</>
-            ) : (
-              <><LuLink className="size-4" /> Test Connection</>
-            )}
-          </button>
-          <button className="rounded-md border border-default-200 px-4 py-2 text-sm font-medium text-default-600 hover:bg-default-100">
-            Save Settings
-          </button>
-          {connectionTest === 'success' && (
-            <span className="inline-flex items-center gap-1 text-sm text-green-600">
-              <LuCircleCheck className="size-4" /> Connected successfully
-            </span>
-          )}
-          {connectionTest === 'failed' && (
-            <span className="inline-flex items-center gap-1 text-sm text-red-600">
-              <LuCircleX className="size-4" /> Connection failed
-            </span>
-          )}
         </div>
       </div>
     </main>
