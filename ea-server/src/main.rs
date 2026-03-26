@@ -344,6 +344,35 @@ async fn handle_ws_connection(
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
+                                    "stop_server" => {
+                                        warn!("🛑 [UI] STOP SERVER command received!");
+                                        let resp = serde_json::json!({
+                                            "type": "server_control",
+                                            "status": "stopping",
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                        // Give time for the response to be sent
+                                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                        info!("👋 Server shutting down...");
+                                        std::process::exit(0);
+                                    }
+                                    "restart_server" => {
+                                        warn!("🔄 [UI] RESTART SERVER command received!");
+                                        let resp = serde_json::json!({
+                                            "type": "server_control",
+                                            "status": "restarting",
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                        tokio::time::sleep(std::time::Duration::from_millis(300)).await;
+                                        // Spawn a new copy of ourselves before exiting
+                                        let exe = std::env::current_exe().unwrap_or_default();
+                                        info!("🔄 Spawning new server: {:?}", exe);
+                                        let _ = std::process::Command::new(&exe).spawn();
+                                        // Small delay for new process to start
+                                        tokio::time::sleep(std::time::Duration::from_millis(500)).await;
+                                        info!("👋 Old server exiting...");
+                                        std::process::exit(0);
+                                    }
                                     _ => {}
                                 }
                             }
