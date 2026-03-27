@@ -34,7 +34,7 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-openssl-static-v2
+          key: ${{ runner.os }}-vcpkg-openssl-static-v1
           restore-keys: ${{ runner.os }}-vcpkg-openssl-
 
       - name: Install OpenSSL (static linking for SQLCipher)
@@ -46,8 +46,9 @@ jobs:
           echo "OPENSSL_INCLUDE_DIR=$base\include" >> $env:GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
           echo "OPENSSL_NO_VENDOR=1" >> $env:GITHUB_ENV
-          echo "=== Listing OpenSSL lib directory ==="
-          Get-ChildItem "$base\lib" -ErrorAction SilentlyContinue | Select-Object Name
+          # Verify files exist
+          Write-Host "=== OpenSSL lib files ==="
+          Get-ChildItem "$base\lib" -Filter "*.lib" | ForEach-Object { Write-Host $_.Name }
 
       - name: Build release
         run: cargo build --release
