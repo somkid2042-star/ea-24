@@ -32,9 +32,8 @@ jobs:
 
       - name: Install OpenSSL (Windows requirement for SQLCipher)
         run: |
-          vcpkg install openssl:x64-windows-static-md
-          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
-          echo "VCPKGRS_DYNAMIC=1" >> $env:GITHUB_ENV
+          vcpkg install openssl:x64-windows
+          echo "OPENSSL_DIR=C:\vcpkg\installed\x64-windows" >> $env:GITHUB_ENV
 
       - name: Build release
         run: cargo build --release
