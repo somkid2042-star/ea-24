@@ -1,9 +1,25 @@
-use log::{error, info};
-use reqwest::header::USER_AGENT;
+use log::{error, info, warn};
+use reqwest::header::{AUTHORIZATION, USER_AGENT};
 use serde::Deserialize;
 use std::fs;
 use std::path::PathBuf;
 use tokio::sync::broadcast;
+
+/// Load GitHub PAT from `github_token.txt` next to the executable
+fn load_github_token() -> Option<String> {
+    let exe_dir = std::env::current_exe().ok()?.parent()?.to_path_buf();
+    let token_path = exe_dir.join("github_token.txt");
+    match fs::read_to_string(&token_path) {
+        Ok(token) => {
+            let token = token.trim().to_string();
+            if token.is_empty() { None } else { Some(token) }
+        }
+        Err(_) => {
+            warn!("⚠️ github_token.txt not found at {:?} — update check will use public API", token_path);
+            None
+        }
+    }
+}
 
 #[derive(Deserialize)]
 struct Release {
@@ -34,12 +50,16 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
     send_status(&format!("Checking for updates... (Current: v{})", current_version));
     info!("🔄 Checking for server updates on GitHub... (Current: v{})", current_version);
 
+    let github_token = load_github_token();
+
     let client = reqwest::Client::new();
-    let res = client
+    let mut req = client
         .get("https://api.github.com/repos/somkid2042-star/ea-24/releases/latest")
-        .header(USER_AGENT, "EA-24-Server-Updater")
-        .send()
-        .await;
+        .header(USER_AGENT, "EA-24-Server-Updater");
+    if let Some(ref token) = github_token {
+        req = req.header(AUTHORIZATION, format!("Bearer {}", token));
+    }
+    let res = req.send().await;
 
     let release: Release = match res {
         Ok(r) => match r.json().await {
@@ -72,7 +92,7 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
     let exe_asset = release.assets.iter().find(|a| a.name == "ea-server.exe");
     if let Some(asset) = exe_asset {
         let download_url = &asset.browser_download_url;
-        match download_and_install(download_url, client).await {
+        match download_and_install(download_url, client, github_token.as_deref()).await {
             Ok(_) => {
                 send_status("Update successful! Restarting server...");
                 info!("🚀 Update successful! Restarting server in 2 seconds...");
@@ -101,8 +121,14 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
     }
 }
 
-async fn download_and_install(url: &str, client: reqwest::Client) -> Result<(), String> {
-    let res = client.get(url).send().await.map_err(|e| e.to_string())?;
+async fn download_and_install(url: &str, client: reqwest::Client, token: Option<&str>) -> Result<(), String> {
+    let mut req = client.get(url)
+        .header(USER_AGENT, "EA-24-Server-Updater")
+        .header("Accept", "application/octet-stream");
+    if let Some(token) = token {
+        req = req.header(AUTHORIZATION, format!("Bearer {}", token));
+    }
+    let res = req.send().await.map_err(|e| e.to_string())?;
     let bytes = res.bytes().await.map_err(|e| e.to_string())?;
 
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;

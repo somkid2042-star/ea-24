@@ -29,3 +29,4 @@ ea-client/dist/
 ea-client/.env
 ea-client/src-tauri/target/
 ea-server/target/
+github_token.txt
