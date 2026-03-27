@@ -9,6 +9,7 @@ pub struct Database {
     path: PathBuf,
 }
 
+#[allow(dead_code)]
 impl Database {
     /// Initialize database — creates file + tables if they don't exist
     pub fn init(db_path: &str) -> Result<Self, String> {

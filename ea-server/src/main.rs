@@ -2,7 +2,15 @@
 
 mod db;
 mod updater;
+#[cfg(target_os = "windows")]
 mod tray;
+#[cfg(not(target_os = "windows"))]
+mod tray {
+    #[allow(dead_code)]
+    pub struct TrayState { pub server_online: bool, pub ea_connected: bool, pub ea_version: String, pub ea_symbol: String, pub last_error: Option<String> }
+    impl Default for TrayState { fn default() -> Self { Self { server_online: true, ea_connected: false, ea_version: "—".into(), ea_symbol: String::new(), last_error: None } } }
+    pub fn run_tray(_rx: tokio::sync::watch::Receiver<TrayState>) { loop { std::thread::park(); } }
+}
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -24,6 +32,7 @@ use std::os::windows::process::CommandExt;
 
 /// Creates a new `Command` that runs without a console window on Windows.
 fn new_hidden_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
+    #[allow(unused_mut)]
     let mut cmd = std::process::Command::new(program);
     #[cfg(target_os = "windows")]
     {
@@ -413,15 +422,7 @@ async fn handle_ws_connection(
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     "deploy_ea_to" => {
-                                        let instance_id = client_msg.instance_id.clone().unwrap_or_default();
-                                        info!("📦 [UI] Deploying EA to instance: {}", instance_id);
-                                        let status = deploy_ea_to_instance(&instance_id);
-                                        let resp = serde_json::json!({
-                                            "type": "deploy_status",
-                                            "status": if status { "success" } else { "error" },
-                                            "instance_id": instance_id,
-                                        });
-                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                        // Handled by the second deploy_ea_to block below (with MetaEditor support)
                                     }
                                     "launch_mt5" => {
                                         let instance_id = client_msg.instance_id.clone().unwrap_or_default();
@@ -772,7 +773,7 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, and market_watch to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") {
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;
@@ -892,53 +893,8 @@ fn read_ea_version_from_mq5(path: &Path) -> String {
     "unknown".to_string()
 }
 
-fn deploy_ea_to_instance(instance_id: &str) -> bool {
-    let source_mq5 = PathBuf::from("mt5/EATradingClient.mq5");
-    let source_ex5 = PathBuf::from("mt5/EATradingClient.ex5");
-
-    if !source_mq5.exists() {
-        error!("EA source file not found at {:?}", source_mq5);
-        return false;
-    }
-
-    let appdata = std::env::var("APPDATA")
-        .unwrap_or_else(|_| "C:\\Users\\Default\\AppData\\Roaming".to_string());
-    let instance_dir = PathBuf::from(&appdata)
-        .join("MetaQuotes")
-        .join("Terminal")
-        .join(instance_id);
-
-    if !instance_dir.exists() {
-        error!("MT5 instance not found: {:?}", instance_dir);
-        return false;
-    }
-
-    let experts_dir = instance_dir.join("MQL5").join("Experts");
-    if !experts_dir.exists() {
-        if let Err(e) = std::fs::create_dir_all(&experts_dir) {
-            error!("Failed to create Experts dir: {}", e);
-            return false;
-        }
-    }
-
-    let dest_mq5 = experts_dir.join("EATradingClient.mq5");
-    match std::fs::copy(&source_mq5, &dest_mq5) {
-        Ok(_) => info!("✅ Deployed EA source to {:?}", dest_mq5),
-        Err(e) => {
-            error!("❌ Failed to copy to {:?}: {}", dest_mq5, e);
-            return false;
-        }
-    }
-
-    if source_ex5.exists() {
-        let dest_ex5 = experts_dir.join("EATradingClient.ex5");
-        if let Ok(_) = std::fs::copy(&source_ex5, &dest_ex5) {
-            info!("✅ Deployed compiled EA to {:?}", dest_ex5);
-        }
-    }
-
-    true
-}
+// NOTE: deploy_ea_to_instance() was removed — its logic is fully handled
+// inside the WebSocket handler's "deploy_ea_to" action (with MetaEditor compile support).
 
 fn launch_mt5_by_id(instance_id: &str) -> bool {
     let appdata = std::env::var("APPDATA")
