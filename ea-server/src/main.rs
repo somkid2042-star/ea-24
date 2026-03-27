@@ -1,3 +1,5 @@
+#![windows_subsystem = "windows"]
+
 mod db;
 mod tray;
 
@@ -78,7 +80,13 @@ struct EaState {
 // ──────────────────────────────────────────────
 
 fn main() {
-    env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info")).init();
+    // Redirect log output to file (no console window available)
+    let log_file = std::fs::File::create("ea-server.log").ok();
+    let mut builder = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
+    if let Some(file) = log_file {
+        builder.target(env_logger::Target::Pipe(Box::new(file)));
+    }
+    builder.init();
 
     // Watch channel: server → tray
     let (tray_tx, tray_rx) = watch::channel(TrayState::default());
@@ -87,10 +95,20 @@ fn main() {
     // Spawn tokio runtime on a background thread
     let tray_tx_clone = tray_tx.clone();
     std::thread::spawn(move || {
-        let rt = tokio::runtime::Runtime::new().expect("Failed to create tokio runtime");
-        rt.block_on(async move {
-            run_server(tray_tx_clone).await;
-        });
+        match tokio::runtime::Runtime::new() {
+            Ok(rt) => {
+                rt.block_on(async move {
+                    run_server(tray_tx_clone).await;
+                });
+            }
+            Err(e) => {
+                let _ = tray_tx_clone.send(TrayState {
+                    server_online: false,
+                    last_error: Some(format!("Runtime error: {}", e)),
+                    ..TrayState::default()
+                });
+            }
+        }
     });
 
     // Run the system tray on the main thread (Windows requires this)
@@ -227,6 +245,7 @@ async fn handle_mt5_connection(
                                         ea_connected: true,
                                         ea_version: ver.clone(),
                                         ea_symbol: sym.clone(),
+                                        last_error: None,
                                     });
 
                                     // Broadcast ea_info to UI
@@ -296,6 +315,7 @@ async fn handle_mt5_connection(
         ea_connected: false,
         ea_version: "—".to_string(),
         ea_symbol: "".to_string(),
+        last_error: None,
     });
 }
 

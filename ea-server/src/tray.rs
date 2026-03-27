@@ -14,6 +14,7 @@ pub struct TrayState {
     pub ea_connected: bool,
     pub ea_version: String,
     pub ea_symbol: String,
+    pub last_error: Option<String>,
 }
 
 impl Default for TrayState {
@@ -23,6 +24,7 @@ impl Default for TrayState {
             ea_connected: false,
             ea_version: "—".to_string(),
             ea_symbol: "".to_string(),
+            last_error: None,
         }
     }
 }
@@ -95,7 +97,7 @@ fn yellow_icon() -> Icon {
     create_icon(255, 193, 7) // Material Amber
 }
 
-fn _red_icon() -> Icon {
+fn red_icon() -> Icon {
     create_icon(244, 67, 54) // Material Red
 }
 
@@ -104,16 +106,19 @@ fn _red_icon() -> Icon {
 // ──────────────────────────────────────────────
 
 fn build_tooltip(state: &TrayState) -> String {
+    if let Some(ref err) = state.last_error {
+        return format!("EA Server: ERROR\n{}", err);
+    }
     if !state.server_online {
-        return "EA Server: Offline ❌".to_string();
+        return "EA Server: Offline".to_string();
     }
     if state.ea_connected {
         format!(
-            "EA Server: Online ✅\nEA v{} | {}",
+            "EA Server: Online\nEA v{} | {}",
             state.ea_version, state.ea_symbol
         )
     } else {
-        "EA Server: Online ✅\nEA: Waiting...".to_string()
+        "EA Server: Online\nEA: Waiting...".to_string()
     }
 }
 
@@ -126,7 +131,9 @@ struct TrayApp {
     state_rx: watch::Receiver<TrayState>,
     green: Icon,
     yellow: Icon,
+    red: Icon,
     last_ea_connected: bool,
+    last_has_error: bool,
 }
 
 impl ApplicationHandler<TrayEvent> for TrayApp {
@@ -162,28 +169,39 @@ impl ApplicationHandler<TrayEvent> for TrayApp {
             let tooltip = build_tooltip(&state);
             let _ = self.tray.set_tooltip(&tooltip);
 
-            // Update icon color
-            if state.ea_connected != self.last_ea_connected {
-                if state.ea_connected {
+            let has_error = state.last_error.is_some();
+
+            // Update icon color based on state
+            if has_error != self.last_has_error || state.ea_connected != self.last_ea_connected {
+                if has_error {
+                    let _ = self.tray.set_icon(&self.red);
+                } else if state.ea_connected {
                     let _ = self.tray.set_icon(&self.green);
                 } else {
                     let _ = self.tray.set_icon(&self.yellow);
                 }
                 self.last_ea_connected = state.ea_connected;
+                self.last_has_error = has_error;
             }
 
-            // Update menu text
+            // Build menu with error info if present
+            let mut menu = MenuBuilder::new();
+
+            if let Some(ref err) = state.last_error {
+                menu = menu.item(&format!("ERROR: {}", err), TrayEvent::LeftClick);
+                menu = menu.separator();
+            }
+
             let status_text = if state.ea_connected {
-                format!("🟢 EA Online v{}", state.ea_version)
+                format!("EA Online v{}", state.ea_version)
             } else {
-                "🟡 Waiting for EA...".to_string()
+                "Waiting for EA...".to_string()
             };
-            let _ = self.tray.set_menu(
-                &MenuBuilder::new()
-                    .item(&status_text, TrayEvent::LeftClick)
-                    .separator()
-                    .item("Exit", TrayEvent::Exit),
-            );
+            menu = menu.item(&status_text, TrayEvent::LeftClick);
+            menu = menu.separator();
+            menu = menu.item("Exit", TrayEvent::Exit);
+
+            let _ = self.tray.set_menu(&menu);
         }
     }
 }
@@ -198,9 +216,12 @@ pub fn run_tray(state_rx: watch::Receiver<TrayState>) {
 
     let green = green_icon();
     let yellow = yellow_icon();
+    let red = red_icon();
 
     let initial_state = state_rx.borrow().clone();
-    let initial_icon = if initial_state.ea_connected {
+    let initial_icon = if initial_state.last_error.is_some() {
+        &red
+    } else if initial_state.ea_connected {
         &green
     } else {
         &yellow
@@ -218,7 +239,7 @@ pub fn run_tray(state_rx: watch::Receiver<TrayState>) {
         .on_right_click(TrayEvent::RightClick)
         .menu(
             MenuBuilder::new()
-                .item("🟡 Waiting for EA...", TrayEvent::LeftClick)
+                .item("Waiting for EA...", TrayEvent::LeftClick)
                 .separator()
                 .item("Exit", TrayEvent::Exit),
         )
@@ -230,7 +251,9 @@ pub fn run_tray(state_rx: watch::Receiver<TrayState>) {
         state_rx,
         green,
         yellow,
+        red,
         last_ea_connected: initial_state.ea_connected,
+        last_has_error: initial_state.last_error.is_some(),
     };
 
     event_loop.run_app(&mut app).unwrap();
