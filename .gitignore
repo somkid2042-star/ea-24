@@ -27,3 +27,5 @@ ea-client/dist/
 
 # Environment files
 ea-client/.env
+ea-client/src-tauri/target/
+ea-server/target/

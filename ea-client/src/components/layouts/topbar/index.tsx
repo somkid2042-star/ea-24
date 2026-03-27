@@ -326,10 +326,7 @@ const Topbar = () => {
             <button
               className="btn btn-icon size-8 hover:bg-default-150 rounded-full"
               type="button"
-              aria-haspopup="dialog"
-              aria-expanded="false"
-              aria-controls="theme-customization"
-              data-hs-overlay="#theme-customization"
+              onClick={() => window.__openCustomizer?.()}
             >
               <LuSettings className="size-4.5" />
             </button>

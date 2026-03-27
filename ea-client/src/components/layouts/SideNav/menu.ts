@@ -54,6 +54,7 @@ export const menuItemsData: MenuItemType[] = [
     children: [
       { key: 'Active Trades', label: 'Active Trades', href: '/trade/active' },
       { key: 'Trade Setup', label: 'Trade Setup', href: '/trade/setup' },
+      { key: 'Trade History', label: 'Trade History', href: '/trade/history' },
     ],
   },
 ];

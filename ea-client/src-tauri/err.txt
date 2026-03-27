@@ -1,0 +1,13 @@
+   Compiling ea-desktop v0.1.0 (C:\Users\somkid\Desktop\ea-24\ea-client\src-tauri)
+error: failed to run custom build command for `ea-desktop v0.1.0 (C:\Users\somkid\Desktop\ea-24\ea-client\src-tauri)`
+
+Caused by:
+  process didn't exit successfully: `C:\Users\somkid\Desktop\ea-24\ea-client\src-tauri\target\debug\build\ea-desktop-380c6dec1ccfebd9\build-script-build` (exit code: 1)
+  --- stdout
+  cargo:rerun-if-env-changed=TAURI_CONFIG
+  cargo:rustc-check-cfg=cfg(desktop)
+  cargo:rustc-cfg=desktop
+  cargo:rustc-check-cfg=cfg(mobile)
+  cargo:rerun-if-changed=C:\Users\somkid\Desktop\ea-24\ea-client\src-tauri\tauri.conf.json
+  unknown field `title`, expected one of `windows`, `security`, `tray-icon`, `trayIcon`, `macOSPrivateApi`, `macos-private-api`, `with-global-tauri`, `withGlobalTauri`, `enable-gtk-app-id`, `enableGTKAppId`
+  found an unknown configuration field. This usually means that you are using a CLI version that is newer than `tauri-build` and is incompatible. Please try updating the Rust crates by running `cargo update` in the Tauri app folder.

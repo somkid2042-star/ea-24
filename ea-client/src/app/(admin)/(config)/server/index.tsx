@@ -16,6 +16,7 @@ type ServerStatus = 'running' | 'stopped' | 'starting' | 'stopping' | 'restartin
 
 const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
 const WS_URL = `ws://${WS_HOST}:8080`;
+const LATEST_EA_VERSION = '2.04';
 
 const ServerSettings = () => {
   const [wsConnected, setWsConnected] = useState(false);
@@ -24,6 +25,7 @@ const ServerSettings = () => {
   const [eaVersion, setEaVersion] = useState('-');
   const [eaSymbol, setEaSymbol] = useState('-');
   const [uptime, setUptime] = useState('—');
+  const [config, setConfig] = useState<Record<string, string>>({});
   const wsRef = useRef<WebSocket | null>(null);
   const uptimeStart = useRef<number | null>(null);
 
@@ -34,6 +36,8 @@ const ServerSettings = () => {
       setWsConnected(true);
       setServerStatus('running');
       uptimeStart.current = Date.now();
+      // Fetch config from DB
+      ws.send(JSON.stringify({ action: 'get_server_config' }));
     };
 
     ws.onclose = () => {
@@ -64,6 +68,9 @@ const ServerSettings = () => {
             setEaVersion(data.ea_version || '-');
             setEaSymbol(data.ea_symbol || '-');
           }
+        }
+        if (data.type === 'server_config') {
+          setConfig(data.config || {});
         }
       } catch {
         // ignore
@@ -280,7 +287,7 @@ const ServerSettings = () => {
             </div>
             <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
-              <p className="text-sm font-semibold text-default-800">{WS_HOST}:8081</p>
+              <p className="text-sm font-semibold text-default-800">{WS_HOST}:{config.tcp_port || '8081'}</p>
               <span className={`mt-1 inline-flex items-center gap-1 text-xs ${eaConnected ? 'text-green-600 dark:text-green-400' : 'text-default-400'}`}>
                 <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-green-500' : 'bg-default-300'}`} />
                 {eaConnected ? 'EA Connected' : 'Waiting for EA'}
@@ -288,7 +295,7 @@ const ServerSettings = () => {
             </div>
             <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">Server EA Version</p>
-              <p className="text-sm font-semibold text-default-800">v2.01</p>
+              <p className="text-sm font-semibold text-default-800">v{LATEST_EA_VERSION}</p>
               <span className="mt-1 inline-flex items-center gap-1 text-xs text-default-400">
                 Latest version on server
               </span>

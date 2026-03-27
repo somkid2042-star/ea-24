@@ -1,3 +1,4 @@
+mod db;
 mod tray;
 
 use std::net::SocketAddr;
@@ -16,7 +17,7 @@ use tokio_tungstenite::tungstenite::Message;
 use crate::tray::TrayState;
 
 /// The latest EA version shipped with this server
-const LATEST_EA_VERSION: &str = "2.01";
+const LATEST_EA_VERSION: &str = "2.04";
 
 // ──────────────────────────────────────────────
 //  Structs
@@ -26,6 +27,30 @@ const LATEST_EA_VERSION: &str = "2.01";
 struct ClientMessage {
     action: Option<String>,
     instance_id: Option<String>,
+    config_key: Option<String>,
+    config_value: Option<String>,
+    // Trade setup fields
+    setup_id: Option<i64>,
+    symbol: Option<String>,
+    strategy: Option<String>,
+    timeframe: Option<String>,
+    lot_size: Option<f64>,
+    risk_percent: Option<f64>,
+    mt5_instance: Option<String>,
+    tp_enabled: Option<bool>,
+    tp_mode: Option<String>,
+    tp_value: Option<f64>,
+    sl_enabled: Option<bool>,
+    sl_mode: Option<String>,
+    sl_value: Option<f64>,
+    trailing_stop_enabled: Option<bool>,
+    trailing_stop_points: Option<f64>,
+    // Trading command fields
+    direction: Option<String>,
+    ticket: Option<i64>,
+    sl: Option<f64>,
+    tp: Option<f64>,
+    comment: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -82,6 +107,17 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     let mt5_listener = create_reuse_listener(mt5_addr);
     let http_listener = create_reuse_listener(http_addr);
 
+    // Initialize SQLite database
+    let database = match db::Database::init("data/ea24.db") {
+        Ok(db) => Arc::new(db),
+        Err(e) => {
+            error!("❌ Failed to initialize database: {}", e);
+            error!("   Server will continue without database logging.");
+            // Create in-memory fallback
+            Arc::new(db::Database::init(":memory:").expect("Failed even in-memory DB"))
+        }
+    };
+
     info!("✅ ea-server WebSocket listening on ws://{}", ws_addr);
     info!("✅ ea-server MT5 TCP listening on {}", mt5_addr);
     info!("🌐 ea-server Web Dashboard on http://{}", http_addr);
@@ -109,6 +145,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     let active_eas_mt5 = active_eas.clone();
     let ea_state_mt5 = ea_state.clone();
     let tray_tx_mt5 = tray_tx.clone();
+    let db_mt5 = database.clone();
     tokio::spawn(async move {
         while let Ok((stream, peer_addr)) = mt5_listener.accept().await {
             let rx = tx_mt5.subscribe();
@@ -120,6 +157,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
                 active_eas_mt5.clone(),
                 ea_state_mt5.clone(),
                 tray_tx_mt5.clone(),
+                db_mt5.clone(),
             ));
         }
     });
@@ -134,6 +172,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
             rx,
             active_eas.clone(),
             ea_state.clone(),
+            database.clone(),
         ));
     }
 }
@@ -150,6 +189,7 @@ async fn handle_mt5_connection(
     active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
     tray_tx: Arc<watch::Sender<TrayState>>,
+    db: Arc<db::Database>,
 ) {
     info!("🔗 [MT5] New connection from: {}", peer_addr);
     active_eas.fetch_add(1, Ordering::SeqCst);
@@ -200,6 +240,18 @@ async fn handle_mt5_connection(
                                     let _ = tx.send(info_msg);
                                 }
                             } else {
+                                // Try to log tick data to database
+                                if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
+                                    if val.get("type").and_then(|t| t.as_str()) == Some("tick") {
+                                        let sym = val["symbol"].as_str().unwrap_or("");
+                                        let bid = val["bid"].as_f64().unwrap_or(0.0);
+                                        let ask = val["ask"].as_f64().unwrap_or(0.0);
+                                        let spread = val["spread"].as_f64().unwrap_or(0.0);
+                                        if !sym.is_empty() {
+                                            db.log_tick(sym, bid, ask, spread);
+                                        }
+                                    }
+                                }
                                 let _ = tx.send(text);
                             }
                         }
@@ -258,6 +310,7 @@ async fn handle_ws_connection(
     mut rx: broadcast::Receiver<String>,
     _active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
+    db: Arc<db::Database>,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
 
@@ -342,6 +395,46 @@ async fn handle_ws_connection(
                                         let cmd = serde_json::json!({ "action": action }).to_string();
                                         let _ = tx.send(cmd);
                                     }
+                                    "open_trade" => {
+                                        let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
+                                        let dir = client_msg.direction.as_deref().unwrap_or("BUY");
+                                        let lot = client_msg.lot_size.unwrap_or(0.01);
+                                        let sl_val = client_msg.sl.unwrap_or(0.0);
+                                        let tp_val = client_msg.tp.unwrap_or(0.0);
+                                        let cmt = client_msg.comment.as_deref().unwrap_or("EA-Web");
+                                        info!("📈 [UI] OPEN TRADE: {} {} {} SL={} TP={}", sym, dir, lot, sl_val, tp_val);
+                                        let cmd = serde_json::json!({
+                                            "action": "open_trade",
+                                            "symbol": sym,
+                                            "direction": dir,
+                                            "lot_size": lot,
+                                            "sl": sl_val,
+                                            "tp": tp_val,
+                                            "comment": cmt,
+                                        }).to_string();
+                                        let _ = tx.send(cmd);
+                                    }
+                                    "close_trade" => {
+                                        if let Some(ticket) = client_msg.ticket {
+                                            info!("📉 [UI] CLOSE TRADE: ticket={}", ticket);
+                                            let cmd = serde_json::json!({
+                                                "action": "close_trade",
+                                                "ticket": ticket,
+                                            }).to_string();
+                                            let _ = tx.send(cmd);
+                                        }
+                                    }
+                                    "modify_sl" => {
+                                        if let (Some(ticket), Some(new_sl)) = (client_msg.ticket, client_msg.sl) {
+                                            info!("🔧 [UI] MODIFY SL: ticket={} sl={}", ticket, new_sl);
+                                            let cmd = serde_json::json!({
+                                                "action": "modify_sl",
+                                                "ticket": ticket,
+                                                "new_sl": new_sl,
+                                            }).to_string();
+                                            let _ = tx.send(cmd);
+                                        }
+                                    }
                                     "close_mt5" => {
                                         let instance_id = client_msg.instance_id.clone().unwrap_or_default();
                                         info!("🛑 [UI] Closing MT5 for: {}", instance_id);
@@ -386,6 +479,225 @@ async fn handle_ws_connection(
                                     }
                                     _ => {}
                                 }
+
+                                // === Database Actions ===
+                                match action.as_str() {
+                                    "get_db_stats" => {
+                                        info!("📊 [UI] DB stats requested");
+                                        let stats = db.get_stats();
+                                        let resp = serde_json::json!({
+                                            "type": "db_stats",
+                                            "stats": stats,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "get_server_config" => {
+                                        info!("⚙️ [UI] Config requested");
+                                        let config = db.get_all_config();
+                                        let resp = serde_json::json!({
+                                            "type": "server_config",
+                                            "config": config,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "set_server_config" => {
+                                        if let (Some(key), Some(value)) = (&client_msg.config_key, &client_msg.config_value) {
+                                            info!("💾 [UI] Config set: {} = {}", key, value);
+                                            db.set_config(key, value);
+                                            let resp = serde_json::json!({
+                                                "type": "config_saved",
+                                                "status": "success",
+                                                "key": key,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "vacuum_db" => {
+                                        info!("🧹 [UI] VACUUM requested");
+                                        let success = db.vacuum();
+                                        let stats = db.get_stats();
+                                        let resp = serde_json::json!({
+                                            "type": "vacuum_result",
+                                            "status": if success { "success" } else { "error" },
+                                            "stats": stats,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    // === Trade Setup Actions ===
+                                    "get_trade_setups" => {
+                                        let setups = db.get_trade_setups();
+                                        let resp = serde_json::json!({
+                                            "type": "trade_setups",
+                                            "setups": setups,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "add_trade_setup" => {
+                                        let sym = client_msg.symbol.as_deref().unwrap_or("EURUSD");
+                                        let strat = client_msg.strategy.as_deref().unwrap_or("Scalper Pro");
+                                        let tf = client_msg.timeframe.as_deref().unwrap_or("M5");
+                                        let lot = client_msg.lot_size.unwrap_or(0.01);
+                                        let risk = client_msg.risk_percent.unwrap_or(2.0);
+                                        let mt5_inst = client_msg.mt5_instance.as_deref().unwrap_or("");
+                                        let tp_en = client_msg.tp_enabled.unwrap_or(false);
+                                        let tp_m = client_msg.tp_mode.as_deref().unwrap_or("pips");
+                                        let tp_v = client_msg.tp_value.unwrap_or(50.0);
+                                        let sl_en = client_msg.sl_enabled.unwrap_or(false);
+                                        let sl_m = client_msg.sl_mode.as_deref().unwrap_or("pips");
+                                        let sl_v = client_msg.sl_value.unwrap_or(30.0);
+                                        let ts_en = client_msg.trailing_stop_enabled.unwrap_or(false);
+                                        let ts_pts = client_msg.trailing_stop_points.unwrap_or(50.0);
+                                        if let Some(id) = db.add_trade_setup(sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts) {
+                                            let setups = db.get_trade_setups();
+                                            let resp = serde_json::json!({
+                                                "type": "trade_setups",
+                                                "setups": setups,
+                                                "added_id": id,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "toggle_trade_setup" => {
+                                        if let Some(id) = client_msg.setup_id {
+                                            // Get current status then toggle
+                                            let current = db.get_trade_setups();
+                                            if let Some(arr) = current.as_array() {
+                                                for s in arr {
+                                                    if s["id"].as_i64() == Some(id) {
+                                                        let new_status = if s["status"].as_str() == Some("active") { "paused" } else { "active" };
+                                                        db.update_trade_setup_status(id, new_status);
+                                                    }
+                                                }
+                                            }
+                                            let setups = db.get_trade_setups();
+                                            let resp = serde_json::json!({
+                                                "type": "trade_setups",
+                                                "setups": setups,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "delete_trade_setup" => {
+                                        if let Some(id) = client_msg.setup_id {
+                                            db.delete_trade_setup(id);
+                                            let setups = db.get_trade_setups();
+                                            let resp = serde_json::json!({
+                                                "type": "trade_setups",
+                                                "setups": setups,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "update_trade_setup" => {
+                                        if let Some(id) = client_msg.setup_id {
+                                            let sym = client_msg.symbol.as_deref().unwrap_or("EURUSD");
+                                            let strat = client_msg.strategy.as_deref().unwrap_or("Scalper Pro");
+                                            let tf = client_msg.timeframe.as_deref().unwrap_or("M5");
+                                            let lot = client_msg.lot_size.unwrap_or(0.01);
+                                            let risk = client_msg.risk_percent.unwrap_or(2.0);
+                                            let mt5_inst = client_msg.mt5_instance.as_deref().unwrap_or("");
+                                            let tp_en = client_msg.tp_enabled.unwrap_or(false);
+                                            let tp_m = client_msg.tp_mode.as_deref().unwrap_or("pips");
+                                            let tp_v = client_msg.tp_value.unwrap_or(50.0);
+                                            let sl_en = client_msg.sl_enabled.unwrap_or(false);
+                                            let sl_m = client_msg.sl_mode.as_deref().unwrap_or("pips");
+                                            let sl_v = client_msg.sl_value.unwrap_or(30.0);
+                                            let ts_en = client_msg.trailing_stop_enabled.unwrap_or(false);
+                                            let ts_pts = client_msg.trailing_stop_points.unwrap_or(50.0);
+                                            db.update_trade_setup(id, sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts);
+                                            let setups = db.get_trade_setups();
+                                            let resp = serde_json::json!({
+                                                "type": "trade_setups",
+                                                "setups": setups,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "get_running_mt5" => {
+                                        let instances = scan_mt5_instances();
+                                        let running: Vec<_> = instances.iter().filter(|i| i.mt5_running).collect();
+                                        let arr: Vec<serde_json::Value> = running.iter().map(|i| {
+                                            serde_json::json!({
+                                                "id": i.id,
+                                                "broker_name": i.broker_name,
+                                                "ea_deployed": i.ea_deployed,
+                                            })
+                                        }).collect();
+                                        let resp = serde_json::json!({
+                                            "type": "running_mt5",
+                                            "instances": arr,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "deploy_ea_to" => {
+                                        if let Some(instance_id) = client_msg.instance_id.as_deref() {
+                                            let instances = scan_mt5_instances();
+                                            let result = if let Some(inst) = instances.iter().find(|i| i.id == instance_id) {
+                                                let appdata = std::env::var("APPDATA").unwrap_or_default();
+                                                let experts_dir = PathBuf::from(&appdata)
+                                                    .join("MetaQuotes").join("Terminal").join(instance_id)
+                                                    .join("MQL5").join("Experts");
+                                                let dest_mq5 = experts_dir.join("EATradingClient.mq5");
+
+                                                // Copy .mq5 source
+                                                let src_mq5 = PathBuf::from("mt5").join("EATradingClient.mq5");
+                                                if src_mq5.exists() {
+                                                    std::fs::create_dir_all(&experts_dir).ok();
+                                                    match std::fs::copy(&src_mq5, &dest_mq5) {
+                                                        Ok(_) => {
+                                                            info!("✅ EA .mq5 copied to {:?}", dest_mq5);
+
+                                                            // Auto-compile with MetaEditor
+                                                            let metaeditor = PathBuf::from(&inst.install_path).join("metaeditor64.exe");
+                                                            if metaeditor.exists() {
+                                                                info!("🔨 Compiling EA with MetaEditor...");
+                                                                match std::process::Command::new(&metaeditor)
+                                                                    .arg(format!("/compile:{}", dest_mq5.display()))
+                                                                    .arg("/log")
+                                                                    .output()
+                                                                {
+                                                                    Ok(output) => {
+                                                                        let ex5_path = experts_dir.join("EATradingClient.ex5");
+                                                                        if ex5_path.exists() {
+                                                                            info!("✅ EA compiled successfully: {:?}", ex5_path);
+                                                                            "success"
+                                                                        } else {
+                                                                            error!("❌ Compile failed — .ex5 not found. Exit: {}", output.status);
+                                                                            "compile_failed"
+                                                                        }
+                                                                    }
+                                                                    Err(e) => {
+                                                                        error!("❌ MetaEditor launch failed: {}", e);
+                                                                        "compile_error"
+                                                                    }
+                                                                }
+                                                            } else {
+                                                                warn!("⚠️ MetaEditor not found, .mq5 copied but not compiled");
+                                                                "copied_only"
+                                                            }
+                                                        }
+                                                        Err(e) => {
+                                                            error!("❌ Copy failed: {}", e);
+                                                            "copy_failed"
+                                                        }
+                                                    }
+                                                } else {
+                                                    error!("❌ Source EA not found: {:?}", src_mq5);
+                                                    "source_not_found"
+                                                }
+                                            } else {
+                                                "instance_not_found"
+                                            };
+                                            let resp = serde_json::json!({
+                                                "type": "deploy_status",
+                                                "instance_id": instance_id,
+                                                "status": result,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    _ => {}
+                                }
                             }
                         }
                     }
@@ -401,8 +713,8 @@ async fn handle_ws_connection(
             tick_result = rx.recv() => {
                 match tick_result {
                     Ok(json) => {
-                        // Forward ticks AND ea_info to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") {
+                        // Forward ticks, ea_info, account_data, and market_watch to UI
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;

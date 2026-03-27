@@ -1,0 +1,2 @@
+   Compiling ea-desktop v0.1.0 (C:\Users\somkid\Desktop\ea-24\ea-client\src-tauri)
+    Finished `dev` profile [unoptimized + debuginfo] target(s) in 23.88s

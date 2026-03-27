@@ -11,6 +11,7 @@ const StrategyBuilder = lazy(() => import('@/app/(admin)/(config)/strategy-build
 const StrategyBacktest = lazy(() => import('@/app/(admin)/(config)/strategy-backtest'));
 const ActiveTrades = lazy(() => import('@/app/(admin)/(config)/trade-active'));
 const TradeSetup = lazy(() => import('@/app/(admin)/(config)/trade-setup'));
+const TradeHistory = lazy(() => import('@/app/(admin)/(config)/trade-history'));
 
 export type RoutesProps = { path: RouteProps['path']; element: RouteProps['element']; name: string };
 
@@ -25,6 +26,7 @@ export const layoutsRoutes: RoutesProps[] = [
   { path: '/strategy/backtest', element: <StrategyBacktest />, name: 'Backtest' },
   { path: '/trade/active', element: <ActiveTrades />, name: 'Active Trades' },
   { path: '/trade/setup', element: <TradeSetup />, name: 'Trade Setup' },
+  { path: '/trade/history', element: <TradeHistory />, name: 'Trade History' },
 ];
 
 export const singlePageRoutes: RoutesProps[] = [];

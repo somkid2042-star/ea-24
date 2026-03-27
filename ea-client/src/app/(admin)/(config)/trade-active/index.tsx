@@ -34,12 +34,12 @@ const ActiveTrades = () => {
           <h4 className="text-lg font-semibold text-default-900">Active Trades</h4>
           <p className="text-sm text-default-500">{mockTrades.length} open positions</p>
         </div>
-        <div className={`rounded-lg px-4 py-2 text-sm font-bold ${totalPnl >= 0 ? 'bg-green-50 text-green-700' : 'bg-red-50 text-red-700'}`}>
+        <div className={`rounded-lg px-4 py-2 text-sm font-bold ${totalPnl >= 0 ? 'bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
           Floating P&L: {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
         </div>
       </div>
 
-      <div className="rounded-xl border border-default-200 bg-white overflow-hidden">
+      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-default-200 bg-default-50/50 text-xs uppercase text-default-400">
