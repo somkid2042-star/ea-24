@@ -1,6 +1,7 @@
-#![windows_subsystem = "windows"]
+#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod db;
+#[cfg(target_os = "windows")]
 mod tray;
 
 use std::net::SocketAddr;
@@ -17,6 +18,20 @@ use tokio::sync::{broadcast, watch, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 
 use crate::tray::TrayState;
+
+#[cfg(target_os = "windows")]
+use std::os::windows::process::CommandExt;
+
+/// Creates a new `Command` that runs without a console window on Windows.
+fn new_hidden_cmd(program: &str) -> std::process::Command {
+    let mut cmd = std::process::Command::new(program);
+    #[cfg(target_os = "windows")]
+    {
+        const CREATE_NO_WINDOW: u32 = 0x08000000;
+        cmd.creation_flags(CREATE_NO_WINDOW);
+    }
+    cmd
+}
 
 /// The latest EA version shipped with this server
 const LATEST_EA_VERSION: &str = "2.04";
@@ -458,7 +473,7 @@ async fn handle_ws_connection(
                                     "close_mt5" => {
                                         let instance_id = client_msg.instance_id.clone().unwrap_or_default();
                                         info!("🛑 [UI] Closing MT5 for: {}", instance_id);
-                                        let _ = std::process::Command::new("taskkill")
+                                        let _ = new_hidden_cmd("taskkill")
                                             .args(&["/IM", "terminal64.exe"])
                                             .output();
                                         let resp = serde_json::json!({
@@ -491,7 +506,7 @@ async fn handle_ws_connection(
                                         // Spawn a new copy of ourselves before exiting
                                         let exe = std::env::current_exe().unwrap_or_default();
                                         info!("🔄 Spawning new server: {:?}", exe);
-                                        let _ = std::process::Command::new(&exe).spawn();
+                                        let _ = new_hidden_cmd(&exe).spawn();
                                         // Small delay for new process to start
                                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                         info!("👋 Old server exiting...");
@@ -671,7 +686,7 @@ async fn handle_ws_connection(
                                                             let metaeditor = PathBuf::from(&inst.install_path).join("metaeditor64.exe");
                                                             if metaeditor.exists() {
                                                                 info!("🔨 Compiling EA with MetaEditor...");
-                                                                match std::process::Command::new(&metaeditor)
+                                                                match new_hidden_cmd(&metaeditor)
                                                                     .arg(format!("/compile:{}", dest_mq5.display()))
                                                                     .arg("/log")
                                                                     .output()
@@ -973,7 +988,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
     if needs_compile && ea_mq5.exists() && metaeditor.exists() {
         info!("🔧 Compiling EA with MetaEditor (non-blocking)...");
         // Use spawn() instead of output() to avoid blocking
-        match std::process::Command::new(&metaeditor)
+        match new_hidden_cmd(&metaeditor)
             .args(&[
                 "/compile", &ea_mq5.to_string_lossy(),
                 "/log",
@@ -1024,7 +1039,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
     // If MT5 is running, close gracefully first so it saves its state, then we can append to terminal.ini
     if is_mt5_running(&install_dir) {
         info!("⏳ Closing MT5 gracefully (saving session)...");
-        let _ = std::process::Command::new("powershell")
+        let _ = new_hidden_cmd("powershell")
             .args(&["-Command", &format!(
                 "Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{}*' }} | ForEach-Object {{ $_.CloseMainWindow() | Out-Null }}",
                 install_dir.replace('\\', "\\\\")
@@ -1040,7 +1055,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
         }
         if is_mt5_running(&install_dir) {
             info!("⚠️ MT5 still running, force closing...");
-            let _ = std::process::Command::new("taskkill")
+            let _ = new_hidden_cmd("taskkill")
                 .args(&["/F", "/IM", "terminal64.exe"])
                 .output();
             std::thread::sleep(std::time::Duration::from_secs(2));
@@ -1116,7 +1131,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
     // Launch MT5 with ABSOLUTE path to /config
     let config_arg = format!("/config:{}", ea_startup_ini_path.to_string_lossy());
     info!("🚀 Spawning: {:?} {}", exe_path, config_arg);
-    match std::process::Command::new(&exe_path).arg(&config_arg).spawn() {
+    match new_hidden_cmd(&exe_path).arg(&config_arg).spawn() {
         Ok(_) => info!("✅ Successfully launched MT5 with EA!"),
         Err(e) => error!("❌ Failed to spawn MT5: {}", e),
     }
@@ -1125,7 +1140,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
 /// Check if a specific MT5 instance is running by matching its install path
 fn is_mt5_running(install_dir: &str) -> bool {
     // Use wmic to get full executable paths of all terminal64.exe processes
-    match std::process::Command::new("wmic")
+    match new_hidden_cmd("wmic")
         .args(&["process", "where", "name='terminal64.exe'", "get", "ExecutablePath", "/FORMAT:CSV"])
         .output()
     {
