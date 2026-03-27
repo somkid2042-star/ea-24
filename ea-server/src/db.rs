@@ -25,9 +25,25 @@ impl Database {
         let conn = Connection::open(&path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
+        // Encrypt the database using AES-256
+        conn.execute("PRAGMA key = 'ea24-secure-db-key-x8s9!';", [])
+            .map_err(|e| format!("Failed to encrypt database: {}", e))?;
+
         // Enable WAL mode for better concurrent performance
         conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
             .map_err(|e| format!("Failed to set PRAGMA: {}", e))?;
+
+        // Hide the DB file on Windows
+        #[cfg(target_os = "windows")]
+        {
+            if db_path != ":memory:" {
+                let mut cmd = std::process::Command::new("attrib");
+                cmd.args(&["+h", db_path]);
+                use std::os::windows::process::CommandExt;
+                cmd.creation_flags(0x08000000);
+                let _ = cmd.output();
+            }
+        }
 
         // Create tables
         conn.execute_batch(

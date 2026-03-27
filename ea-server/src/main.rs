@@ -157,9 +157,12 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     info!("🚀 ea-server v{} is starting up...", env!("CARGO_PKG_VERSION"));
     info!("📦 EA script version mapping: v{}", LATEST_EA_VERSION);
 
-    // Call updater asynchronously
+    // Call updater asynchronously in a background loop every 2 hours
     tokio::spawn(async {
-        crate::updater::check_and_update(None).await;
+        loop {
+            crate::updater::check_and_update(None).await;
+            tokio::time::sleep(tokio::time::Duration::from_secs(7200)).await;
+        }
     });
 
     let active_eas = Arc::new(AtomicUsize::new(0));
