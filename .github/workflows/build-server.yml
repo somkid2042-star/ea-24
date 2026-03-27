@@ -30,6 +30,12 @@ jobs:
           key: ${{ runner.os }}-cargo-${{ hashFiles('ea-server/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
+      - name: Install OpenSSL (Windows requirement for SQLCipher)
+        run: |
+          vcpkg install openssl:x64-windows-static-md
+          echo "VCPKG_ROOT=$env:VCPKG_INSTALLATION_ROOT" >> $env:GITHUB_ENV
+          echo "VCPKGRS_DYNAMIC=1" >> $env:GITHUB_ENV
+
       - name: Build release
         run: cargo build --release
 
