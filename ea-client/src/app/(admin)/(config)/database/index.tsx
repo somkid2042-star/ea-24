@@ -21,10 +21,11 @@ type DbStats = {
   db_path: string;
 };
 
+import { getWsUrl } from '@/utils/config';
+
 type ServerConfig = Record<string, string>;
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
 
 const formatBytes = (bytes: number) => {
   if (bytes === 0) return '0 B';
@@ -220,7 +221,7 @@ const DatabaseSettings = () => {
                 type="text"
                 value={config.db_path || ''}
                 onChange={e => setConfig(prev => ({ ...prev, db_path: e.target.value }))}
-                className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white"
+                className="form-input w-full rounded-md border border-default-200 px-3 py-2.5 text-sm text-default-900 focus:border-primary focus:ring-primary"
               />
             </div>
             <div>
@@ -229,7 +230,7 @@ const DatabaseSettings = () => {
                 type="number"
                 value={config.tick_retention_days || ''}
                 onChange={e => setConfig(prev => ({ ...prev, tick_retention_days: e.target.value }))}
-                className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white"
+                className="form-input w-full rounded-md border border-default-200 px-3 py-2.5 text-sm text-default-900 focus:border-primary focus:ring-primary"
               />
             </div>
             <div>
@@ -238,7 +239,7 @@ const DatabaseSettings = () => {
                 type="number"
                 value={config.backup_interval_hours || ''}
                 onChange={e => setConfig(prev => ({ ...prev, backup_interval_hours: e.target.value }))}
-                className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white"
+                className="form-input w-full rounded-md border border-default-200 px-3 py-2.5 text-sm text-default-900 focus:border-primary focus:ring-primary"
               />
             </div>
           </div>

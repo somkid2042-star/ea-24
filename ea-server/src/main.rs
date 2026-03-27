@@ -1,7 +1,7 @@
 #![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
 
 mod db;
-#[cfg(target_os = "windows")]
+mod updater;
 mod tray;
 
 use std::net::SocketAddr;
@@ -23,7 +23,7 @@ use crate::tray::TrayState;
 use std::os::windows::process::CommandExt;
 
 /// Creates a new `Command` that runs without a console window on Windows.
-fn new_hidden_cmd(program: &str) -> std::process::Command {
+fn new_hidden_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
     let mut cmd = std::process::Command::new(program);
     #[cfg(target_os = "windows")]
     {
@@ -154,7 +154,13 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     info!("✅ ea-server WebSocket listening on ws://{}", ws_addr);
     info!("✅ ea-server MT5 TCP listening on {}", mt5_addr);
     info!("🌐 ea-server Web Dashboard on http://{}", http_addr);
-    info!("📦 Latest EA version: {}", LATEST_EA_VERSION);
+    info!("🚀 ea-server v{} is starting up...", env!("CARGO_PKG_VERSION"));
+    info!("📦 EA script version mapping: v{}", LATEST_EA_VERSION);
+
+    // Call updater asynchronously
+    tokio::spawn(async {
+        crate::updater::check_and_update(None).await;
+    });
 
     let active_eas = Arc::new(AtomicUsize::new(0));
     let ea_state = Arc::new(RwLock::new(EaState {
@@ -365,6 +371,7 @@ async fn handle_ws_connection(
         "type": "welcome",
         "message": "Connected to ea-server",
         "status": "online",
+        "server_version": env!("CARGO_PKG_VERSION"),
         "latest_ea_version": LATEST_EA_VERSION,
         "ea_connected": state.connected,
         "ea_version": state.version,
@@ -494,6 +501,19 @@ async fn handle_ws_connection(
                                         tokio::time::sleep(std::time::Duration::from_millis(300)).await;
                                         info!("👋 Server shutting down...");
                                         std::process::exit(0);
+                                    }
+                                    "check_update" => {
+                                        info!("🔄 [UI] Manual update check triggered.");
+                                        let check_tx = tx.clone();
+                                        tokio::spawn(async move {
+                                            crate::updater::check_and_update(Some(check_tx)).await;
+                                        });
+                                        let resp = serde_json::json!({
+                                            "type": "update_status",
+                                            "status": "checking",
+                                            "message": "Checking GitHub for updates..."
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     "restart_server" => {
                                         warn!("🔄 [UI] RESTART SERVER command received!");

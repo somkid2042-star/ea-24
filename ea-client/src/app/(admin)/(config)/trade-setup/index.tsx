@@ -39,6 +39,8 @@ type SetupForm = {
   trailingStopEnabled: boolean; trailingStopPoints: number;
 };
 
+import { getWsUrl } from '@/utils/config';
+
 const defaultForm: SetupForm = {
   symbol: '', strategy: 'Scalper Pro', timeframe: 'M5', lotSize: 0.01, riskPercent: 2, mt5Instance: '',
   tpEnabled: false, tpMode: 'pips', tpValue: 50,
@@ -46,13 +48,12 @@ const defaultForm: SetupForm = {
   trailingStopEnabled: false, trailingStopPoints: 50,
 };
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
 
 const modeLabel = (m: string) => profitModes.find(p => p.value === m)?.label || m;
 const modeUnit = (m: string) => m === 'rr' ? 'R' : m === 'pips' ? 'pips' : '$';
-const selectCls = "w-full rounded-md border border-default-200 bg-white dark:bg-gray-800 px-2 py-1.5 text-xs text-black dark:text-white focus:border-primary focus:outline-none";
-const inputCls = "w-full rounded-md border border-default-200 bg-transparent px-2 py-1.5 text-xs focus:border-primary focus:outline-none dark:text-white";
+const selectCls = "form-select w-full rounded-md border border-default-200 px-2 py-1.5 text-xs text-default-900 focus:border-primary focus:ring-primary";
+const inputCls = "form-input w-full rounded-md border border-default-200 px-2 py-1.5 text-xs text-default-900 focus:border-primary focus:ring-primary";
 
 // Toggle Switch Component
 const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (

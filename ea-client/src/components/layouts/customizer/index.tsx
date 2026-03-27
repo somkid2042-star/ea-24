@@ -14,14 +14,15 @@ type Deal = {
   ticket: number; symbol: string; type: string; volume: number; price: number;
   profit: number; swap: number; commission: number; time: string;
 };
+import { getWsUrl } from '@/utils/config';
+
 type Position = {
   ticket: number; symbol: string; type: string; volume: number;
   open_price: number; current_price: number; pnl: number; swap: number;
   sl: number; tp: number; open_time: string;
 };
 
-const WS_HOST = (import.meta as any).env?.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
 
 const Customizer = () => {
   const [isOpen, setIsOpen] = useState(false);

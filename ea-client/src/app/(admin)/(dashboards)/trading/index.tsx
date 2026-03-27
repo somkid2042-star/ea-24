@@ -45,11 +45,12 @@ type AccountData = {
   trading_enabled: boolean;
 };
 
+import { getWsUrl } from '@/utils/config';
+
 type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; };
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
 
 const TradingDashboard = () => {
   const [wsConnected, setWsConnected] = useState(false);

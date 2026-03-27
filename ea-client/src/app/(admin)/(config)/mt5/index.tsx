@@ -34,13 +34,15 @@ type EaLiveStatus = {
   updateAvailable: boolean;
 };
 
+import { getWsUrl } from '@/utils/config';
+
 type ActionStatus = {
   type: 'idle' | 'loading' | 'success' | 'error';
   message: string;
 };
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
+const WS_HOST = WS_URL.replace(/^ws:\/\//, '').split(':')[0] || window.location.hostname;
 
 const MT5Settings = () => {
   const [instances, setInstances] = useState<Mt5Instance[]>([]);

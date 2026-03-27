@@ -12,10 +12,13 @@ import {
   LuLink,
 } from 'react-icons/lu';
 
+import { getWsUrl, setWsUrl } from '@/utils/config';
+
 type ServerStatus = 'running' | 'stopped' | 'starting' | 'stopping' | 'restarting';
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
+// Extract host from WS_URL to use in MT5 connection info (fallback to window.location.hostname if parsing fails)
+const WS_HOST = WS_URL.replace(/^ws:\/\//, '').split(':')[0] || window.location.hostname;
 const LATEST_EA_VERSION = '2.04';
 
 const ServerSettings = () => {
@@ -26,6 +29,9 @@ const ServerSettings = () => {
   const [eaSymbol, setEaSymbol] = useState('-');
   const [uptime, setUptime] = useState('—');
   const [config, setConfig] = useState<Record<string, string>>({});
+  const [inputUrl, setInputUrl] = useState(WS_URL);
+  const [serverVersion, setServerVersion] = useState<string>('Unknown');
+  const [updateStatus, setUpdateStatus] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   const uptimeStart = useRef<number | null>(null);
 
@@ -56,6 +62,10 @@ const ServerSettings = () => {
           setEaConnected(data.ea_connected || false);
           setEaVersion(data.ea_version || '-');
           setEaSymbol(data.ea_symbol || '-');
+          if (data.server_version) setServerVersion(data.server_version);
+        }
+        if (data.type === 'update_status') {
+          setUpdateStatus(data.message || data.status);
         }
         if (data.type === 'ea_info') {
           setEaConnected(true);
@@ -130,6 +140,25 @@ const ServerSettings = () => {
     // Send restart command — Rust server will spawn new copy then exit
     if (wsRef.current?.readyState === 1) {
       wsRef.current.send(JSON.stringify({ action: 'restart_server' }));
+    }
+  };
+
+  const handleCheckUpdate = () => {
+    if (wsRef.current?.readyState === 1) {
+      setUpdateStatus('Checking GitHub...');
+      wsRef.current.send(JSON.stringify({ action: 'check_update' }));
+    }
+  };
+
+  const handleSaveUrl = () => {
+    let finalUrl = inputUrl.trim();
+    if (finalUrl) {
+      if (!finalUrl.startsWith('ws://') && !finalUrl.startsWith('wss://')) {
+        finalUrl = `ws://${finalUrl}`;
+      }
+      setWsUrl(finalUrl);
+      // Reload page to apply changes app-wide immediately
+      window.location.reload();
     }
   };
 
@@ -246,6 +275,27 @@ const ServerSettings = () => {
           </div>
         </div>
 
+        {/* Server Version */}
+        <div className="card">
+          <div className="p-4">
+            <div className="mb-2 flex items-center justify-between">
+              <div className="flex items-center gap-2">
+                <LuActivity className="size-4 text-primary" />
+                <span className="text-xs font-medium uppercase text-default-500">Server Version</span>
+              </div>
+              <button 
+                onClick={handleCheckUpdate} 
+                disabled={!wsConnected || updateStatus === 'Checking GitHub...'}
+                className="text-[10px] font-medium text-primary hover:underline disabled:opacity-50"
+              >
+                Check Update
+              </button>
+            </div>
+            <p className="text-lg font-bold text-default-900">v{serverVersion}</p>
+            {updateStatus && <p className="mt-1 text-xs text-default-400">{updateStatus}</p>}
+          </div>
+        </div>
+
         {/* EA Version */}
         <div className="card">
           <div className="p-4">
@@ -278,9 +328,24 @@ const ServerSettings = () => {
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
             <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
-              <p className="mb-1 text-xs font-medium uppercase text-default-400">WebSocket Server</p>
-              <p className="text-sm font-semibold text-default-800">{WS_URL}</p>
-              <span className={`mt-1 inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
+              <p className="mb-2 text-xs font-medium uppercase text-default-400">WebSocket Server URL</p>
+              <div className="flex items-center gap-2">
+                <input
+                  type="text"
+                  value={inputUrl}
+                  onChange={(e) => setInputUrl(e.target.value)}
+                  className="form-input w-full rounded-md border border-default-200 px-3 py-1.5 text-sm text-default-900 focus:border-primary focus:ring-primary dark:border-default-700"
+                  placeholder="ws://127.0.0.1:8080"
+                />
+                <button
+                  onClick={handleSaveUrl}
+                  disabled={inputUrl === WS_URL}
+                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+                >
+                  Save
+                </button>
+              </div>
+              <span className={`mt-2 inline-flex items-center gap-1 text-xs ${wsConnected ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>
                 <span className={`inline-block size-1.5 rounded-full ${wsConnected ? 'bg-green-500' : 'bg-red-500'}`} />
                 {wsConnected ? 'Connected' : 'Disconnected'}
               </span>

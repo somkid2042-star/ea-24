@@ -9,6 +9,8 @@ import {
   LuCalendar,
 } from 'react-icons/lu';
 
+import { getWsUrl } from '@/utils/config';
+
 type Deal = {
   ticket: number;
   order: number;
@@ -25,8 +27,7 @@ type Deal = {
   comment: string;
 };
 
-const WS_HOST = import.meta.env.VITE_WS_HOST || window.location.hostname;
-const WS_URL = `ws://${WS_HOST}:8080`;
+const WS_URL = getWsUrl();
 
 const TradeHistory = () => {
   const [wsConnected, setWsConnected] = useState(false);
