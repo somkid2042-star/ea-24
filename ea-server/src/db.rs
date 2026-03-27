@@ -14,25 +14,32 @@ impl Database {
     /// Initialize database — creates file + tables if they don't exist
     pub fn init(db_path: &str) -> Result<Self, String> {
         let path = PathBuf::from(db_path);
+        let is_memory = db_path == ":memory:";
 
-        // Create parent directory if needed
-        if let Some(parent) = path.parent() {
-            if !parent.exists() {
-                std::fs::create_dir_all(parent)
-                    .map_err(|e| format!("Failed to create DB directory: {}", e))?;
+        // Create parent directory if needed (skip for in-memory)
+        if !is_memory {
+            if let Some(parent) = path.parent() {
+                if !parent.as_os_str().is_empty() && !parent.exists() {
+                    std::fs::create_dir_all(parent)
+                        .map_err(|e| format!("Failed to create DB directory: {}", e))?;
+                }
             }
         }
 
         let conn = Connection::open(&path)
             .map_err(|e| format!("Failed to open database: {}", e))?;
 
-        // Encrypt the database using AES-256
-        conn.execute("PRAGMA key = 'ea24-secure-db-key-x8s9!';", [])
-            .map_err(|e| format!("Failed to encrypt database: {}", e))?;
+        // Encrypt the database using AES-256 (skip for in-memory)
+        if !is_memory {
+            conn.execute("PRAGMA key = 'ea24-secure-db-key-x8s9!';", [])
+                .map_err(|e| format!("Failed to encrypt database: {}", e))?;
+        }
 
-        // Enable WAL mode for better concurrent performance
-        conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-            .map_err(|e| format!("Failed to set PRAGMA: {}", e))?;
+        // Enable WAL mode for better concurrent performance (skip for in-memory)
+        if !is_memory {
+            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
+                .map_err(|e| format!("Failed to set PRAGMA: {}", e))?;
+        }
 
         // Hide the DB file on Windows
         #[cfg(target_os = "windows")]

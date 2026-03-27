@@ -1,7 +1,7 @@
 [Setup]
 AppId={{EA24-SERVER-UUID-1234}}
 AppName=EA-24 Server
-AppVersion=0.4.3
+AppVersion=0.4.4
 AppPublisher=Somkid2042
 DefaultDirName={localappdata}\EA-24 Server
 DisableProgramGroupPage=yes
