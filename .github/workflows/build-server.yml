@@ -33,18 +33,20 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-openssl-static-md-v2
-          restore-keys: ${{ runner.os }}-vcpkg-openssl-static-md-
+          key: ${{ runner.os }}-vcpkg-openssl-static-v3
+          restore-keys: ${{ runner.os }}-vcpkg-openssl-static-v3
 
       - name: Install OpenSSL (static linking for SQLCipher)
         run: |
-          # Remove old dynamic triplet if it exists from cached data
-          if (Test-Path "C:\vcpkg\installed\x64-windows") {
-            Write-Host "Removing old x64-windows dynamic triplet..."
-            Remove-Item -Recurse -Force "C:\vcpkg\installed\x64-windows"
+          # Remove old triplets from cached data
+          foreach ($old in @("x64-windows", "x64-windows-static-md")) {
+            if (Test-Path "C:\vcpkg\installed\$old") {
+              Write-Host "Removing old $old triplet..."
+              Remove-Item -Recurse -Force "C:\vcpkg\installed\$old"
+            }
           }
-          vcpkg install openssl:x64-windows-static-md
-          $base = "C:\vcpkg\installed\x64-windows-static-md"
+          vcpkg install openssl:x64-windows-static
+          $base = "C:\vcpkg\installed\x64-windows-static"
           echo "OPENSSL_DIR=$base" >> $env:GITHUB_ENV
           echo "OPENSSL_LIB_DIR=$base\lib" >> $env:GITHUB_ENV
           echo "OPENSSL_INCLUDE_DIR=$base\include" >> $env:GITHUB_ENV
