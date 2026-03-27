@@ -26,7 +26,6 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
-            ea-server/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('ea-server/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
 
@@ -34,11 +33,16 @@ jobs:
         uses: actions/cache@v4
         with:
           path: C:\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-openssl-static-v1
-          restore-keys: ${{ runner.os }}-vcpkg-openssl-
+          key: ${{ runner.os }}-vcpkg-openssl-static-md-v2
+          restore-keys: ${{ runner.os }}-vcpkg-openssl-static-md-
 
       - name: Install OpenSSL (static linking for SQLCipher)
         run: |
+          # Remove old dynamic triplet if it exists from cached data
+          if (Test-Path "C:\vcpkg\installed\x64-windows") {
+            Write-Host "Removing old x64-windows dynamic triplet..."
+            Remove-Item -Recurse -Force "C:\vcpkg\installed\x64-windows"
+          }
           vcpkg install openssl:x64-windows-static-md
           $base = "C:\vcpkg\installed\x64-windows-static-md"
           echo "OPENSSL_DIR=$base" >> $env:GITHUB_ENV
@@ -46,12 +50,13 @@ jobs:
           echo "OPENSSL_INCLUDE_DIR=$base\include" >> $env:GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
           echo "OPENSSL_NO_VENDOR=1" >> $env:GITHUB_ENV
-          # Verify files exist
           Write-Host "=== OpenSSL lib files ==="
           Get-ChildItem "$base\lib" -Filter "*.lib" | ForEach-Object { Write-Host $_.Name }
 
       - name: Build release
-        run: cargo build --release
+        run: |
+          cargo clean
+          cargo build --release
 
       - name: Compile InnoSetup Installer
         run: |
