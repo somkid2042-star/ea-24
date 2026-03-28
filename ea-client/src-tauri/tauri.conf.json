@@ -1,8 +1,7 @@
 {
-  "$schema": "https://raw.githubusercontent.com/tauri-apps/tauri/dev/crates/tauri-utils/schema.json",
-  "productName": "EA Trading Desktop",
+  "productName": "EA Desktop",
   "version": "0.1.0",
-  "identifier": "com.ea-trading.desktop",
+  "identifier": "com.ea.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
     "devUrl": "http://localhost:5173",
@@ -12,16 +11,18 @@
   "app": {
     "windows": [
       {
-        "title": "EA Trading Dashboard",
+        "title": "EA Trading Desktop",
         "width": 1400,
-        "height": 900,
-        "resizable": true,
-        "fullscreen": false,
-        "center": true
+        "height": 900
       }
-    ],
-    "security": {
-      "csp": null
+    ]
+  },
+  "plugins": {
+    "updater": {
+      "pubkey": "dW50cnVzdGVkIGNvbW1lbnQ6IG1pbmlzaWduIHB1YmxpYyBrZXk6IDlDM0IwQTlDNURGM0Y5OEUKUldTTytmTmRuQW83bkF4dG9uME5zVHZyYXh4Y1hCZ3FETEhtL1llVFh2Tkh6OXN3VlVsdWM4cnAK",
+      "endpoints": [
+        "https://github.com/somkid2042-star/ea-24/releases/latest/download/latest.json"
+      ]
     }
   },
   "bundle": {

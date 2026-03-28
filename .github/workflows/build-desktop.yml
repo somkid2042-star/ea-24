@@ -1,0 +1,51 @@
+name: Build Desktop Client (Tauri Auto-Updater)
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+
+jobs:
+  build-desktop:
+    runs-on: windows-latest
+    steps:
+      - name: Checkout repository
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Frontend Dependencies
+        working-directory: ./ea-client
+        run: npm install
+
+      - name: Install Rust toolchain
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-tauri-${{ hashFiles('ea-client/src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-tauri-
+
+      - name: Build and Sign Tauri Updater
+        id: tauri
+        uses: tauri-apps/tauri-action@v0
+        env:
+          GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+          TAURI_PRIVATE_KEY: ${{ secrets.TAURI_PRIVATE_KEY }}
+          TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
+        with:
+          projectPath: ./ea-client
+          tagName: ${{ github.ref_name }} # Creates a GitHub Release based on the tag
+          releaseName: 'Release ${{ github.ref_name }}'
+          releaseBody: 'EA Trading System Update'
+          releaseDraft: false
+          prerelease: false
