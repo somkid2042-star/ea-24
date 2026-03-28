@@ -305,6 +305,7 @@ async fn handle_mt5_connection(
                                         let spread = val["spread"].as_f64().unwrap_or(0.0);
                                         if !sym.is_empty() {
                                             db.log_tick(sym, bid, ask, spread);
+                                        }
                                     } else if msg_type == Some("market_watch") {
                                         if let Some(symbols) = val.get("symbols").and_then(|s| s.as_array()) {
                                             for info in symbols {
