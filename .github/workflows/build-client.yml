@@ -15,8 +15,6 @@ jobs:
       fail-fast: false
       matrix:
         include:
-          - platform: "macos-latest"
-            args: ""
           - platform: "windows-latest"
             args: ""
 
@@ -28,16 +26,21 @@ jobs:
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
-          node-version: 20
+          node-version: 22
 
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
 
-      - name: Install dependencies (macOS only)
-        if: matrix.platform == 'macos-latest'
-        run: |
-          brew update
-          brew install webkit2gtk
+      - name: Cache cargo
+        uses: actions/cache@v4
+        with:
+          path: |
+            ~/.cargo/registry
+            ~/.cargo/git
+          key: ${{ runner.os }}-cargo-client-${{ hashFiles('ea-client/src-tauri/Cargo.lock') }}
+          restore-keys: ${{ runner.os }}-cargo-client-
 
       - name: Install Frontend Dependencies
         working-directory: ./ea-client
@@ -49,6 +52,7 @@ jobs:
           GITHUB_TOKEN: ${{ secrets.GITHUB_TOKEN }}
         with:
           projectPath: "./ea-client"
+          args: "--target x86_64-pc-windows-msvc"
           tagName: app-v__VERSION__
           releaseName: "EA-24 Desktop App v__VERSION__"
           releaseBody: "See the assets to download this version and install."

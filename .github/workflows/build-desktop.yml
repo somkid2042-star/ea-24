@@ -44,6 +44,7 @@ jobs:
           TAURI_KEY_PASSWORD: ${{ secrets.TAURI_KEY_PASSWORD }}
         with:
           projectPath: ./ea-client
+          args: "--target x86_64-pc-windows-msvc"
           tagName: ${{ github.ref_name }} # Creates a GitHub Release based on the tag
           releaseName: 'Release ${{ github.ref_name }}'
           releaseBody: 'EA Trading System Update'
