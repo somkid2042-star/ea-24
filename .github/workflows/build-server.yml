@@ -9,14 +9,26 @@ on:
 jobs:
   build-windows:
     runs-on: windows-latest
-    defaults:
-      run:
-        working-directory: ea-server
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
+      # ── Step 1: Build React Frontend (required for rust-embed) ──
+      - name: Setup Node.js
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Install Frontend Dependencies
+        working-directory: ./ea-client
+        run: npm install
+
+      - name: Build React Frontend
+        working-directory: ./ea-client
+        run: npm run build
+
+      # ── Step 2: Build Rust Server ──
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -38,7 +50,6 @@ jobs:
 
       - name: Install OpenSSL (static linking for SQLCipher)
         run: |
-          # Remove old triplets from cached data
           foreach ($old in @("x64-windows", "x64-windows-static-md")) {
             if (Test-Path "C:\vcpkg\installed\$old") {
               Write-Host "Removing old $old triplet..."
@@ -52,32 +63,22 @@ jobs:
           echo "OPENSSL_INCLUDE_DIR=$base\include" >> $env:GITHUB_ENV
           echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
           echo "OPENSSL_NO_VENDOR=1" >> $env:GITHUB_ENV
-          Write-Host "=== OpenSSL lib files ==="
-          Get-ChildItem "$base\lib" -Filter "*.lib" | ForEach-Object { Write-Host $_.Name }
 
       - name: Build release
-        run: |
-          cargo clean
-          cargo build --release
+        working-directory: ./ea-server
+        run: cargo build --release
 
-      - name: Compile InnoSetup Installer
-        run: |
-          & "C:\Program Files (x86)\Inno Setup 6\ISCC.exe" setup.iss
-
-      - name: Upload artifacts
+      # ── Step 3: Upload Artifacts ──
+      - name: Upload ea-server.exe
         uses: actions/upload-artifact@v4
         with:
           name: ea-server-windows
-          path: |
-            ea-server/target/release/ea-server.exe
-            ea-server/target/release/ea-server-installer.exe
+          path: ea-server/target/release/ea-server.exe
 
-      # ── Auto-create GitHub Release when pushing a tag ──
+      # ── Step 4: Create GitHub Release (only on tag push) ──
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: |
-            ea-server/target/release/ea-server.exe
-            ea-server/target/release/ea-server-installer.exe
+          files: ea-server/target/release/ea-server.exe
           generate_release_notes: true

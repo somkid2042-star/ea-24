@@ -884,8 +884,8 @@ async fn handle_ws_connection(
             tick_result = rx.recv() => {
                 match tick_result {
                     Ok(json) => {
-                        // Forward ticks, ea_info, account_data, and market_watch to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") {
+                        // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;
