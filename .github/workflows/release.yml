@@ -1,0 +1,72 @@
+name: Release EA Trading Server
+
+on:
+  push:
+    tags:
+      - 'v*' # Trigger automatically when a tag like v1.0.0 is pushed
+  workflow_dispatch: # Allow manual triggering
+
+permissions:
+  contents: write
+
+jobs:
+  build-and-release:
+    runs-on: windows-latest
+
+    steps:
+      - name: Checkout Code
+        uses: actions/checkout@v4
+
+      - name: Setup Node.js (for React Dashboard)
+        uses: actions/setup-node@v4
+        with:
+          node-version: 22
+
+      - name: Build React Frontend
+        working-directory: ./ea-client
+        run: |
+          npm install
+          npm run build
+        
+      # Using MSVC Build Tools for Rust
+      - name: Setup Rust
+        uses: dtolnay/rust-toolchain@stable
+        with:
+          toolchain: stable
+          target: x86_64-pc-windows-msvc
+
+      - name: Build EA Server (Rust)
+        working-directory: ./ea-server
+        run: cargo build --release
+
+      - name: Prepare Artifacts for Installer
+        run: |
+          # The Inno Setup script expects dist to be inside ea-client
+          # which is already done by the Build React Frontend step
+          echo "Assets prepared for Inno Setup."
+
+      - name: Build Windows Installer (Inno Setup)
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: ea-server-installer.iss
+          options: /O+
+
+      - name: Zip standalone portable folder
+        run: |
+          mkdir EAServer-Portable
+          cp ea-server/target/release/ea-server.exe EAServer-Portable/
+          cp -r ea-client/dist EAServer-Portable/dist
+          Compress-Archive -Path EAServer-Portable\* -DestinationPath EAServer-Portable.zip
+
+      - name: Create GitHub Release
+        uses: softprops/action-gh-release@v2
+        with:
+          # This name automatically parses the tag name (e.g. v0.4.5)
+          name: EA Server Release ${{ github.ref_name }}
+          files: |
+            Output/EAServerSetup.exe
+            ea-server/target/release/ea-server.exe
+            EAServer-Portable.zip
+          draft: false
+          prerelease: false
+          generate_release_notes: true

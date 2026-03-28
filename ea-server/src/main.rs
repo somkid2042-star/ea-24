@@ -1252,12 +1252,14 @@ fn is_mt5_running(install_dir: &str) -> bool {
 }
 
 
-// ──────────────────────────────────────────────
-//  HTTP Static File Server (serves React dist/)
-// ──────────────────────────────────────────────
+use rust_embed::RustEmbed;
+
+#[derive(RustEmbed)]
+#[folder = "../ea-client/dist/"]
+struct WebAssets;
 
 async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
-    use tokio::io::AsyncReadExt;
+    use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut buf = vec![0u8; 4096];
     let n = match stream.read(&mut buf).await {
@@ -1272,67 +1274,28 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
         .and_then(|line| line.split_whitespace().nth(1))
         .unwrap_or("/");
 
-    // Resolve dist/ directory relative to the executable
-    let exe_dir = std::env::current_exe()
-        .ok()
-        .and_then(|p| p.parent().map(|p| p.to_path_buf()))
-        .unwrap_or_else(|| PathBuf::from("."));
-    let dist_dir = exe_dir.join("dist");
-
-    // If dist/ not next to exe, try current working directory
-    let dist_dir = if dist_dir.exists() {
-        dist_dir
-    } else {
-        PathBuf::from("dist")
-    };
-
-    // Map URL path to file
     let clean_path = path.split('?').next().unwrap_or(path);
-    let relative = clean_path.trim_start_matches('/');
-    let file_path = if relative.is_empty() {
-        dist_dir.join("index.html")
-    } else {
-        dist_dir.join(relative)
-    };
+    let mut relative = clean_path.trim_start_matches('/');
+
+    if relative.is_empty() {
+        relative = "index.html";
+    }
+
+    let mut asset = WebAssets::get(relative);
 
     // SPA fallback: if file doesn't exist and has no extension, serve index.html
-    let file_path = if file_path.exists() && file_path.is_file() {
-        file_path
-    } else {
-        dist_dir.join("index.html")
-    };
+    if asset.is_none() && !relative.contains('.') {
+        asset = WebAssets::get("index.html");
+    }
 
-    let (status, body, content_type) = if file_path.exists() {
-        match std::fs::read(&file_path) {
-            Ok(data) => {
-                let ct = match file_path.extension().and_then(|e| e.to_str()) {
-                    Some("html") => "text/html; charset=utf-8",
-                    Some("js") => "application/javascript; charset=utf-8",
-                    Some("css") => "text/css; charset=utf-8",
-                    Some("json") => "application/json",
-                    Some("png") => "image/png",
-                    Some("jpg") | Some("jpeg") => "image/jpeg",
-                    Some("svg") => "image/svg+xml",
-                    Some("ico") => "image/x-icon",
-                    Some("woff") => "font/woff",
-                    Some("woff2") => "font/woff2",
-                    Some("ttf") => "font/ttf",
-                    Some("webp") => "image/webp",
-                    _ => "application/octet-stream",
-                };
-                ("200 OK", data, ct)
-            }
-            Err(_) => (
-                "500 Internal Server Error",
-                b"Internal Server Error".to_vec(),
-                "text/plain",
-            ),
-        }
+    let (status, body, content_type) = if let Some(file) = asset {
+        let mime = mime_guess::from_path(relative).first_or_octet_stream();
+        ("200 OK", file.data.into_owned(), mime.to_string())
     } else {
         (
             "404 Not Found",
-            b"<h1>404 Not Found</h1><p>dist/ folder not found. Place the React build output next to ea-server.exe</p>".to_vec(),
-            "text/html",
+            b"<h1>404 Not Found</h1><p>Not found in embedded assets.</p>".to_vec(),
+            "text/html".to_string(),
         )
     };
 
