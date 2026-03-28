@@ -1,0 +1,6 @@
+warning: ring@0.17.14: Compiler family detection failed due to error: ToolNotFound: failed to find tool "cl.exe": program not found (see https://docs.rs/cc/latest/cc/#compile-time-requirements for help)
+warning: ring@0.17.14: Compiler family detection failed due to error: ToolNotFound: failed to find tool "cl.exe": program not found (see https://docs.rs/cc/latest/cc/#compile-time-requirements for help)
+error: failed to run custom build command for `ring v0.17.14`
+  cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "cl.exe": program not found (see https://docs.rs/cc/latest/cc/#compile-time-requirements for help)
+  cargo:warning=Compiler family detection failed due to error: ToolNotFound: failed to find tool "cl.exe": program not found (see https://docs.rs/cc/latest/cc/#compile-time-requirements for help)
+  error occurred in cc-rs: failed to find tool "cl.exe": program not found (see https://docs.rs/cc/latest/cc/#compile-time-requirements for help)

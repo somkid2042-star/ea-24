@@ -249,6 +249,9 @@ async fn handle_mt5_connection(
     let mut buf_reader = BufReader::new(reader);
     let mut line = String::new();
 
+    let mut digits_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
+    let mut last_risk_alert = std::time::Instant::now() - std::time::Duration::from_secs(3600);
+
     loop {
         tokio::select! {
             result = buf_reader.read_line(&mut line) => {
@@ -292,15 +295,116 @@ async fn handle_mt5_connection(
                                     let _ = tx.send(info_msg);
                                 }
                             } else {
-                                // Try to log tick data to database
+                                // Parse JSON to log specific types to database
                                 if let Ok(val) = serde_json::from_str::<serde_json::Value>(&text) {
-                                    if val.get("type").and_then(|t| t.as_str()) == Some("tick") {
+                                    let msg_type = val.get("type").and_then(|t| t.as_str());
+                                    if msg_type == Some("tick") {
                                         let sym = val["symbol"].as_str().unwrap_or("");
                                         let bid = val["bid"].as_f64().unwrap_or(0.0);
                                         let ask = val["ask"].as_f64().unwrap_or(0.0);
                                         let spread = val["spread"].as_f64().unwrap_or(0.0);
                                         if !sym.is_empty() {
                                             db.log_tick(sym, bid, ask, spread);
+                                    } else if msg_type == Some("market_watch") {
+                                        if let Some(symbols) = val.get("symbols").and_then(|s| s.as_array()) {
+                                            for info in symbols {
+                                                let sym = info["symbol"].as_str().unwrap_or("");
+                                                let digits = info["digits"].as_i64().unwrap_or(5);
+                                                if !sym.is_empty() {
+                                                    digits_map.insert(sym.to_string(), digits);
+                                                }
+                                            }
+                                        }
+                                    } else if msg_type == Some("trade_history") {
+                                        if let Some(deals) = val.get("deals") {
+                                            db.save_trade_history(deals);
+                                        }
+                                    } else if msg_type == Some("account_data") {
+                                        // Server-side trailing stop
+                                        if let Some(positions) = val.get("positions").and_then(|p| p.as_array()) {
+                                            // 1. Risk Alert Logic
+                                            let balance = val["balance"].as_f64().unwrap_or(0.0);
+                                            let mut risk_usd = 0.0;
+                                            for p in positions {
+                                                let pnl = p["pnl"].as_f64().unwrap_or(0.0);
+                                                if pnl < 0.0 { risk_usd += pnl.abs(); }
+                                            }
+                                            let risk_pct = if balance > 0.0 { (risk_usd / balance) * 100.0 } else { 0.0 };
+                                            if risk_pct > 5.0 && last_risk_alert.elapsed().as_secs() > 300 {
+                                                info!("🚨 [ALERT] Risk is high: {:.2}%", risk_pct);
+                                                let alert_msg = serde_json::json!({
+                                                    "type": "alert",
+                                                    "level": "warning",
+                                                    "title": "High Risk Warning",
+                                                    "message": format!("Current floating drawdown is {:.2}%", risk_pct)
+                                                }).to_string();
+                                                let _ = tx.send(alert_msg);
+                                                last_risk_alert = std::time::Instant::now();
+                                            }
+
+                                            // 2. Trailing Stop Logic
+                                            let setups = db.get_trade_setups();
+                                            if let Some(setups_arr) = setups.as_array() {
+                                                let mut ts_configs = std::collections::HashMap::new();
+                                                for setup in setups_arr {
+                                                    if setup["status"].as_str() == Some("active") 
+                                                        && setup["trailing_stop_enabled"].as_i64() == Some(1) {
+                                                        let sym = setup["symbol"].as_str().unwrap_or("").to_string();
+                                                        let pts = setup["trailing_stop_points"].as_f64().unwrap_or(0.0);
+                                                        ts_configs.insert(sym, pts);
+                                                    }
+                                                }
+
+                                                for pos in positions {
+                                                    let ticket = pos["ticket"].as_i64().unwrap_or(0);
+                                                    let sym = pos["symbol"].as_str().unwrap_or("");
+                                                    let type_str = pos["type"].as_str().unwrap_or(""); 
+                                                    let current_price = pos["current_price"].as_f64().unwrap_or(0.0);
+                                                    let current_sl = pos["sl"].as_f64().unwrap_or(0.0);
+                                                    
+                                                    if let Some(&ts_pts) = ts_configs.get(sym) {
+                                                        let digits = *digits_map.get(sym).unwrap_or(&5);
+                                                        let point = 1.0 / 10f64.powi(digits as i32);
+                                                        let distance = ts_pts * point;
+
+                                                        let (new_sl, needs_update) = if type_str == "BUY" {
+                                                            let calc_sl = current_price - distance;
+                                                            (calc_sl, calc_sl > current_sl && calc_sl < current_price)
+                                                        } else if type_str == "SELL" {
+                                                            let calc_sl = current_price + distance;
+                                                            (calc_sl, (current_sl == 0.0 || calc_sl < current_sl) && calc_sl > current_price)
+                                                        } else {
+                                                            (0.0, false)
+                                                        };
+                                                        
+                                                        // Require at least 2 pips (20 points) improvement to avoid spamming modification
+                                                        let min_step = 20.0 * point;
+                                                        let significant_change = if type_str == "BUY" {
+                                                            new_sl - current_sl >= min_step
+                                                        } else {
+                                                            current_sl == 0.0 || current_sl - new_sl >= min_step
+                                                        };
+
+                                                        if needs_update && significant_change {
+                                                            info!("🔄 [TS] Modifying SL for {} ticket {} to {:.5}", sym, ticket, new_sl);
+                                                            let cmd = serde_json::json!({
+                                                                "action": "modify_sl",
+                                                                "ticket": ticket,
+                                                                "new_sl": new_sl
+                                                            }).to_string();
+                                                            let _ = tx.send(cmd.clone());
+                                                            
+                                                            let alert_msg = serde_json::json!({
+                                                                "type": "alert",
+                                                                "level": "info",
+                                                                "title": "Trailing Stop Activated",
+                                                                "message": format!("Moved {} SL to {:.5}", sym, new_sl)
+                                                            }).to_string();
+                                                            let _ = tx.send(alert_msg);
+                                                        }
+                                                    }
+                                                }
+                                            }
                                         }
                                     }
                                 }
@@ -588,6 +692,14 @@ async fn handle_ws_connection(
                                         let resp = serde_json::json!({
                                             "type": "trade_setups",
                                             "setups": setups,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "get_trade_history" => {
+                                        let history = db.get_trade_history();
+                                        let resp = serde_json::json!({
+                                            "type": "trade_history_db",
+                                            "deals": history,
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }

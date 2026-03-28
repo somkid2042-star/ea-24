@@ -36,13 +36,22 @@ const TradeHistory = () => {
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(WS_URL);
-    ws.onopen = () => setWsConnected(true);
+    ws.onopen = () => {
+      setWsConnected(true);
+      // Request historical deals from DB on connect
+      ws.send(JSON.stringify({ action: 'get_trade_history' }));
+    };
     ws.onclose = () => { setWsConnected(false); setTimeout(connectWs, 3000); };
     ws.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
-        if (data.type === 'trade_history') {
-          setDeals(data.deals || []);
+        if (data.type === 'trade_history' || data.type === 'trade_history_db') {
+          setDeals((prev) => {
+            const newDeals: Deal[] = data.deals || [];
+            const map = new Map(prev.map(d => [d.ticket, d]));
+            newDeals.forEach(d => map.set(d.ticket, d));
+            return Array.from(map.values()).sort((a, b) => a.time.localeCompare(b.time));
+          });
         }
       } catch { /* */ }
     };

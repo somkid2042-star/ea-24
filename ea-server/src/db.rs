@@ -102,9 +102,27 @@ impl Database {
                 created_at              TEXT NOT NULL DEFAULT (datetime('now'))
             );
 
+            CREATE TABLE IF NOT EXISTS trade_history (
+                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                ticket      INTEGER UNIQUE NOT NULL,
+                order_id    INTEGER,
+                pos_id      INTEGER,
+                symbol      TEXT NOT NULL,
+                type        TEXT NOT NULL,
+                volume      REAL NOT NULL,
+                price       REAL NOT NULL,
+                profit      REAL NOT NULL,
+                swap        REAL NOT NULL DEFAULT 0,
+                commission  REAL NOT NULL DEFAULT 0,
+                magic       INTEGER NOT NULL DEFAULT 0,
+                time        TEXT NOT NULL,
+                comment     TEXT
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tick_symbol ON tick_log(symbol);
             CREATE INDEX IF NOT EXISTS idx_tick_time   ON tick_log(timestamp);
             CREATE INDEX IF NOT EXISTS idx_trade_time  ON trade_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_history_time ON trade_history(time);
             "
         ).map_err(|e| format!("Failed to create tables: {}", e))?;
 
@@ -359,5 +377,80 @@ impl Database {
                 Err(e) => warn!("⚠️ Tick cleanup error: {}", e),
             }
         }
+    }
+
+    /// Save an array of trade history deals from MT5
+    pub fn save_trade_history(&self, deals: &serde_json::Value) {
+        if let Some(deals_arr) = deals.as_array() {
+            if let Ok(mut conn) = self.conn.lock() {
+                let tx = match conn.transaction() {
+                    Ok(tx) => tx,
+                    Err(e) => {
+                        error!("❌ save_trade_history transaction error: {}", e);
+                        return;
+                    }
+                };
+                
+                for deal in deals_arr {
+                    let ticket = deal["ticket"].as_i64().unwrap_or(0);
+                    let order = deal["order"].as_i64().unwrap_or(0);
+                    let pos_id = deal["pos_id"].as_i64().unwrap_or(0);
+                    let symbol = deal["symbol"].as_str().unwrap_or("");
+                    let type_str = deal["type"].as_str().unwrap_or("");
+                    let volume = deal["volume"].as_f64().unwrap_or(0.0);
+                    let price = deal["price"].as_f64().unwrap_or(0.0);
+                    let profit = deal["profit"].as_f64().unwrap_or(0.0);
+                    let swap = deal["swap"].as_f64().unwrap_or(0.0);
+                    let commission = deal["commission"].as_f64().unwrap_or(0.0);
+                    let magic = deal["magic"].as_i64().unwrap_or(0);
+                    let time = deal["time"].as_str().unwrap_or("");
+                    let comment = deal["comment"].as_str().unwrap_or("");
+                    
+                    if ticket == 0 || symbol.is_empty() { continue; }
+
+                    let _ = tx.execute(
+                        "INSERT OR REPLACE INTO trade_history (ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
+                        params![ticket, order, pos_id, symbol, type_str, volume, price, profit, swap, commission, magic, time, comment],
+                    );
+                }
+                
+                if let Err(e) = tx.commit() {
+                    error!("❌ save_trade_history commit error: {}", e);
+                }
+            }
+        }
+    }
+
+    /// Get stored trade history as JSON array
+    pub fn get_trade_history(&self) -> serde_json::Value {
+        let mut deals = Vec::new();
+        if let Ok(conn) = self.conn.lock() {
+            if let Ok(mut stmt) = conn.prepare(
+                "SELECT ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment FROM trade_history ORDER BY time DESC LIMIT 500"
+            ) {
+                if let Ok(rows) = stmt.query_map([], |row| {
+                    Ok(serde_json::json!({
+                        "ticket": row.get::<_, i64>(0)?,
+                        "order": row.get::<_, i64>(1)?,
+                        "pos_id": row.get::<_, i64>(2)?,
+                        "symbol": row.get::<_, String>(3)?,
+                        "type": row.get::<_, String>(4)?,
+                        "volume": row.get::<_, f64>(5)?,
+                        "price": row.get::<_, f64>(6)?,
+                        "profit": row.get::<_, f64>(7)?,
+                        "swap": row.get::<_, f64>(8)?,
+                        "commission": row.get::<_, f64>(9)?,
+                        "magic": row.get::<_, i64>(10)?,
+                        "time": row.get::<_, String>(11)?,
+                        "comment": row.get::<_, String>(12)?,
+                    }))
+                }) {
+                    for row in rows.flatten() {
+                        deals.push(row);
+                    }
+                }
+            }
+        }
+        serde_json::Value::Array(deals)
     }
 }

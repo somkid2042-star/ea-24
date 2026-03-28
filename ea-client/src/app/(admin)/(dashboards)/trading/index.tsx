@@ -49,6 +49,7 @@ import { getWsUrl } from '@/utils/config';
 
 type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; };
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
+type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
 
 const WS_URL = getWsUrl();
 
@@ -71,6 +72,7 @@ const TradingDashboard = () => {
   const [closeModal, setCloseModal] = useState<{ show: boolean; ticket: number; symbol: string }>({ show: false, ticket: 0, symbol: '' });
   // Trade result toast
   const [toast, setToast] = useState<TradeResult | null>(null);
+  const [alert, setAlert] = useState<AlertMsg | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWs = useCallback(() => {
@@ -94,6 +96,10 @@ const TradingDashboard = () => {
         if (data.type === 'trade_result') {
           setToast(data as TradeResult);
           setTimeout(() => setToast(null), 5000);
+        }
+        if (data.type === 'alert') {
+          setAlert(data as AlertMsg);
+          setTimeout(() => setAlert(null), 8000);
         }
       } catch { /* */ }
     };
@@ -155,6 +161,24 @@ const TradingDashboard = () => {
               </p>
             </div>
             <button onClick={() => setToast(null)} className="text-default-400 hover:text-default-600"><LuX className="size-4" /></button>
+          </div>
+        </div>
+      )}
+
+      {/* Alert Notification */}
+      {alert && (
+        <div className={`fixed top-24 right-4 z-50 min-w-[300px] rounded-xl border p-4 shadow-2xl backdrop-blur-sm transition-all animate-in slide-in-from-right ${alert.level === 'warning' ? 'border-amber-200 bg-amber-50/95 dark:border-amber-500/30 dark:bg-amber-900/90' : 'border-blue-200 bg-blue-50/95 dark:border-blue-500/30 dark:bg-blue-900/90'}`}>
+          <div className="flex items-center gap-3">
+            <div className={`rounded-full p-1.5 ${alert.level === 'warning' ? 'bg-amber-500' : 'bg-blue-500'}`}>
+              <LuShieldAlert className="size-4 text-white" />
+            </div>
+            <div className="flex-1">
+              <p className={`text-sm font-semibold ${alert.level === 'warning' ? 'text-amber-800 dark:text-amber-200' : 'text-blue-800 dark:text-blue-200'}`}>
+                {alert.title}
+              </p>
+              <p className="text-xs text-default-500">{alert.message}</p>
+            </div>
+            <button onClick={() => setAlert(null)} className="text-default-400 hover:text-default-600"><LuX className="size-4" /></button>
           </div>
         </div>
       )}
