@@ -68,17 +68,32 @@ jobs:
         working-directory: ./ea-server
         run: cargo build --release
 
-      # ── Step 3: Upload Artifacts ──
+      # ── Step 3: Build Windows Installer (Inno Setup) ──
+      - name: Build Installer
+        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
+        with:
+          path: ea-server-installer.iss
+          options: /O+
+
+      # ── Step 4: Upload Artifacts ──
       - name: Upload ea-server.exe
         uses: actions/upload-artifact@v4
         with:
-          name: ea-server-windows
+          name: ea-server-exe
           path: ea-server/target/x86_64-pc-windows-msvc/release/ea-server.exe
 
-      # ── Step 4: Create GitHub Release (only on tag push) ──
+      - name: Upload Installer
+        uses: actions/upload-artifact@v4
+        with:
+          name: EAServerSetup
+          path: Output/EAServerSetup.exe
+
+      # ── Step 5: Create GitHub Release (only on tag push) ──
       - name: Create GitHub Release
         if: startsWith(github.ref, 'refs/tags/v')
         uses: softprops/action-gh-release@v2
         with:
-          files: ea-server/target/x86_64-pc-windows-msvc/release/ea-server.exe
+          files: |
+            ea-server/target/x86_64-pc-windows-msvc/release/ea-server.exe
+            Output/EAServerSetup.exe
           generate_release_notes: true
