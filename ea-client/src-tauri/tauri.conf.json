@@ -1,6 +1,6 @@
 {
   "productName": "EA Desktop",
-  "version": "0.5.0",
+  "version": "0.5.1",
   "identifier": "com.ea.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",
@@ -27,6 +27,7 @@
   },
   "bundle": {
     "active": true,
+    "createUpdaterArtifacts": true,
     "targets": "all",
     "icon": [
       "icons/icon.ico",
