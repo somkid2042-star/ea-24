@@ -4,8 +4,6 @@ import {
   LuSquare,
   LuRefreshCw,
   LuServer,
-  LuWifi,
-  LuWifiOff,
   LuActivity,
   LuClock,
   LuCpu,
@@ -26,14 +24,21 @@ const ServerSettings = () => {
   const [serverStatus, setServerStatus] = useState<ServerStatus>('stopped');
   const [eaConnected, setEaConnected] = useState(false);
   const [eaVersion, setEaVersion] = useState('-');
-  const [eaSymbol, setEaSymbol] = useState('-');
+
   const [uptime, setUptime] = useState('—');
   const [config, setConfig] = useState<Record<string, string>>({});
   const [inputUrl, setInputUrl] = useState(WS_URL);
   const [serverVersion, setServerVersion] = useState<string>('Unknown');
   const [updateStatus, setUpdateStatus] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
-  const uptimeStart = useRef<number | null>(null);
+  // Server uptime: base seconds from server + local timestamp when received
+  const serverUptimeBase = useRef<number | null>(null);
+  const serverUptimeReceivedAt = useRef<number | null>(null);
+
+  const updateServerUptime = (secs: number) => {
+    serverUptimeBase.current = secs;
+    serverUptimeReceivedAt.current = Date.now();
+  };
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(WS_URL);
@@ -41,7 +46,6 @@ const ServerSettings = () => {
     ws.onopen = () => {
       setWsConnected(true);
       setServerStatus('running');
-      uptimeStart.current = Date.now();
       // Fetch config from DB
       ws.send(JSON.stringify({ action: 'get_server_config' }));
     };
@@ -50,7 +54,8 @@ const ServerSettings = () => {
       setWsConnected(false);
       setServerStatus('stopped');
       setEaConnected(false);
-      uptimeStart.current = null;
+      serverUptimeBase.current = null;
+      serverUptimeReceivedAt.current = null;
       setUptime('—');
       setTimeout(connectWs, 3000);
     };
@@ -61,8 +66,8 @@ const ServerSettings = () => {
         if (data.type === 'welcome') {
           setEaConnected(data.ea_connected || false);
           setEaVersion(data.ea_version || '-');
-          setEaSymbol(data.ea_symbol || '-');
           if (data.server_version) setServerVersion(data.server_version);
+          if (data.server_uptime_secs != null) updateServerUptime(data.server_uptime_secs);
         }
         if (data.type === 'update_status') {
           setUpdateStatus(data.message || data.status);
@@ -70,14 +75,13 @@ const ServerSettings = () => {
         if (data.type === 'ea_info') {
           setEaConnected(true);
           setEaVersion(data.version || '-');
-          setEaSymbol(data.symbol || '-');
         }
         if (data.type === 'mt5_instances') {
           if (data.ea_connected !== undefined) {
             setEaConnected(data.ea_connected);
             setEaVersion(data.ea_version || '-');
-            setEaSymbol(data.ea_symbol || '-');
           }
+          if (data.server_uptime_secs != null) updateServerUptime(data.server_uptime_secs);
         }
         if (data.type === 'server_config') {
           setConfig(data.config || {});
@@ -97,15 +101,18 @@ const ServerSettings = () => {
     };
   }, [connectWs]);
 
-  // Uptime ticker
+  // Uptime ticker — uses server-provided base + local elapsed
   useEffect(() => {
     const interval = setInterval(() => {
-      if (uptimeStart.current && wsConnected) {
-        const diff = Math.floor((Date.now() - uptimeStart.current) / 1000);
-        const h = Math.floor(diff / 3600);
-        const m = Math.floor((diff % 3600) / 60);
-        const s = diff % 60;
-        setUptime(`${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`);
+      if (serverUptimeBase.current != null && serverUptimeReceivedAt.current != null && wsConnected) {
+        const localElapsed = Math.floor((Date.now() - serverUptimeReceivedAt.current) / 1000);
+        const totalSecs = serverUptimeBase.current + localElapsed;
+        const d = Math.floor(totalSecs / 86400);
+        const h = Math.floor((totalSecs % 86400) / 3600);
+        const m = Math.floor((totalSecs % 3600) / 60);
+        const s = totalSecs % 60;
+        const hms = `${h.toString().padStart(2, '0')}:${m.toString().padStart(2, '0')}:${s.toString().padStart(2, '0')}`;
+        setUptime(d > 0 ? `${d}d ${hms}` : hms);
       }
     }, 1000);
     return () => clearInterval(interval);
@@ -188,19 +195,8 @@ const ServerSettings = () => {
             Manage EA Trading Server — start, stop, restart and monitor status
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-              wsConnected
-                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-                : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
-            }`}
-          >
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}
-            {wsConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
       </div>
+
 
       {/* Server Status Card */}
       <div className="card">
@@ -225,21 +221,21 @@ const ServerSettings = () => {
               <button
                 onClick={handleStart}
                 disabled={serverStatus === 'running' || serverStatus === 'starting'}
-                className="inline-flex items-center gap-2 rounded-lg bg-green-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-green-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn bg-success/10 text-success hover:bg-success hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <LuPlay className="size-4" /> Start
               </button>
               <button
                 onClick={handleStop}
                 disabled={serverStatus === 'stopped' || serverStatus === 'stopping'}
-                className="inline-flex items-center gap-2 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-red-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn bg-danger/10 text-danger hover:bg-danger hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <LuSquare className="size-4" /> Stop
               </button>
               <button
                 onClick={handleRestart}
                 disabled={serverStatus === 'stopped' || serverStatus === 'restarting'}
-                className="inline-flex items-center gap-2 rounded-lg bg-amber-600 px-4 py-2.5 text-sm font-medium text-white transition hover:bg-amber-700 disabled:opacity-40 disabled:cursor-not-allowed"
+                className="btn bg-warning/10 text-warning hover:bg-warning hover:text-white disabled:opacity-40 disabled:cursor-not-allowed"
               >
                 <LuRefreshCw className={`size-4 ${serverStatus === 'restarting' ? 'animate-spin' : ''}`} /> Restart
               </button>
@@ -307,16 +303,7 @@ const ServerSettings = () => {
           </div>
         </div>
 
-        {/* Trading Symbol */}
-        <div className="card">
-          <div className="p-4">
-            <div className="mb-2 flex items-center gap-2">
-              <LuActivity className="size-4 text-orange-500" />
-              <span className="text-xs font-medium uppercase text-default-500">Symbol</span>
-            </div>
-            <p className="text-lg font-bold text-default-900">{eaSymbol || '—'}</p>
-          </div>
-        </div>
+
       </div>
 
       {/* Connection Info */}
@@ -340,7 +327,7 @@ const ServerSettings = () => {
                 <button
                   onClick={handleSaveUrl}
                   disabled={inputUrl === WS_URL}
-                  className="rounded-md bg-primary px-3 py-1.5 text-sm font-medium text-white transition hover:bg-primary/90 disabled:opacity-50"
+                  className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-50"
                 >
                   Save
                 </button>

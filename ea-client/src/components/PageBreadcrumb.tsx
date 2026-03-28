@@ -13,7 +13,7 @@ const PageBreadcrumb = ({ title, subtitle }: PageBreadcrumbProps) => {
 
       <div className="md:flex hidden items-center gap-2 text-sm font-semibold">
         <Link to="#" className="text-sm font-medium text-default-700">
-          Tailwick
+          EA-24
         </Link>
 
         <LuChevronRight

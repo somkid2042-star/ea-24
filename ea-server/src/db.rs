@@ -161,6 +161,49 @@ impl Database {
         }
     }
 
+    /// Get historical 1-minute (M1) candles aggregated from tick data
+    pub fn get_historical_candles(&self, symbol: &str, limit: i64) -> serde_json::Value {
+        let mut candles = Vec::new();
+        if let Ok(conn) = self.conn.lock() {
+            // Group ticks by minute (YYYY-MM-DD HH:MM:00)
+            let query = "
+                SELECT 
+                    strftime('%s', timestamp) / 60 * 60 as time,
+                    -- Open: First tick in the minute
+                    (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND strftime('%s', t2.timestamp) / 60 * 60 = strftime('%s', t1.timestamp) / 60 * 60 ORDER BY id ASC LIMIT 1) as open,
+                    MAX(bid) as high,
+                    MIN(bid) as low,
+                    -- Close: Last tick in the minute
+                    (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND strftime('%s', t2.timestamp) / 60 * 60 = strftime('%s', t1.timestamp) / 60 * 60 ORDER BY id DESC LIMIT 1) as close
+                FROM tick_log t1
+                WHERE symbol = ?1
+                GROUP BY time
+                ORDER BY time DESC
+                LIMIT ?2
+            ";
+
+            if let Ok(mut stmt) = conn.prepare(query) {
+                if let Ok(rows) = stmt.query_map(params![symbol, limit], |row| {
+                    Ok(serde_json::json!({
+                        "time": row.get::<_, i64>(0)?,
+                        "open": row.get::<_, f64>(1)?,
+                        "high": row.get::<_, f64>(2)?,
+                        "low": row.get::<_, f64>(3)?,
+                        "close": row.get::<_, f64>(4)?,
+                    }))
+                }) {
+                    for row in rows.flatten() {
+                        candles.push(row);
+                    }
+                }
+            }
+        }
+        
+        // Reverse so chronological (oldest to newest)
+        candles.reverse();
+        serde_json::Value::Array(candles)
+    }
+
     /// Log a trade action (panic, stop_trading, start_trading, etc.)
     pub fn log_trade(&self, action: &str, symbol: &str, direction: &str, lot: f64, price: f64, pnl: f64, source: &str) {
         if let Ok(conn) = self.conn.lock() {

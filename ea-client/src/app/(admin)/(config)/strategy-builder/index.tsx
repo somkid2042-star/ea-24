@@ -57,10 +57,10 @@ const StrategyBuilder = () => {
             <button
               key={ind}
               onClick={() => toggleIndicator(ind)}
-              className={`rounded-lg px-3 py-1.5 text-xs font-medium transition ${
+              className={`btn disabled:opacity-40 btn-sm ${
                 selectedIndicators.includes(ind)
-                  ? 'bg-primary text-white'
-                  : 'border border-default-200 text-default-600 hover:bg-default-50'
+                  ? 'bg-primary/20 text-primary border border-primary'
+                  : 'bg-default-500/10 text-default-600 hover:bg-primary/10 hover:text-primary'
               }`}
             >
               {ind}
@@ -73,8 +73,8 @@ const StrategyBuilder = () => {
       <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
         <div className="mb-4 flex items-center justify-between">
           <h5 className="text-sm font-semibold text-default-900">Rules ({rules.length})</h5>
-          <button onClick={addRule} className="inline-flex items-center gap-1 rounded-md bg-primary/10 px-2.5 py-1 text-xs font-medium text-primary hover:bg-primary/20">
-            <LuPlus className="size-3" /> Add Rule
+          <button onClick={addRule} className="btn btn-sm bg-primary/10 text-primary hover:bg-primary hover:text-white">
+            <LuPlus className="size-4" /> Add Rule
           </button>
         </div>
         <div className="space-y-3">
@@ -97,8 +97,8 @@ const StrategyBuilder = () => {
                 placeholder="Describe the rule condition..."
                 className="flex-1 rounded-md border border-default-200 px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
               />
-              <button onClick={() => removeRule(rule.id)} className="rounded p-1 text-red-400 hover:bg-red-50">
-                <LuTrash2 className="size-3.5" />
+              <button onClick={() => removeRule(rule.id)} className="btn btn-icon btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white">
+                <LuTrash2 className="size-4" />
               </button>
             </div>
           ))}
@@ -129,10 +129,10 @@ const StrategyBuilder = () => {
       </div>
 
       <div className="flex gap-3">
-        <button className="inline-flex items-center gap-2 rounded-md bg-primary px-5 py-2.5 text-sm font-medium text-white hover:bg-primary/90">
+        <button className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
           <LuSave className="size-4" /> Save Strategy
         </button>
-        <a href="/strategy/list" className="rounded-md border border-default-200 px-5 py-2.5 text-sm font-medium text-default-600 hover:bg-default-100">Cancel</a>
+        <a href="/strategy/list" className="btn bg-default-500/10 text-default-600 hover:bg-default-500 hover:text-white">Cancel</a>
       </div>
     </main>
   );

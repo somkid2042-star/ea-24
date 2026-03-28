@@ -1,7 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  LuWifi,
-  LuWifiOff,
   LuTrendingUp,
   LuTrendingDown,
   LuChartColumn,
@@ -94,9 +92,6 @@ const TradeHistory = () => {
         </div>
         <div className="flex items-center gap-2">
           <span className="rounded-full bg-default-100 dark:bg-default-50 px-2.5 py-0.5 text-[10px] font-medium text-default-600">{totalDeals} deals</span>
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${wsConnected ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}{wsConnected ? ' Connected' : ' Offline'}
-          </span>
         </div>
       </div>
 

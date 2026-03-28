@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuPlay, LuPause, LuPlus, LuTrash2, LuWifi, LuWifiOff, LuMonitor, LuPencil, LuX } from 'react-icons/lu';
+import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX } from 'react-icons/lu';
 
 const allStrategies = ['Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert'];
 const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
@@ -152,11 +152,8 @@ const TradeSetup = () => {
           {marketWatch.length > 0 && (
             <span className="rounded-full bg-blue-100 dark:bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">{marketWatch.length} symbols</span>
           )}
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${wsConnected ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}{wsConnected ? ' Connected' : ' Offline'}
-          </span>
-          <button onClick={openAddForm} className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90">
-            <LuPlus className="size-3.5" /> Add Setup
+          <button onClick={openAddForm} className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
+            <LuPlus className="size-4" /> Add Setup
           </button>
         </div>
       </div>
@@ -176,8 +173,8 @@ const TradeSetup = () => {
               <div className="flex flex-wrap gap-2">
                 {mt5Instances.map(inst => (
                   <button key={inst.id} onClick={() => setF({ mt5Instance: inst.id })}
-                    className={`inline-flex items-center gap-1.5 rounded-lg border px-3 py-2 text-xs font-medium transition ${f.mt5Instance === inst.id ? 'border-primary bg-primary text-white' : 'border-default-200 bg-white dark:bg-default-100 text-default-700 hover:border-primary/50'}`}>
-                    <LuMonitor className="size-3.5" />{inst.broker_name}
+                    className={`btn disabled:opacity-40 ${f.mt5Instance === inst.id ? 'bg-primary/20 text-primary border border-primary' : 'bg-default-500/10 text-default-600 hover:bg-primary/10 hover:text-primary'}`}>
+                    <LuMonitor className="size-4" />{inst.broker_name}
                     {inst.ea_deployed && <span className="rounded bg-green-500/20 px-1 text-[9px] text-green-600 dark:text-green-400">EA</span>}
                   </button>
                 ))}
@@ -270,10 +267,10 @@ const TradeSetup = () => {
           </div>
 
           <div className="flex gap-2 pt-1">
-            <button onClick={saveSetup} disabled={!wsConnected || !f.symbol} className="rounded-md bg-primary px-4 py-2 text-xs font-medium text-white hover:bg-primary/90 disabled:opacity-40">
+            <button onClick={saveSetup} disabled={!wsConnected || !f.symbol} className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40">
               {editId ? 'Update Setup' : 'Save to Server'}
             </button>
-            <button onClick={() => { setShowForm(false); setEditId(null); }} className="rounded-md border border-default-200 px-4 py-2 text-xs font-medium text-default-600 hover:bg-default-100">Cancel</button>
+            <button onClick={() => { setShowForm(false); setEditId(null); }} className="btn bg-default-500/10 text-default-600 hover:bg-default-500 hover:text-white">Cancel</button>
           </div>
         </div>
       )}
@@ -290,11 +287,11 @@ const TradeSetup = () => {
                 </span>
               </div>
               <div className="flex gap-1">
-                <button onClick={() => openEditForm(s)} className="rounded p-1.5 text-blue-500 hover:bg-blue-50 dark:hover:bg-blue-500/10" title="Edit"><LuPencil className="size-4" /></button>
-                <button onClick={() => toggleStatus(s.id)} className={`rounded p-1.5 ${s.status === 'active' ? 'text-orange-500 hover:bg-orange-50 dark:hover:bg-orange-500/10' : 'text-green-500 hover:bg-green-50 dark:hover:bg-green-500/10'}`} title={s.status === 'active' ? 'Pause' : 'Activate'}>
+                <button onClick={() => openEditForm(s)} className="btn btn-icon btn-sm bg-primary/10 text-primary hover:bg-primary hover:text-white" title="Edit"><LuPencil className="size-4" /></button>
+                <button onClick={() => toggleStatus(s.id)} className={`btn btn-icon btn-sm ${s.status === 'active' ? 'bg-warning/10 text-warning hover:bg-warning hover:text-white' : 'bg-success/10 text-success hover:bg-success hover:text-white'}`} title={s.status === 'active' ? 'Pause' : 'Activate'}>
                   {s.status === 'active' ? <LuPause className="size-4" /> : <LuPlay className="size-4" />}
                 </button>
-                <button onClick={() => setDeleteModal({ show: true, id: s.id, symbol: s.symbol })} className="rounded p-1.5 text-red-400 hover:bg-red-50 dark:hover:bg-red-500/10" title="Delete"><LuTrash2 className="size-4" /></button>
+                <button onClick={() => setDeleteModal({ show: true, id: s.id, symbol: s.symbol })} className="btn btn-icon btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white" title="Delete"><LuTrash2 className="size-4" /></button>
               </div>
             </div>
 
@@ -365,8 +362,8 @@ const TradeSetup = () => {
               Are you sure you want to delete <span className="font-semibold text-primary">{deleteModal.symbol}</span>? This action cannot be undone.
             </p>
             <div className="flex gap-3">
-              <button onClick={() => setDeleteModal({ show: false, id: 0, symbol: '' })} className="flex-1 rounded-lg border border-default-200 px-4 py-2.5 text-sm font-medium text-default-700 hover:bg-default-50 dark:text-default-300 dark:hover:bg-default-100">Cancel</button>
-              <button onClick={confirmDelete} className="flex-1 rounded-lg bg-red-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-red-700">Delete</button>
+              <button onClick={() => setDeleteModal({ show: false, id: 0, symbol: '' })} className="btn flex-1 bg-default-500/10 text-default-600 hover:bg-default-500 hover:text-white">Cancel</button>
+              <button onClick={confirmDelete} className="btn flex-1 bg-danger/10 text-danger hover:bg-danger hover:text-white">Delete</button>
             </div>
           </div>
         </div>

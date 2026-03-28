@@ -77,6 +77,8 @@ struct ClientMessage {
     sl: Option<f64>,
     tp: Option<f64>,
     comment: Option<String>,
+    // History request fields
+    limit: Option<i64>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -166,6 +168,8 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     info!("🚀 ea-server v{} is starting up...", env!("CARGO_PKG_VERSION"));
     info!("📦 EA script version mapping: v{}", LATEST_EA_VERSION);
 
+    let server_start = std::time::Instant::now();
+
     // Call updater asynchronously in a background loop every 2 hours
     tokio::spawn(async {
         loop {
@@ -224,6 +228,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
             active_eas.clone(),
             ea_state.clone(),
             database.clone(),
+            server_start,
         ));
     }
 }
@@ -469,6 +474,7 @@ async fn handle_ws_connection(
     _active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
     db: Arc<db::Database>,
+    server_start: std::time::Instant,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
 
@@ -494,6 +500,7 @@ async fn handle_ws_connection(
         "ea_version": state.version,
         "ea_symbol": state.symbol,
         "update_available": state.connected && state.version != LATEST_EA_VERSION,
+        "server_uptime_secs": server_start.elapsed().as_secs(),
     });
     drop(state);
     let _ = write.send(Message::Text(welcome.to_string())).await;
@@ -522,6 +529,7 @@ async fn handle_ws_connection(
                                             "ea_connected": ea.connected,
                                             "ea_version": ea.version,
                                             "ea_symbol": ea.symbol,
+                                            "server_uptime_secs": server_start.elapsed().as_secs(),
                                         });
                                         drop(ea);
                                         let _ = write.send(Message::Text(resp.to_string())).await;
@@ -646,6 +654,18 @@ async fn handle_ws_connection(
 
                                 // === Database Actions ===
                                 match action.as_str() {
+                                    "get_history" => {
+                                        let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
+                                        let limit = client_msg.limit.unwrap_or(200);
+                                        info!("📊 [UI] History requested for {} (limit {})", sym, limit);
+                                        let candles = db.get_historical_candles(sym, limit);
+                                        let resp = serde_json::json!({
+                                            "type": "history",
+                                            "symbol": sym,
+                                            "candles": candles,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
                                     "get_db_stats" => {
                                         info!("📊 [UI] DB stats requested");
                                         let stats = db.get_stats();

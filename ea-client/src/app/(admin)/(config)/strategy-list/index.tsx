@@ -38,8 +38,8 @@ const StrategyList = () => {
           <h4 className="text-lg font-semibold text-default-900">Strategy List</h4>
           <p className="text-sm text-default-500">Manage your trading strategies</p>
         </div>
-        <a href="/strategy/builder" className="inline-flex items-center gap-1.5 rounded-md bg-primary px-3 py-2 text-xs font-medium text-white hover:bg-primary/90">
-          <LuPlus className="size-3.5" /> New Strategy
+        <a href="/strategy/builder" className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
+          <LuPlus className="size-4" /> New Strategy
         </a>
       </div>
 
@@ -73,13 +73,13 @@ const StrategyList = () => {
                   <p className="text-lg font-bold text-default-900">{s.totalTrades.toLocaleString()}</p>
                   <p className="text-[10px] text-default-400">Trades</p>
                 </div>
-                <div className="flex gap-1">
-                  <button onClick={() => toggleStatus(s.id)} className={`rounded p-1.5 ${s.status === 'active' ? 'text-orange-500 hover:bg-orange-50' : 'text-green-500 hover:bg-green-50'}`} title={s.status === 'active' ? 'Pause' : 'Activate'}>
+                <div className="flex gap-2">
+                  <button onClick={() => toggleStatus(s.id)} className={`btn btn-icon btn-sm ${s.status === 'active' ? 'bg-warning/10 text-warning hover:bg-warning hover:text-white' : 'bg-success/10 text-success hover:bg-success hover:text-white'}`} title={s.status === 'active' ? 'Pause' : 'Activate'}>
                     {s.status === 'active' ? <LuPause className="size-4" /> : <LuPlay className="size-4" />}
                   </button>
-                  <button className="rounded p-1.5 text-default-400 hover:bg-default-100" title="Duplicate"><LuCopy className="size-4" /></button>
-                  <button className="rounded p-1.5 text-default-400 hover:bg-default-100" title="Settings"><LuSettings className="size-4" /></button>
-                  <button onClick={() => removeStrategy(s.id)} className="rounded p-1.5 text-red-400 hover:bg-red-50" title="Delete"><LuTrash2 className="size-4" /></button>
+                  <button className="btn btn-icon btn-sm bg-default-500/10 text-default-600 hover:bg-primary/10 hover:text-primary" title="Duplicate"><LuCopy className="size-4" /></button>
+                  <button className="btn btn-icon btn-sm bg-default-500/10 text-default-600 hover:bg-primary/10 hover:text-primary" title="Settings"><LuSettings className="size-4" /></button>
+                  <button onClick={() => removeStrategy(s.id)} className="btn btn-icon btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white" title="Delete"><LuTrash2 className="size-4" /></button>
                 </div>
               </div>
             </div>

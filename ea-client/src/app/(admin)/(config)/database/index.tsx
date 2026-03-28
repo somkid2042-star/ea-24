@@ -3,8 +3,6 @@ import {
   LuDatabase,
   LuSave,
   LuRefreshCw,
-  LuWifi,
-  LuWifiOff,
   LuHardDrive,
   LuActivity,
   LuTrendingUp,
@@ -136,19 +134,8 @@ const DatabaseSettings = () => {
             SQLite database — real-time tick logging & server configuration
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-              wsConnected
-                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-                : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
-            }`}
-          >
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}
-            {wsConnected ? 'Connected' : 'Disconnected'}
-          </span>
-        </div>
       </div>
+
 
       {/* Database Stats */}
       <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
@@ -247,7 +234,7 @@ const DatabaseSettings = () => {
             <button
               onClick={handleSaveAll}
               disabled={saving || !wsConnected}
-              className="inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90 disabled:opacity-40"
+              className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
             >
               {saveSuccess ? (
                 <><LuCircleCheck className="size-4" /> Saved!</>
@@ -260,7 +247,7 @@ const DatabaseSettings = () => {
             <button
               onClick={handleVacuum}
               disabled={vacuuming || !wsConnected}
-              className="inline-flex items-center gap-2 rounded-md border border-default-200 px-4 py-2 text-sm font-medium text-default-700 hover:bg-default-100 dark:hover:bg-default-50 disabled:opacity-40"
+              className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
             >
               {vacuuming ? (
                 <><LuRefreshCw className="size-4 animate-spin" /> Optimizing...</>

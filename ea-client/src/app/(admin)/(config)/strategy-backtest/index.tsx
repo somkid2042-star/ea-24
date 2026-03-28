@@ -43,7 +43,7 @@ const StrategyBacktest = () => {
             <input type="date" defaultValue="2025-12-31" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
           </div>
         </div>
-        <button onClick={runBacktest} className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">
+        <button onClick={runBacktest} className="mt-4 btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
           <LuPlay className="size-4" /> Run Backtest
         </button>
       </div>

@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuX, LuWifi, LuWifiOff } from 'react-icons/lu';
+import { LuX } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 type Position = {
@@ -60,9 +60,6 @@ const ActiveTrades = () => {
           <p className="text-sm text-default-500">{positions.length} open positions</p>
         </div>
         <div className="flex items-center gap-3">
-          <span className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${wsConnected ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}{wsConnected ? ' Connected' : ' Offline'}
-          </span>
           <div className={`rounded-lg px-4 py-2 text-sm font-bold ${totalPnl >= 0 ? 'bg-green-50 dark:bg-green-500/20 text-green-700 dark:text-green-400' : 'bg-red-50 dark:bg-red-500/20 text-red-700 dark:text-red-400'}`}>
             Floating P&L: {totalPnl >= 0 ? '+' : ''}${totalPnl.toFixed(2)}
           </div>
@@ -105,7 +102,7 @@ const ActiveTrades = () => {
                   <td className="px-4 py-3 text-xs text-default-500">{t.comment || 'EA-Web'}</td>
                   <td className="px-4 py-3 text-xs text-default-400 text-nowrap">{t.open_time}</td>
                   <td className="px-4 py-3">
-                    <button onClick={() => closeTrade(t.ticket)} className="inline-flex items-center gap-1 rounded bg-red-500 px-2 py-1 text-[10px] font-medium text-white hover:bg-red-600">
+                    <button onClick={() => closeTrade(t.ticket)} className="btn btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white">
                       <LuX className="size-3" /> Close
                     </button>
                   </td>

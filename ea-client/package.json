@@ -24,6 +24,7 @@
     "@tailwindcss/vite": "^4.1.13",
     "flatpickr": "^4.6.13",
     "fullcalendar": "^6.1.19",
+    "lightweight-charts": "^5.1.0",
     "lucide-react": "^0.544.0",
     "path": "^0.12.7",
     "preline": "^3.2.3",
@@ -42,6 +43,7 @@
   "devDependencies": {
     "@eslint/js": "^9.36.0",
     "@tailwindcss/postcss": "^4.1.13",
+    "@tauri-apps/cli": "^2.10.1",
     "@types/node": "^24.0.15",
     "@types/react": "^19.1.13",
     "@types/react-dom": "^19.1.9",

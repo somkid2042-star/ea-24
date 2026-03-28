@@ -11,8 +11,6 @@ import {
   LuPlay,
   LuRefreshCw,
   LuSquare,
-  LuWifi,
-  LuWifiOff,
 } from 'react-icons/lu';
 
 type Mt5Instance = {
@@ -271,19 +269,8 @@ const MT5Settings = () => {
             Auto-discover MetaTrader 5 instances & manage Expert Advisors
           </p>
         </div>
-        <div className="flex items-center gap-2">
-          <span
-            className={`inline-flex items-center gap-1.5 rounded-full px-3 py-1 text-xs font-medium ${
-              wsConnected
-                ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-                : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
-            }`}
-          >
-            {wsConnected ? <LuWifi className="size-3.5" /> : <LuWifiOff className="size-3.5" />}
-            {wsConnected ? 'Server Connected' : 'Server Offline'}
-          </span>
-        </div>
       </div>
+
 
       {/* Section 1: EA Live Status */}
       <div className="card">
@@ -363,7 +350,7 @@ const MT5Settings = () => {
             <button
               onClick={handleScan}
               disabled={scanning || !wsConnected}
-              className="inline-flex items-center gap-1.5 rounded-lg border border-default-200 px-3 py-1.5 text-xs font-medium text-default-700 transition hover:bg-default-100 dark:hover:bg-default-50 disabled:opacity-40"
+              className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
             >
               <LuRefreshCw className={`size-3.5 ${scanning ? 'animate-spin' : ''}`} />
               {scanning ? 'Scanning...' : 'Scan Again'}
@@ -482,11 +469,7 @@ const MT5Settings = () => {
                         <button
                           onClick={() => handleDeploy(inst.id)}
                           disabled={deployStatus.type === 'loading' || !wsConnected}
-                          className={`inline-flex items-center gap-1.5 rounded-lg px-4 py-2 text-xs font-medium transition disabled:opacity-40 ${
-                            inst.ea_deployed
-                              ? 'border border-blue-200 bg-blue-50 text-blue-600 hover:bg-blue-100 dark:border-blue-500/30 dark:bg-blue-500/10 dark:text-blue-400 dark:hover:bg-blue-500/20'
-                              : 'bg-blue-500 text-white hover:bg-blue-600 dark:bg-blue-600 dark:hover:bg-blue-700'
-                          }`}
+                          className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
                         >
                           {deployStatus.type === 'loading' ? (
                             <><LuRefreshCw className="size-3.5 animate-spin" /> Deploying...</>
@@ -502,10 +485,10 @@ const MT5Settings = () => {
                       <button
                         onClick={handleToggleTrading}
                         disabled={!eaStatus.connected || !wsConnected}
-                        className={`inline-flex items-center gap-1.5 rounded-lg px-3 py-2 text-xs font-medium transition disabled:opacity-40 ${
+                        className={`btn disabled:opacity-40 ${
                           tradingEnabled
-                            ? 'bg-amber-500 text-white hover:bg-amber-600'
-                            : 'bg-green-500 text-white hover:bg-green-600'
+                            ? 'bg-warning/10 text-warning hover:bg-warning hover:text-white'
+                            : 'bg-success/10 text-success hover:bg-success hover:text-white'
                         }`}
                       >
                         {tradingEnabled ? (
@@ -520,7 +503,7 @@ const MT5Settings = () => {
                         <button
                           onClick={() => handleLaunch(inst.id)}
                           disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
-                          className="inline-flex items-center gap-1.5 rounded-lg bg-primary px-3 py-2 text-xs font-medium text-white transition hover:bg-primary/90 disabled:opacity-40"
+                          className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
                         >
                           {getActionStatus(`launch_${inst.id}`).type === 'loading' ? (
                             <><LuRefreshCw className="size-3 animate-spin" /> Opening...</>

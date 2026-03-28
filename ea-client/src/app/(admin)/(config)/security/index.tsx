@@ -8,7 +8,7 @@ const SecuritySettings = () => {
           <h4 className="text-lg font-semibold text-default-900">Security & License</h4>
           <p className="mt-1 text-sm text-default-500">Manage API keys, authentication, and license settings</p>
         </div>
-        <nav className="text-sm text-default-500">Tailwick &gt; Config Server &gt; Security & License</nav>
+        <nav className="text-sm text-default-500">EA-24 &gt; Config Server &gt; Security & License</nav>
       </div>
 
       <div className="card">
@@ -27,7 +27,7 @@ const SecuritySettings = () => {
               <input type="password" defaultValue="••••••••••••" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white" />
             </div>
           </div>
-          <button className="mt-4 inline-flex items-center gap-2 rounded-md bg-primary px-4 py-2 text-sm font-medium text-white hover:bg-primary/90">
+          <button className="mt-4 btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
             <LuSave className="size-4" /> Save Settings
           </button>
         </div>
@@ -45,7 +45,7 @@ const SecuritySettings = () => {
               <input type="text" placeholder="Enter your license key" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white" />
             </div>
             <div className="flex items-end">
-              <button className="rounded-md bg-green-600 px-4 py-2.5 text-sm font-medium text-white hover:bg-green-700">
+              <button className="btn bg-success/10 text-success hover:bg-success hover:text-white">
                 Activate License
               </button>
             </div>

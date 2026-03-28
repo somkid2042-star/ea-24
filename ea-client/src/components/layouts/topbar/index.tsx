@@ -338,7 +338,7 @@ const Topbar = () => {
             </button>
             <div className="hs-dropdown-menu min-w-48">
               <div className="p-2">
-                <h6 className="mb-2 text-default-500">Welcome to Tailwick</h6>
+                <h6 className="mb-2 text-default-500">Welcome to EA-24</h6>
                 <Link to="#!" className="flex gap-3">
                   <div className="relative inline-block">
                     <img src={avatar1} alt="user" className="size-12 rounded" />
