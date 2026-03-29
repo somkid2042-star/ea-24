@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createChart, ColorType, CandlestickSeries, HistogramSeries, type IChartApi, type Time } from 'lightweight-charts';
+import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
+import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
-  LuMonitorDot, LuChartCandlestick, LuServer, LuDatabase, LuShieldCheck,
+  LuChartCandlestick, LuServer, LuDatabase, LuShieldCheck,
   LuList, LuWrench, LuFlaskConical, LuArrowLeftRight, LuHistory,
-  LuSearch, LuSettings, LuPlus, LuX,
-  LuChevronRight, LuChevronDown,
-  LuMousePointer, LuCrosshair, LuPencilLine, LuType, LuRuler, LuLayoutGrid,
+  LuSettings, LuPlus, LuX, LuChevronDown,
+  LuSun, LuMoon,
 } from 'react-icons/lu';
+import { FiHome } from 'react-icons/fi';
 import { getWsUrl } from '@/utils/config';
 
 /* ── Lazy-loaded page components ── */
@@ -38,7 +39,7 @@ type PanelKey = 'chart' | 'mt5' | 'server' | 'database' | 'security' | 'strategi
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean } | { key: string; divider: true };
 
 const NAV: NavItem[] = [
-  { key: 'chart', icon: <LuMonitorDot size={20} />, label: 'Chart', badge: true },
+  { key: 'chart', icon: <FiHome size={20} />, label: 'Home' },
   { key: 'mt5', icon: <LuChartCandlestick size={20} />, label: 'MT5' },
   { key: 'server', icon: <LuServer size={20} />, label: 'Server' },
   { key: 'database', icon: <LuDatabase size={20} />, label: 'Database' },
@@ -64,15 +65,84 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   history: TradeHistoryPage,
 };
 
-const DRAW_TOOLS = [LuMousePointer, LuCrosshair, LuPencilLine, LuType, LuRuler, LuLayoutGrid];
+/* ── Theme Colors ── */
+const DARK = {
+  bg: '#1e2028', panel: '#262933', topBar: '#1e2028',
+  text: '#f1f5f9', textMid: '#cbd5e1', textDim: '#64748b',
+  green: '#10b981', red: '#ef4444', accent: '#3b82f6', orange: '#f59e0b',
+  chartBg: '#1e2028', gridLine: '#2d3342',
+  sellBg: '#ef4444', buyBg: '#10b981',
+  navBtnBg: '#262933', navBtnText: '#64748b', navBtnActiveBg: '#3b82f620', navBtnActiveText: '#3b82f6',
+};
+const LIGHT = {
+  bg: '#f8fafc', panel: '#ffffff', topBar: '#f8fafc',
+  text: '#0f172a', textMid: '#334155', textDim: '#94a3b8',
+  green: '#10b981', red: '#ef4444', accent: '#3b82f6', orange: '#f59e0b',
+  chartBg: '#ffffff', gridLine: '#f1f5f9',
+  sellBg: '#ef4444', buyBg: '#10b981',
+  navBtnBg: '#ffffff', navBtnText: '#94a3b8', navBtnActiveBg: '#3b82f615', navBtnActiveText: '#3b82f6',
+};
 
-/* ── Light Theme Colors ── */
-const L = {
-  bg: '#ffffff', panel: '#f8f9fa', border: '#e0e3eb', borderLight: '#eff1f3',
-  text: '#131722', textMid: '#4a4a4a', textDim: '#9598a1',
-  green: '#089981', red: '#f23645', accent: '#2962ff', orange: '#f7931a',
-  chartBg: '#ffffff', gridLine: '#f0f3fa',
-  sellBg: '#f23645', buyBg: '#089981',
+const LiveChart = ({ symbol, bid, L, darkMode }: { symbol: string, bid: number, L: any, darkMode: boolean }) => {
+  const chartContainerRef = useRef<HTMLDivElement>(null);
+  const chartRef = useRef<IChartApi | null>(null);
+  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
+  const lastTimeRef = useRef<number>(0);
+
+  useEffect(() => {
+    if (!chartContainerRef.current) return;
+    const chart = createChart(chartContainerRef.current, {
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: L.textDim },
+      grid: { vertLines: { color: L.gridLine }, horzLines: { color: L.gridLine } },
+      rightPriceScale: { borderVisible: false },
+      timeScale: { borderVisible: false, timeVisible: true, secondsVisible: true },
+      crosshair: { mode: 1 },
+    });
+    
+    const series = chart.addSeries(AreaSeries, {
+      lineColor: L.accent,
+      topColor: L.accent + '40',
+      bottomColor: L.accent + '00',
+      lineWidth: 2,
+    });
+    
+    chartRef.current = chart;
+    seriesRef.current = series;
+
+    const handleResize = () => {
+      if (chartContainerRef.current) {
+        chart.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight });
+      }
+    };
+    window.addEventListener('resize', handleResize);
+    setTimeout(handleResize, 50); // initial resize
+    
+    return () => {
+      window.removeEventListener('resize', handleResize);
+      chart.remove();
+    };
+  }, [L, darkMode]);
+
+  useEffect(() => {
+    if (seriesRef.current) {
+      seriesRef.current.setData([]);
+      lastTimeRef.current = 0;
+    }
+  }, [symbol]);
+
+  useEffect(() => {
+    if (seriesRef.current && bid > 0) {
+      let time = Math.floor(Date.now() / 1000);
+      // Ensure time is strictly increasing to prevent TV errors
+      if (time <= lastTimeRef.current) {
+         time = lastTimeRef.current + 1;
+      }
+      lastTimeRef.current = time;
+      seriesRef.current.update({ time: time as any, value: bid });
+    }
+  }, [bid]);
+
+  return <div ref={chartContainerRef} style={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }} />;
 };
 
 const TradingDashboard = () => {
@@ -84,15 +154,10 @@ const TradingDashboard = () => {
   const [closeModal, setCloseModal] = useState<{ show: boolean; ticket: number; symbol: string }>({ show: false, ticket: 0, symbol: '' });
   const [toast, setToast] = useState<TradeResult | null>(null);
   const [alert, setAlert] = useState<AlertMsg | null>(null);
-  const [rightTab, setRightTab] = useState<'alerts' | 'history' | 'system'>('alerts');
-  const [expandedCat, setExpandedCat] = useState<string | null>('Forex');
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
+  const [darkMode, setDarkMode] = useState(true);
+  const L = darkMode ? DARK : LIGHT;
   const wsRef = useRef<WebSocket | null>(null);
-  const chartContainerRef = useRef<HTMLDivElement>(null);
-  const chartRef = useRef<IChartApi | null>(null);
-  // eslint-disable-next-line @typescript-eslint/no-explicit-any
-  const candleSeriesRef = useRef<any>(null);
-  const activeCandleRef = useRef<{ time: Time; open: number; high: number; low: number; close: number } | null>(null);
 
   /* ── WebSocket ── */
   const connectWs = useCallback(() => {
@@ -109,42 +174,6 @@ const TradingDashboard = () => {
         }
         if (data.type === 'trade_result') { setToast(data as TradeResult); setTimeout(() => setToast(null), 5000); }
         if (data.type === 'alert') { setAlert(data as AlertMsg); setTimeout(() => setAlert(null), 8000); }
-        if (data.type === 'history' && data.symbol === activeSymbol && candleSeriesRef.current) {
-          // data.candles is an array of { time, open, high, low, close }
-          if (data.candles && data.candles.length > 0) {
-            candleSeriesRef.current.setData(data.candles);
-            // Record the last historical candle as our active candle base
-            activeCandleRef.current = data.candles[data.candles.length - 1];
-          } else {
-            candleSeriesRef.current.setData([]);
-            activeCandleRef.current = null;
-          }
-        }
-        if (data.type === 'tick' && data.symbol === activeSymbol && candleSeriesRef.current) {
-          const now = new Date();
-          // Group ticks into 1-minute candles for display
-          now.setSeconds(0, 0);
-          const time = Math.floor(now.getTime() / 1000) as Time;
-          
-          const currentCandle = activeCandleRef.current;
-          let updatedCandle;
-          
-          if (!currentCandle || currentCandle.time !== time) {
-            // New candle
-            updatedCandle = { time, open: data.bid, high: data.bid, low: data.bid, close: data.bid };
-          } else {
-            // Update existing candle
-            updatedCandle = {
-              time,
-              open: currentCandle.open,
-              high: Math.max(currentCandle.high, data.bid),
-              low: Math.min(currentCandle.low, data.bid),
-              close: data.bid,
-            };
-          }
-          activeCandleRef.current = updatedCandle;
-          candleSeriesRef.current.update(updatedCandle);
-        }
       } catch { /* */ }
     };
     wsRef.current = ws;
@@ -154,37 +183,6 @@ const TradingDashboard = () => {
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
   // Trade buttons were removed from the top bar in previous step, so handleOpenTrade is unused here for now.
   const handleCloseTrade = () => { send({ action: 'close_trade', ticket: closeModal.ticket }); setCloseModal({ show: false, ticket: 0, symbol: '' }); };
-
-  /* ── Chart ── */
-  useEffect(() => {
-    if (activePanel !== 'chart') return;
-    if (!chartContainerRef.current) return;
-    const el = chartContainerRef.current;
-    const chart = createChart(el, {
-      width: el.clientWidth, height: el.clientHeight,
-      layout: { background: { type: ColorType.Solid, color: L.chartBg }, textColor: L.textDim },
-      grid: { vertLines: { color: L.gridLine }, horzLines: { color: L.gridLine } },
-      crosshair: { mode: 0 },
-      rightPriceScale: { borderColor: L.border },
-      timeScale: { borderColor: L.border, timeVisible: true },
-    });
-    const cs = chart.addSeries(CandlestickSeries, { upColor: L.green, downColor: L.red, borderUpColor: L.green, borderDownColor: L.red, wickUpColor: L.green, wickDownColor: L.red });
-    const vs = chart.addSeries(HistogramSeries, { color: L.green, priceFormat: { type: 'volume' }, priceScaleId: '' });
-    vs.priceScale().applyOptions({ scaleMargins: { top: 0.85, bottom: 0 } });
-    
-    // Clear data and request history for the active symbol
-    cs.setData([]);
-    vs.setData([]);
-    activeCandleRef.current = null;
-    send({ action: 'get_history', symbol: activeSymbol, limit: 300 });
-    
-    chart.timeScale().fitContent();
-    chartRef.current = chart;
-    candleSeriesRef.current = cs;
-    const ro = new ResizeObserver(() => chart.applyOptions({ width: el.clientWidth, height: el.clientHeight }));
-    ro.observe(el);
-    return () => { ro.disconnect(); chart.remove(); };
-  }, [activeSymbol, activePanel]);
 
   /* ── Computed ── */
   const balance = account?.balance ?? 0;
@@ -197,33 +195,108 @@ const TradingDashboard = () => {
   const digits = sym?.digits ?? 2;
   const spread = sym?.spread ?? 0;
   const wl = marketWatch.length > 0
-    ? marketWatch.map(m => ({ symbol: m.symbol, last: m.bid, change: +(Math.random() * 40 - 20).toFixed(2), pct: +(Math.random() * 4 - 2).toFixed(2) }))
-    : [{ symbol: 'XAUUSD', last: 2350.50, change: 12.30, pct: 0.52 }, { symbol: 'EURUSD', last: 1.0842, change: -0.0012, pct: -0.11 }, { symbol: 'GBPUSD', last: 1.2654, change: 0.0034, pct: 0.27 }, { symbol: 'USDJPY', last: 150.32, change: -0.45, pct: -0.30 }];
+    ? marketWatch.map(m => ({ symbol: m.symbol, last: m.bid, change: 0, pct: 0 }))
+    : [];
 
-  /* ── Render Panel Content ── */
   const renderPanel = () => {
     if (activePanel === 'chart') {
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column' }}>
-          <div style={{ flex: 1, position: 'relative' }}>
-            <div ref={chartContainerRef} style={{ position: 'absolute', inset: 0 }} />
-            {/* Drawing tools float */}
-            <div className="flex gap-0.5 bg-card border border-default-200 rounded-lg p-1 shadow-sm" style={{ position: 'absolute', bottom: 48, left: '50%', transform: 'translateX(-50%)' }}>
-              {DRAW_TOOLS.map((Icon, i) => (
-                <button key={i} className="btn btn-icon rounded-full bg-transparent text-default-400 hover:bg-default-100 hover:text-default-700" style={{ width: 28, height: 28 }}>
-                  <Icon size={14} />
-                </button>
-              ))}
+        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: 16, gap: 16 }}>
+          {/* Account Overview */}
+          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+            {[
+              { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, color: L.text },
+              { label: 'Equity', value: `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, color: profit >= 0 ? L.green : L.red },
+              { label: 'Profit', value: `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`, color: profit >= 0 ? L.green : L.red },
+              { label: 'Margin', value: `$${(account?.margin ?? 0).toFixed(2)}`, color: L.textMid },
+            ].map(item => (
+              <div key={item.label} style={{ background: L.panel, borderRadius: 20, padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
+                <div style={{ fontSize: 12, color: L.textDim, marginBottom: 4, fontWeight: 500 }}>{item.label}</div>
+                <div style={{ fontSize: 20, fontWeight: 700, color: item.color }}>{item.value}</div>
+              </div>
+            ))}
+          </div>
+
+          {/* Chart & Open Positions Split */}
+          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
+            <div style={{ flex: 1, background: L.panel, borderRadius: 20, padding: '20px 24px', display: 'flex', flexDirection: 'column', minHeight: 250 }}>
+              <div style={{ fontSize: 14, fontWeight: 700, color: L.text, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+                <span>{activeSymbol} Live Data</span>
+                <span style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{eaConnected ? 'Live Connection' : 'Disconnected'}</span>
+              </div>
+              <div style={{ flex: 1, position: 'relative' }}>
+                <div style={{ position: 'absolute', inset: 0 }}>
+                  <LiveChart symbol={activeSymbol} bid={bid} L={L} darkMode={darkMode} />
+                </div>
+              </div>
+            </div>
+
+            <div style={{ background: L.panel, borderRadius: 20, padding: '20px 24px', maxHeight: 220, overflow: 'auto', flexShrink: 0 }}>
+              <div style={{ fontSize: 13, fontWeight: 700, color: L.text, marginBottom: 16 }}>Open Positions ({positions.length})</div>
+              {positions.length > 0 ? (
+                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
+                <thead>
+                  <tr>
+                    {['Symbol', 'Type', 'Volume', 'Open Price', 'Current', 'P&L', 'SL', 'TP', ''].map(h => (
+                      <th key={h} style={{ fontSize: 11, color: L.textDim, fontWeight: 600, textAlign: h === '' ? 'right' : 'left', paddingBottom: 12 }}>{h}</th>
+                    ))}
+                  </tr>
+                </thead>
+                <tbody>
+                  {positions.map((pos, i) => (
+                    <tr key={pos.ticket} style={{ background: i % 2 === 0 ? 'transparent' : (darkMode ? '#ffffff05' : '#00000003'), borderRadius: 12 }}>
+                      <td style={{ fontSize: 13, fontWeight: 600, color: L.text, padding: '12px 10px', borderRadius: '12px 0 0 12px' }}>{pos.symbol}</td>
+                      <td style={{ fontSize: 12, color: pos.type === 'BUY' ? L.green : L.red, fontWeight: 600 }}>{pos.type}</td>
+                      <td style={{ fontSize: 12, color: L.textMid, fontWeight: 500 }}>{pos.volume}</td>
+                      <td style={{ fontSize: 12, color: L.textMid, fontFamily: 'monospace' }}>{pos.open_price}</td>
+                      <td style={{ fontSize: 12, color: L.textMid, fontFamily: 'monospace' }}>{pos.current_price}</td>
+                      <td style={{ fontSize: 12, fontWeight: 700, color: pos.pnl >= 0 ? L.green : L.red }}>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</td>
+                      <td style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{pos.sl || '—'}</td>
+                      <td style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{pos.tp || '—'}</td>
+                      <td style={{ textAlign: 'right', paddingRight: 10, borderRadius: '0 12px 12px 0' }}>
+                        <button
+                          onClick={() => setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol })}
+                          style={{ background: L.red + '15', color: L.red, border: 'none', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: 'none' }}
+                        >Close</button>
+                      </td>
+                    </tr>
+                  ))}
+                </tbody>
+              </table>
+            ) : (
+              <div style={{ textAlign: 'center', padding: '40px 0', color: L.textDim, fontSize: 13 }}>
+                {eaConnected ? 'No open positions' : 'Waiting for MT5 connection...'}
+              </div>
+            )}
             </div>
           </div>
-          {/* Bottom tabs */}
-          <div className="flex items-center h-8.5 bg-default-50 border-t border-default-200">
-            <button className="btn btn-icon rounded-full bg-transparent text-default-400 hover:text-default-700" style={{ width: 34, height: 34, borderRight: `1px solid ${L.border}`, borderRadius: 0 }}><LuPlus size={14} /></button>
-            {wl.slice(0, 6).map(w => (
-              <button key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className={`btn btn-sm rounded-full text-xs font-medium ${activeSymbol === w.symbol ? 'bg-card text-default-800 shadow-sm' : 'bg-transparent text-default-400 hover:text-default-700'}`} style={{ borderRadius: 0, borderRight: `1px solid ${L.border}`, height: '100%' }}>
-                {w.symbol}
-              </button>
-            ))}
+
+          {/* Market Watch Grid */}
+          <div style={{ background: 'transparent', padding: '0' }}>
+            <div style={{ fontSize: 14, fontWeight: 700, color: L.text, marginBottom: 16, paddingLeft: 4 }}>Market Watch</div>
+            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 }}>
+              {marketWatch.map(m => (
+                <div
+                  key={m.symbol}
+                  onClick={() => setActiveSymbol(m.symbol)}
+                  style={{
+                    background: activeSymbol === m.symbol ? (L.accent + '20') : L.panel,
+                    borderRadius: 16, padding: '14px 16px', cursor: 'pointer',
+                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
+                    transform: activeSymbol === m.symbol ? 'scale(1.02)' : 'scale(1)',
+                    boxShadow: activeSymbol === m.symbol ? `0 4px 12px ${L.accent}15` : 'none',
+                    border: 'none',
+                  }}
+                >
+                  <div style={{ fontSize: 13, fontWeight: 700, color: activeSymbol === m.symbol ? L.accent : L.text }}>{m.symbol}</div>
+                  <div style={{ fontSize: 18, fontWeight: 700, color: L.text, marginTop: 4, fontFamily: 'monospace' }}>{m.bid.toFixed(m.digits)}</div>
+                  <div style={{ fontSize: 11, color: L.textDim, marginTop: 2, fontWeight: 500 }}>Spread: {m.spread.toFixed(1)}</div>
+                </div>
+              ))}
+              {marketWatch.length === 0 && (
+                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px 0', color: L.textDim, fontSize: 12 }}>Waiting for market data...</div>
+              )}
+            </div>
           </div>
         </div>
       );
@@ -249,12 +322,39 @@ const TradingDashboard = () => {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: "'Inter', -apple-system, BlinkMacSystemFont, sans-serif", background: L.bg, color: L.text }}>
+    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: "'CamingoCode', monospace", background: L.bg, color: L.text, borderRadius: 20, overflow: 'hidden', border: 'none' }}>
 
       {/* ═══ TOP BAR ═══ */}
-      <div className="flex items-center justify-between px-4 border-b border-default-200" style={{ height: 48, background: L.panel }}>
-        {/* Left */}
+      <div data-tauri-drag-region className="flex items-center justify-between px-5" style={{ height: 52, background: L.topBar }}>
+        {/* Left: Traffic lights + Logo */}
         <div className="flex items-center gap-4">
+          {/* macOS Traffic Light Buttons */}
+          <div className="flex items-center" style={{ gap: 8 }}>
+            <button
+              onClick={async () => { const { getCurrentWindow } = await import('@tauri-apps/api/window'); getCurrentWindow().close(); }}
+              className="group rounded-full bg-[#ff5f57] hover:brightness-90 transition-all flex items-center justify-center"
+              style={{ width: 14, height: 14, padding: 0, border: 'none' }}
+              title="Close"
+            >
+              <span className="text-[9px] text-[#4d0000] opacity-0 group-hover:opacity-100 leading-none font-bold">✕</span>
+            </button>
+            <button
+              onClick={async () => { const { getCurrentWindow } = await import('@tauri-apps/api/window'); getCurrentWindow().minimize(); }}
+              className="group rounded-full bg-[#febc2e] hover:brightness-90 transition-all flex items-center justify-center"
+              style={{ width: 14, height: 14, padding: 0, border: 'none' }}
+              title="Minimize"
+            >
+              <span className="text-[10px] text-[#995700] opacity-0 group-hover:opacity-100 leading-none font-bold">−</span>
+            </button>
+            <button
+              onClick={async () => { const { getCurrentWindow } = await import('@tauri-apps/api/window'); getCurrentWindow().toggleMaximize(); }}
+              className="group rounded-full bg-[#28c840] hover:brightness-90 transition-all flex items-center justify-center"
+              style={{ width: 14, height: 14, padding: 0, border: 'none' }}
+              title="Maximize"
+            >
+              <span className="text-[8px] text-[#006500] opacity-0 group-hover:opacity-100 leading-none font-bold">⤢</span>
+            </button>
+          </div>
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => { navigate('/'); setActivePanel('chart'); }}>
             <div className="size-8 rounded-xl bg-default-900 flex items-center justify-center">
               <span className="text-[9px] font-black text-white tracking-tight">EA24</span>
@@ -267,9 +367,9 @@ const TradingDashboard = () => {
         </div>
 
         {/* Center ticker */}
-        <div className="flex items-center gap-3">
+        <div className="flex items-center gap-2">
           <span className="text-[13px] font-bold text-default-900">{activeSymbol}</span>
-          <span className="text-[13px] font-bold text-default-900">{bid > 0 ? bid.toFixed(digits) : '—'}</span>
+          <span className="text-[13px] text-default-300">—</span>
           <span className={`text-xs font-semibold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>
             {profit >= 0 ? '+' : ''}{profit.toFixed(2)} ({balance > 0 ? ((profit / balance) * 100).toFixed(2) : '0.00'}%)
           </span>
@@ -299,7 +399,7 @@ const TradingDashboard = () => {
 
         {/* ── RIGHT SIDEBAR (Cards) ── */}
         <style>{`.hide-sb::-webkit-scrollbar{display:none}`}</style>
-        <div className="hide-sb flex flex-col gap-2 p-2 overflow-auto bg-default-50 border-l border-default-200" style={{ width: 300, scrollbarWidth: 'none' }}>
+        <div className="hide-sb flex flex-col gap-2 p-2 overflow-auto" style={{ width: 300, scrollbarWidth: 'none', background: L.panel }}>
 
           {/* Watchlist Card */}
           <div className="card">
@@ -334,59 +434,6 @@ const TradingDashboard = () => {
             </div>
           </div>
 
-          {/* Categories Card */}
-          <div className="card">
-            <div className="card-body" style={{ padding: '8px 16px' }}>
-              {['Shares', 'Futures', 'Cryptocurrencies'].map(cat => (
-                <button key={cat} onClick={() => setExpandedCat(expandedCat === cat ? null : cat)} className="flex w-full items-center justify-between py-1.5 text-xs text-default-500 hover:text-default-800 transition-colors bg-transparent border-0">
-                  <span>{cat}</span>
-                  <LuChevronRight size={12} style={{ transform: expandedCat === cat ? 'rotate(90deg)' : 'none', transition: 'transform 0.15s' }} />
-                </button>
-              ))}
-            </div>
-          </div>
-
-          {/* Alerts / History / System Card */}
-          <div className="card" style={{ flex: 1, overflow: 'hidden', display: 'flex', flexDirection: 'column' }}>
-            <div className="card-header" style={{ minHeight: 'auto', padding: '8px 16px' }}>
-              <div className="flex bg-default-100 rounded-full p-0.5 w-full">
-                {(['alerts', 'history', 'system'] as const).map(t => (
-                  <button key={t} onClick={() => setRightTab(t)} className={`flex-1 rounded-full py-1.5 text-[10px] font-medium capitalize transition-all border-0 ${rightTab === t ? 'bg-card text-default-800 shadow-sm' : 'bg-transparent text-default-400'}`}>
-                    {t}
-                  </button>
-                ))}
-              </div>
-            </div>
-            <div className="card-body" style={{ padding: '8px 16px', flex: 1, overflow: 'auto', display: 'flex', flexDirection: 'column' }}>
-              <div className="flex items-center gap-1.5 mb-2">
-                <button className="btn btn-icon rounded-full bg-default-100 text-default-500 hover:bg-default-200" style={{ width: 24, height: 24 }}><LuPlus size={12} /></button>
-                <div className="relative flex-1">
-                  <LuSearch size={11} className="absolute left-1.5 top-1/2 -translate-y-1/2 text-default-300" />
-                  <input placeholder="Search..." className="form-input !h-6 !text-[10px] !pl-5 !rounded-full" />
-                </div>
-              </div>
-              <div style={{ flex: 1, overflow: 'auto' }}>
-                {positions.length > 0 ? positions.map(pos => (
-                  <div key={pos.ticket} className="card mb-1.5" style={{ boxShadow: 'none' }}>
-                    <div className="card-body" style={{ padding: 8 }}>
-                      <div className="flex justify-between items-center">
-                        <span className="text-xs font-semibold text-default-800">{pos.symbol} — {pos.type}</span>
-                        <span className={`text-[9px] font-bold px-1.5 py-0.5 rounded-full ${pos.pnl >= 0 ? 'bg-success/10 text-success' : 'bg-danger/10 text-danger'}`}>
-                          {pos.pnl >= 0 ? '+' : ''}${pos.pnl.toFixed(2)}
-                        </span>
-                      </div>
-                      <div className="flex justify-between mt-1 text-[9px] text-default-400">
-                        <span>{pos.volume} lot @ {pos.open_price}</span>
-                        <button onClick={() => setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol })} className="btn btn-sm rounded-full text-danger font-semibold bg-transparent border-0 text-[9px] p-0">Close</button>
-                      </div>
-                    </div>
-                  </div>
-                )) : (
-                  <div className="text-center py-6 text-xs text-default-300">{eaConnected ? 'No open positions' : 'Waiting for MT5...'}</div>
-                )}
-              </div>
-            </div>
-          </div>
 
           {/* Symbol Info Card */}
           <div className="card">
@@ -411,33 +458,44 @@ const TradingDashboard = () => {
         </div>
 
         {/* ═══ RIGHT NAV TOOLBAR ═══ */}
-        <div className="card" style={{ width: 72, borderRadius: 0, borderLeft: `1px solid ${L.border}`, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, gap: 8, overflowY: 'auto', boxShadow: 'none' }}>
+        <div style={{ width: 72, borderRadius: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, gap: 8, overflowY: 'auto', background: L.panel }}>
           {NAV.map(item => {
-            if ('divider' in item) return <div key={item.key} className="w-8 border-t border-default-200 my-1" />;
+            if ('divider' in item) return <div key={item.key} style={{ width: 32, height: 1, margin: '4px 0' }} />;
             const active = activePanel === item.key;
             return (
               <button
                 key={item.key}
                 onClick={() => setActivePanel(item.key)}
-                className={`btn btn-icon rounded-full transition-all duration-200 relative ${
-                  active
-                    ? 'bg-primary/10 text-primary shadow-md border border-primary/20'
-                    : 'bg-default-100 text-default-500 hover:bg-default-200 hover:text-default-800 shadow-sm border border-default-200/50 hover:shadow-md'
-                }`}
-                style={{ width: 44, height: 44 }}
+                style={{
+                  width: 44, height: 44, borderRadius: 14,
+                  background: active ? L.navBtnActiveBg : L.navBtnBg,
+                  color: active ? L.navBtnActiveText : L.navBtnText,
+                  border: 'none',
+                  display: 'flex', alignItems: 'center', justifyContent: 'center',
+                  cursor: 'pointer', transition: 'all 0.2s',
+                  boxShadow: active ? '0 2px 8px rgba(41,98,255,0.15)' : '0 1px 3px rgba(0,0,0,0.08)',
+                }}
                 title={item.label}
               >
                 {item.icon}
-                {item.badge && (
-                  <span className="absolute top-1.5 right-1.5 size-2 rounded-full bg-danger" />
-                )}
               </button>
             );
           })}
-          {/* Connection */}
-          <div className="mt-auto pb-3 flex flex-col items-center gap-1">
-            <div className={`size-2 rounded-full ${eaConnected ? 'bg-success' : 'bg-danger'}`} />
-            <span className="text-[7px] text-default-400">{eaConnected ? 'ON' : 'OFF'}</span>
+          {/* Theme Toggle */}
+          <div className="mt-auto flex flex-col items-center gap-2 pb-3">
+            <button
+              onClick={() => setDarkMode(!darkMode)}
+              className="btn btn-icon bg-default-100 text-default-500 hover:bg-default-200 hover:text-default-800 transition-all"
+              style={{ width: 36, height: 36, borderRadius: 12 }}
+              title={darkMode ? 'Light Mode' : 'Dark Mode'}
+            >
+              {darkMode ? <LuSun size={16} /> : <LuMoon size={16} />}
+            </button>
+            {/* Connection */}
+            <div className="flex flex-col items-center gap-1">
+              <div className={`size-2 rounded-full ${eaConnected ? 'bg-success' : 'bg-danger'}`} />
+              <span className="text-[7px] text-default-400">{eaConnected ? 'ON' : 'OFF'}</span>
+            </div>
           </div>
         </div>
       </div>

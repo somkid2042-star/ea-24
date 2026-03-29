@@ -3,6 +3,7 @@
 @layer base {
   html {
     @apply scroll-smooth relative;
+    background: transparent !important;
   }
 
   h1,
@@ -18,7 +19,8 @@
   body {
     overflow-x: hidden;
     -webkit-tap-highlight-color: transparent;
-    @apply size-full antialiased font-body font-normal text-sm leading-normal bg-body-bg text-body-color;
+    background: transparent !important;
+    @apply size-full antialiased font-body font-normal text-sm leading-normal text-body-color;
   }
 }
 

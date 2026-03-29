@@ -1,6 +1,14 @@
+@font-face {
+  font-family: 'CamingoCode';
+  src: url('../fonts/CamingoCode-Regular.ttf') format('truetype');
+  font-weight: normal;
+  font-style: normal;
+}
+
 @theme {
-  --font-body: 'DM Sans', serif;
-  --font-tourney: 'Tourney', sans-serif;
+  --font-sans: 'CamingoCode', sans-serif;
+  --font-body: 'CamingoCode', sans-serif;
+  --font-tourney: 'CamingoCode', sans-serif;
 
   --color-body-bg: var(--color-default-50);
   --color-body-color: var(--color-default-600);

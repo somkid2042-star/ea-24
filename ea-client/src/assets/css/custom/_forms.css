@@ -5,14 +5,14 @@ _forms.scss
 */
 
 .form-input {
-  @apply bg-card h-9.25 py-0 rounded outline-0 block w-full border border-default-200 transition-all text-default-800 placeholder:text-default-400;
-  @apply focus-visible:ring-default-300/30 focus-visible:border-default-300 focus-visible:outline-none focus-visible:ring-[3px];
+  @apply bg-default-100/50 dark:bg-default-900/40 h-10 py-0 rounded-xl outline-none block w-full border-none transition-all text-default-800 placeholder:text-default-400;
+  @apply focus-visible:ring-[3px] focus-visible:ring-primary/20 focus-visible:bg-default-100 dark:focus-visible:bg-default-900/60;
   @apply disabled:cursor-not-allowed disabled:opacity-70;
   @apply [&[readonly]]:bg-default-100/80 [&[readonly]]:cursor-not-allowed [&[readonly]]:text-default-600/80;
   @apply file:h-full [&[type=file]]:py-0;
-  @apply file:border-solid file:border-default-200 file:bg-transparent file:font-medium file:not-italic file:text-default-800 file:p-0 file:border-0 file:border-e;
-  @apply aria-invalid:border-danger/60 aria-invalid:ring-danger/10;
-  transition-property: color, box-shadow;
+  @apply file:bg-transparent file:font-medium file:not-italic file:text-default-800 file:px-4 file:border-0;
+  @apply aria-invalid:ring-danger/20;
+  transition-property: all;
 }
 
 .form-input-sm {
