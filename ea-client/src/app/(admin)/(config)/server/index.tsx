@@ -314,14 +314,14 @@ const ServerSettings = () => {
             <h5 className="text-base font-semibold text-default-900">Connection Info</h5>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="mb-2 text-xs font-medium uppercase text-default-400">WebSocket Server URL</p>
               <div className="flex items-center gap-2">
                 <input
                   type="text"
                   value={inputUrl}
                   onChange={(e) => setInputUrl(e.target.value)}
-                  className="form-input w-full rounded-md border border-default-200 px-3 py-1.5 text-sm text-default-900 focus:border-primary focus:ring-primary dark:border-default-700"
+                  className="form-input"
                   placeholder="ws://127.0.0.1:8080"
                 />
                 <button
@@ -337,7 +337,7 @@ const ServerSettings = () => {
                 {wsConnected ? 'Connected' : 'Disconnected'}
               </span>
             </div>
-            <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
               <p className="text-sm font-semibold text-default-800">{WS_HOST}:{config.tcp_port || '8081'}</p>
               <span className={`mt-1 inline-flex items-center gap-1 text-xs ${eaConnected ? 'text-green-600 dark:text-green-400' : 'text-default-400'}`}>
@@ -345,7 +345,7 @@ const ServerSettings = () => {
                 {eaConnected ? 'EA Connected' : 'Waiting for EA'}
               </span>
             </div>
-            <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">Server EA Version</p>
               <p className="text-sm font-semibold text-default-800">v{LATEST_EA_VERSION}</p>
               <span className="mt-1 inline-flex items-center gap-1 text-xs text-default-400">

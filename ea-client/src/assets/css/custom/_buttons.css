@@ -1,6 +1,8 @@
 @layer components {
   .btn {
-    @apply cursor-pointer inline-flex items-center gap-x-2 justify-center text-center rounded-xl border-none px-4 py-1.75 text-sm transition-all font-medium;
+    @apply cursor-pointer inline-flex items-center gap-x-2 justify-center text-center rounded-xl border-none px-4 py-1.75 text-sm transition-all duration-200 font-medium;
+    @apply focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/30 focus-visible:ring-offset-2 focus-visible:ring-offset-card;
+    @apply active:scale-[0.97];
 
     &.btn-lg {
       @apply px-5 py-3 text-base rounded-2xl;

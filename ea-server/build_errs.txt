@@ -1,0 +1,62 @@
+    Checking ea-server v0.5.3 (/home/chaihanid2042/Desktop/ea-24/ea-server)
+warning: unused import: `warn`
+ --> src/db.rs:1:24
+  |
+1 | use log::{error, info, warn};
+  |                        ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0277]: the trait bound `(i64, ..., ..., ..., f64, f64, ..., bool, ..., f64, bool, ..., f64, bool, f64, ..., ...): FromRow<'r, _>` is not satisfied
+   --> src/db.rs:275:47
+    |
+275 | ..._, (i64, String, String, String, f64, f64, String, bool, String, f64, bool, String, f64, bool, f64, String, DateTime<Utc>)>(q...
+    |       ^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^^...bound
+    |
+    = help: the trait `for<'r> FromRow<'r, _>` is not implemented for `(i64, ..., ..., ..., f64, f64, ..., bool, ..., f64, bool, ..., f64, bool, f64, ..., ...)`
+    = help: the following other types implement trait `FromRow<'r, R>`:
+              ()
+              (T1, T2)
+              (T1, T2, T3)
+              (T1, T2, T3, T4)
+              (T1, T2, T3, T4, T5)
+              (T1, T2, T3, T4, T5, T6)
+              (T1, T2, T3, T4, T5, T6, T7)
+              (T1, T2, T3, T4, T5, T6, T7, T8)
+            and 9 others
+note: required by a bound in `sqlx::query_as`
+   --> /home/chaihanid2042/.cargo/registry/src/index.crates.io-1949cf8c6b5b557f/sqlx-core-0.7.4/src/query_as.rs:345:8
+    |
+342 | pub fn query_as<'q, DB, O>(sql: &'q str) -...
+    |        -------- required by a bound in this function
+...
+345 |     O: for<'r> FromRow<'r, DB::Row>,
+    |        ^^^^^^^^^^^^^^^^^^^^^^^^^^^^ required by this bound in `query_as`
+    = note: the full name for the type has been written to '/home/chaihanid2042/Desktop/ea-24/ea-server/target/debug/deps/ea_server-b82baa8a7c2bef42.long-type-13909222081173096662.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0599]: the method `fetch_all` exists for struct `QueryAs<'_, _, ..., _>`, but its trait bounds were not satisfied
+   --> src/db.rs:276:14
+    |
+275 |           if let Ok(rows) = sqlx::query_as...
+    |  ___________________________-
+276 | |             .fetch_all(&self.pool).await 
+    | |             -^^^^^^^^^ method cannot be called on `QueryAs<'_, _, ..., _>` due to unsatisfied trait bounds
+    | |_____________|
+    |
+    |
+    = note: the following trait bounds were not satisfied:
+            `(i64, std::string::String, std::string::String, std::string::String, f64, f64, std::string::String, bool, std::string::String, f64, bool, std::string::String, f64, bool, f64, std::string::String, DateTime<Utc>): FromRow<'r, _>`
+    = note: the full name for the type has been written to '/home/chaihanid2042/Desktop/ea-24/ea-server/target/debug/deps/ea_server-b82baa8a7c2bef42.long-type-6115659428353484091.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+
+error[E0282]: type annotations needed
+   --> src/db.rs:278:34
+    |
+278 | ...ec<_> = rows.into_iter().map(|row| {
+    |            ^^^^ cannot infer type
+
+Some errors have detailed explanations: E0277, E0282, E0599.
+For more information about an error, try `rustc --explain E0277`.
+warning: `ea-server` (bin "ea-server") generated 1 warning
+error: could not compile `ea-server` (bin "ea-server") due to 3 previous errors; 1 warning emitted

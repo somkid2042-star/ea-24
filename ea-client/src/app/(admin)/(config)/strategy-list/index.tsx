@@ -45,7 +45,7 @@ const StrategyList = () => {
 
       <div className="grid gap-4">
         {strategies.map(s => (
-          <div key={s.id} className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5 transition hover:shadow-md">
+          <div key={s.id} className="card !p-5 transition hover:shadow-md">
             <div className="flex items-start justify-between">
               <div className="flex-1">
                 <div className="flex items-center gap-3">

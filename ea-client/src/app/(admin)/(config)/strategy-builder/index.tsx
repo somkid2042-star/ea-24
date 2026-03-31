@@ -29,7 +29,7 @@ const StrategyBuilder = () => {
       </div>
 
       {/* Basic Info */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+      <div className="card !p-5">
         <h5 className="mb-4 text-sm font-semibold text-default-900">Basic Information</h5>
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
@@ -50,7 +50,7 @@ const StrategyBuilder = () => {
       </div>
 
       {/* Indicators */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+      <div className="card !p-5">
         <h5 className="mb-4 text-sm font-semibold text-default-900">Indicators ({selectedIndicators.length} selected)</h5>
         <div className="flex flex-wrap gap-2">
           {indicatorOptions.map(ind => (
@@ -70,7 +70,7 @@ const StrategyBuilder = () => {
       </div>
 
       {/* Rules */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+      <div className="card !p-5">
         <div className="mb-4 flex items-center justify-between">
           <h5 className="text-sm font-semibold text-default-900">Rules ({rules.length})</h5>
           <button onClick={addRule} className="btn btn-sm bg-primary/10 text-primary hover:bg-primary hover:text-white">
@@ -106,7 +106,7 @@ const StrategyBuilder = () => {
       </div>
 
       {/* Risk Management */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+      <div className="card !p-5">
         <h5 className="mb-4 text-sm font-semibold text-default-900">Risk Management</h5>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>

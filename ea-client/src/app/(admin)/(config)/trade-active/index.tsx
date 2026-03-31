@@ -66,7 +66,7 @@ const ActiveTrades = () => {
         </div>
       </div>
 
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
             <thead className="border-b border-default-200 bg-default-50/50 text-xs uppercase text-default-400">

@@ -20,11 +20,11 @@ const SecuritySettings = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-default-700">API Key</label>
-              <input type="password" defaultValue="ea24-api-key-xxxx" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white" />
+              <input type="password" defaultValue="ea24-api-key-xxxx" className="form-input" />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-default-700">JWT Secret</label>
-              <input type="password" defaultValue="••••••••••••" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white" />
+              <input type="password" defaultValue="••••••••••••" className="form-input" />
             </div>
           </div>
           <button className="mt-4 btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
@@ -42,7 +42,7 @@ const SecuritySettings = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-default-700">License Key</label>
-              <input type="text" placeholder="Enter your license key" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm bg-transparent focus:border-primary focus:outline-none dark:border-default-200 dark:text-white" />
+              <input type="text" placeholder="Enter your license key" className="form-input" />
             </div>
             <div className="flex items-end">
               <button className="btn bg-success/10 text-success hover:bg-success hover:text-white">

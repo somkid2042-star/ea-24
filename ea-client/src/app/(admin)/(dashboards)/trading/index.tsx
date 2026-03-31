@@ -32,8 +32,6 @@ type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: str
 
 const WS_URL = getWsUrl();
 
-// (Mock data generation removed - using live Websocket ticks)
-
 /* ── Panel definitions ── */
 type PanelKey = 'chart' | 'mt5' | 'server' | 'database' | 'security' | 'strategies' | 'builder' | 'backtest' | 'trades' | 'setup' | 'history';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean } | { key: string; divider: true };
@@ -65,44 +63,31 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   history: TradeHistoryPage,
 };
 
-/* ── Theme Colors ── */
-const DARK = {
-  bg: '#1e2028', panel: '#262933', topBar: '#1e2028',
-  text: '#f1f5f9', textMid: '#cbd5e1', textDim: '#64748b',
-  green: '#10b981', red: '#ef4444', accent: '#3b82f6', orange: '#f59e0b',
-  chartBg: '#1e2028', gridLine: '#2d3342',
-  sellBg: '#ef4444', buyBg: '#10b981',
-  navBtnBg: '#262933', navBtnText: '#64748b', navBtnActiveBg: '#3b82f620', navBtnActiveText: '#3b82f6',
-};
-const LIGHT = {
-  bg: '#f8fafc', panel: '#ffffff', topBar: '#f8fafc',
-  text: '#0f172a', textMid: '#334155', textDim: '#94a3b8',
-  green: '#10b981', red: '#ef4444', accent: '#3b82f6', orange: '#f59e0b',
-  chartBg: '#ffffff', gridLine: '#f1f5f9',
-  sellBg: '#ef4444', buyBg: '#10b981',
-  navBtnBg: '#ffffff', navBtnText: '#94a3b8', navBtnActiveBg: '#3b82f615', navBtnActiveText: '#3b82f6',
-};
+/* ── Chart Colors (theme-aware) ── */
+const CHART_DARK = { textDim: '#64748b', gridLine: '#1e2230', accent: '#3b82f6' };
+const CHART_LIGHT = { textDim: '#94a3b8', gridLine: '#f1f5f9', accent: '#3b82f6' };
 
-const LiveChart = ({ symbol, bid, L, darkMode }: { symbol: string, bid: number, L: any, darkMode: boolean }) => {
+const LiveChart = ({ symbol, bid, darkMode }: { symbol: string, bid: number, darkMode: boolean }) => {
   const chartContainerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
   const lastTimeRef = useRef<number>(0);
+  const C = darkMode ? CHART_DARK : CHART_LIGHT;
 
   useEffect(() => {
     if (!chartContainerRef.current) return;
     const chart = createChart(chartContainerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: L.textDim },
-      grid: { vertLines: { color: L.gridLine }, horzLines: { color: L.gridLine } },
+      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: C.textDim },
+      grid: { vertLines: { color: C.gridLine }, horzLines: { color: C.gridLine } },
       rightPriceScale: { borderVisible: false },
       timeScale: { borderVisible: false, timeVisible: true, secondsVisible: true },
       crosshair: { mode: 1 },
     });
     
     const series = chart.addSeries(AreaSeries, {
-      lineColor: L.accent,
-      topColor: L.accent + '40',
-      bottomColor: L.accent + '00',
+      lineColor: C.accent,
+      topColor: C.accent + '40',
+      bottomColor: C.accent + '00',
       lineWidth: 2,
     });
     
@@ -115,13 +100,13 @@ const LiveChart = ({ symbol, bid, L, darkMode }: { symbol: string, bid: number, 
       }
     };
     window.addEventListener('resize', handleResize);
-    setTimeout(handleResize, 50); // initial resize
+    setTimeout(handleResize, 50);
     
     return () => {
       window.removeEventListener('resize', handleResize);
       chart.remove();
     };
-  }, [L, darkMode]);
+  }, [darkMode]);
 
   useEffect(() => {
     if (seriesRef.current) {
@@ -133,7 +118,6 @@ const LiveChart = ({ symbol, bid, L, darkMode }: { symbol: string, bid: number, 
   useEffect(() => {
     if (seriesRef.current && bid > 0) {
       let time = Math.floor(Date.now() / 1000);
-      // Ensure time is strictly increasing to prevent TV errors
       if (time <= lastTimeRef.current) {
          time = lastTimeRef.current + 1;
       }
@@ -156,8 +140,12 @@ const TradingDashboard = () => {
   const [alert, setAlert] = useState<AlertMsg | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
   const [darkMode, setDarkMode] = useState(true);
-  const L = darkMode ? DARK : LIGHT;
   const wsRef = useRef<WebSocket | null>(null);
+
+  /* ── Sync data-theme attribute with darkMode state ── */
+  useEffect(() => {
+    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
+  }, [darkMode]);
 
   /* ── WebSocket ── */
   const connectWs = useCallback(() => {
@@ -181,7 +169,6 @@ const TradingDashboard = () => {
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
-  // Trade buttons were removed from the top bar in previous step, so handleOpenTrade is unused here for now.
   const handleCloseTrade = () => { send({ action: 'close_trade', ticket: closeModal.ticket }); setCloseModal({ show: false, ticket: 0, symbol: '' }); };
 
   /* ── Computed ── */
@@ -201,103 +188,81 @@ const TradingDashboard = () => {
   const renderPanel = () => {
     if (activePanel === 'chart') {
       return (
-        <div style={{ flex: 1, display: 'flex', flexDirection: 'column', overflow: 'auto', padding: 16, gap: 16 }}>
+        <div className="flex-1 flex flex-col overflow-auto p-4 gap-4">
           {/* Account Overview */}
-          <div style={{ display: 'grid', gridTemplateColumns: 'repeat(4, 1fr)', gap: 12 }}>
+          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 w-full">
             {[
-              { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, color: L.text },
-              { label: 'Equity', value: `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, color: profit >= 0 ? L.green : L.red },
-              { label: 'Profit', value: `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`, color: profit >= 0 ? L.green : L.red },
-              { label: 'Margin', value: `$${(account?.margin ?? 0).toFixed(2)}`, color: L.textMid },
+              { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: 'text-default-900' },
+              { label: 'Equity', value: `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
+              { label: 'Profit', value: `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
+              { label: 'Margin', value: `$${(account?.margin ?? 0).toFixed(2)}`, colorClass: 'text-default-600' },
             ].map(item => (
-              <div key={item.label} style={{ background: L.panel, borderRadius: 20, padding: '16px 20px', display: 'flex', flexDirection: 'column', justifyContent: 'center' }}>
-                <div style={{ fontSize: 12, color: L.textDim, marginBottom: 4, fontWeight: 500 }}>{item.label}</div>
-                <div style={{ fontSize: 20, fontWeight: 700, color: item.color }}>{item.value}</div>
+              <div key={item.label} className="card !rounded-2xl !p-4 lg:!p-5">
+                <div className="text-[11px] text-default-400 dark:text-default-500 font-medium uppercase tracking-wider mb-1">{item.label}</div>
+                <div className={`text-xl font-bold ${item.colorClass}`}>{item.value}</div>
               </div>
             ))}
           </div>
 
           {/* Chart & Open Positions Split */}
-          <div style={{ flex: 1, display: 'flex', flexDirection: 'column', gap: 16, minHeight: 0 }}>
-            <div style={{ flex: 1, background: L.panel, borderRadius: 20, padding: '20px 24px', display: 'flex', flexDirection: 'column', minHeight: 250 }}>
-              <div style={{ fontSize: 14, fontWeight: 700, color: L.text, marginBottom: 16, display: 'flex', justifyContent: 'space-between' }}>
+          <div className="flex-1 flex flex-col gap-4 min-h-0">
+            <div className="card flex-1 !rounded-2xl !p-5 flex flex-col" style={{ minHeight: 250 }}>
+              <div className="text-sm font-bold text-default-900 mb-4 flex justify-between items-center">
                 <span>{activeSymbol} Live Data</span>
-                <span style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{eaConnected ? 'Live Connection' : 'Disconnected'}</span>
+                <span className={`text-[11px] font-medium flex items-center gap-1.5 ${eaConnected ? 'text-success' : 'text-danger'}`}>
+                  <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-success animate-pulse' : 'bg-danger'}`} />
+                  {eaConnected ? 'Live' : 'Offline'}
+                </span>
               </div>
-              <div style={{ flex: 1, position: 'relative' }}>
-                <div style={{ position: 'absolute', inset: 0 }}>
-                  <LiveChart symbol={activeSymbol} bid={bid} L={L} darkMode={darkMode} />
+              <div className="flex-1 relative">
+                <div className="absolute inset-0">
+                  <LiveChart symbol={activeSymbol} bid={bid} darkMode={darkMode} />
                 </div>
               </div>
             </div>
 
-            <div style={{ background: L.panel, borderRadius: 20, padding: '20px 24px', maxHeight: 220, overflow: 'auto', flexShrink: 0 }}>
-              <div style={{ fontSize: 13, fontWeight: 700, color: L.text, marginBottom: 16 }}>Open Positions ({positions.length})</div>
+            <div className="card !rounded-2xl !p-5 flex-shrink-0" style={{ maxHeight: 220, overflow: 'auto' }}>
+              <div className="text-[13px] font-bold text-default-900 mb-4">Open Positions ({positions.length})</div>
               {positions.length > 0 ? (
-                <table style={{ width: '100%', borderCollapse: 'collapse' }}>
-                <thead>
-                  <tr>
-                    {['Symbol', 'Type', 'Volume', 'Open Price', 'Current', 'P&L', 'SL', 'TP', ''].map(h => (
-                      <th key={h} style={{ fontSize: 11, color: L.textDim, fontWeight: 600, textAlign: h === '' ? 'right' : 'left', paddingBottom: 12 }}>{h}</th>
-                    ))}
-                  </tr>
-                </thead>
-                <tbody>
-                  {positions.map((pos, i) => (
-                    <tr key={pos.ticket} style={{ background: i % 2 === 0 ? 'transparent' : (darkMode ? '#ffffff05' : '#00000003'), borderRadius: 12 }}>
-                      <td style={{ fontSize: 13, fontWeight: 600, color: L.text, padding: '12px 10px', borderRadius: '12px 0 0 12px' }}>{pos.symbol}</td>
-                      <td style={{ fontSize: 12, color: pos.type === 'BUY' ? L.green : L.red, fontWeight: 600 }}>{pos.type}</td>
-                      <td style={{ fontSize: 12, color: L.textMid, fontWeight: 500 }}>{pos.volume}</td>
-                      <td style={{ fontSize: 12, color: L.textMid, fontFamily: 'monospace' }}>{pos.open_price}</td>
-                      <td style={{ fontSize: 12, color: L.textMid, fontFamily: 'monospace' }}>{pos.current_price}</td>
-                      <td style={{ fontSize: 12, fontWeight: 700, color: pos.pnl >= 0 ? L.green : L.red }}>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</td>
-                      <td style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{pos.sl || '—'}</td>
-                      <td style={{ fontSize: 11, color: L.textDim, fontWeight: 500 }}>{pos.tp || '—'}</td>
-                      <td style={{ textAlign: 'right', paddingRight: 10, borderRadius: '0 12px 12px 0' }}>
-                        <button
-                          onClick={() => setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol })}
-                          style={{ background: L.red + '15', color: L.red, border: 'none', borderRadius: 10, padding: '6px 12px', fontSize: 11, fontWeight: 700, cursor: 'pointer', transition: 'all 0.2s', boxShadow: 'none' }}
-                        >Close</button>
-                      </td>
+                <div className="w-full overflow-x-auto whitespace-nowrap">
+                  <table className="w-full" style={{ minWidth: 600 }}>
+                  <thead>
+                    <tr>
+                      {['Symbol', 'Type', 'Volume', 'Open Price', 'Current', 'P&L', 'SL', 'TP', ''].map(h => (
+                        <th key={h} className={`text-[11px] text-default-400 font-semibold pb-3 ${h === '' ? 'text-right' : 'text-left'}`}>{h}</th>
+                      ))}
                     </tr>
-                  ))}
-                </tbody>
-              </table>
+                  </thead>
+                  <tbody>
+                    {positions.map((pos, i) => (
+                      <tr key={pos.ticket} className={`${i % 2 === 0 ? '' : 'bg-default-50/50 dark:bg-default-200/5'} transition-colors`}>
+                        <td className="text-[13px] font-semibold text-default-900 py-3 px-1">{pos.symbol}</td>
+                        <td className={`text-xs font-semibold ${pos.type === 'BUY' ? 'text-success' : 'text-danger'}`}>{pos.type}</td>
+                        <td className="text-xs text-default-600">{pos.volume}</td>
+                        <td className="text-xs text-default-600 font-mono">{pos.open_price}</td>
+                        <td className="text-xs text-default-600 font-mono">{pos.current_price}</td>
+                        <td className={`text-xs font-bold ${pos.pnl >= 0 ? 'text-success' : 'text-danger'}`}>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</td>
+                        <td className="text-[11px] text-default-400">{pos.sl || '—'}</td>
+                        <td className="text-[11px] text-default-400">{pos.tp || '—'}</td>
+                        <td className="text-right pr-2">
+                          <button
+                            onClick={() => setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol })}
+                            className="btn btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white"
+                          >Close</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+                </div>
             ) : (
-              <div style={{ textAlign: 'center', padding: '40px 0', color: L.textDim, fontSize: 13 }}>
+              <div className="text-center py-8 text-default-400 text-[13px]">
                 {eaConnected ? 'No open positions' : 'Waiting for MT5 connection...'}
               </div>
             )}
             </div>
           </div>
 
-          {/* Market Watch Grid */}
-          <div style={{ background: 'transparent', padding: '0' }}>
-            <div style={{ fontSize: 14, fontWeight: 700, color: L.text, marginBottom: 16, paddingLeft: 4 }}>Market Watch</div>
-            <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fill, minmax(170px, 1fr))', gap: 12 }}>
-              {marketWatch.map(m => (
-                <div
-                  key={m.symbol}
-                  onClick={() => setActiveSymbol(m.symbol)}
-                  style={{
-                    background: activeSymbol === m.symbol ? (L.accent + '20') : L.panel,
-                    borderRadius: 16, padding: '14px 16px', cursor: 'pointer',
-                    transition: 'all 0.2s cubic-bezier(0.4, 0, 0.2, 1)',
-                    transform: activeSymbol === m.symbol ? 'scale(1.02)' : 'scale(1)',
-                    boxShadow: activeSymbol === m.symbol ? `0 4px 12px ${L.accent}15` : 'none',
-                    border: 'none',
-                  }}
-                >
-                  <div style={{ fontSize: 13, fontWeight: 700, color: activeSymbol === m.symbol ? L.accent : L.text }}>{m.symbol}</div>
-                  <div style={{ fontSize: 18, fontWeight: 700, color: L.text, marginTop: 4, fontFamily: 'monospace' }}>{m.bid.toFixed(m.digits)}</div>
-                  <div style={{ fontSize: 11, color: L.textDim, marginTop: 2, fontWeight: 500 }}>Spread: {m.spread.toFixed(1)}</div>
-                </div>
-              ))}
-              {marketWatch.length === 0 && (
-                <div style={{ gridColumn: '1 / -1', textAlign: 'center', padding: '20px 0', color: L.textDim, fontSize: 12 }}>Waiting for market data...</div>
-              )}
-            </div>
-          </div>
         </div>
       );
     }
@@ -306,7 +271,7 @@ const TradingDashboard = () => {
     const PanelComponent = PANEL_COMPONENTS[activePanel];
     if (!PanelComponent) return null;
     return (
-      <div style={{ flex: 1, overflow: 'auto', background: L.bg }}>
+      <div className="flex-1 overflow-auto bg-body-bg">
         <Suspense fallback={
           <div className="flex items-center justify-center h-full">
             <div className="text-center">
@@ -322,14 +287,13 @@ const TradingDashboard = () => {
   };
 
   return (
-    <div style={{ position: 'fixed', inset: 0, zIndex: 9999, display: 'flex', flexDirection: 'column', fontFamily: "'CamingoCode', monospace", background: L.bg, color: L.text, borderRadius: 20, overflow: 'hidden', border: 'none' }}>
+    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden border-none">
 
       {/* ═══ TOP BAR ═══ */}
-      <div data-tauri-drag-region className="flex items-center justify-between px-5" style={{ height: 52, background: L.topBar }}>
+      <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-card dark:bg-[#151821] border-b border-default-200/60 dark:border-default-300/10" style={{ height: 52 }}>
         {/* Left: Traffic lights + Logo */}
         <div className="flex items-center gap-4">
-          {/* macOS Traffic Light Buttons */}
-          <div className="flex items-center" style={{ gap: 8 }}>
+          <div className="hidden sm:flex items-center" style={{ gap: 8 }}>
             <button
               onClick={async () => { const { getCurrentWindow } = await import('@tauri-apps/api/window'); getCurrentWindow().close(); }}
               className="group rounded-full bg-[#ff5f57] hover:brightness-90 transition-all flex items-center justify-center"
@@ -356,10 +320,10 @@ const TradingDashboard = () => {
             </button>
           </div>
           <div className="flex items-center gap-2 cursor-pointer" onClick={() => { navigate('/'); setActivePanel('chart'); }}>
-            <div className="size-8 rounded-xl bg-default-900 flex items-center justify-center">
+            <div className="size-8 rounded-xl bg-default-900 dark:bg-primary flex items-center justify-center">
               <span className="text-[9px] font-black text-white tracking-tight">EA24</span>
             </div>
-            <div>
+            <div className="hidden sm:block">
               <div className="text-[13px] font-bold text-default-900">EA-24</div>
               <div className="text-[8px] text-default-400">algorithmic trading</div>
             </div>
@@ -367,7 +331,7 @@ const TradingDashboard = () => {
         </div>
 
         {/* Center ticker */}
-        <div className="flex items-center gap-2">
+        <div className="hidden sm:flex items-center gap-2">
           <span className="text-[13px] font-bold text-default-900">{activeSymbol}</span>
           <span className="text-[13px] text-default-300">—</span>
           <span className={`text-xs font-semibold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>
@@ -377,41 +341,43 @@ const TradingDashboard = () => {
 
         {/* Right balance */}
         <div className="flex items-center gap-5">
-          <div className="text-right">
+          <div className="text-right hidden sm:block">
             <div className="text-[10px] text-default-400">Balance</div>
             <div className="text-xs font-bold text-default-900">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
           </div>
-          <div className="text-right">
+          <div className="text-right hidden sm:block">
             <div className="text-[10px] text-default-400">Equity</div>
             <div className={`text-xs font-bold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
           </div>
-          <div className="size-8 rounded-full" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }} />
+          <div className="size-8 rounded-full shrink-0" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }} />
         </div>
       </div>
 
 
 
       {/* ═══ MAIN AREA ═══ */}
-      <div style={{ display: 'flex', flex: 1, overflow: 'hidden' }}>
+      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
 
         {/* ── CONTENT AREA (Chart or Page Panel) ── */}
-        {renderPanel()}
+        <div className="flex flex-col flex-1 overflow-auto h-full pb-16 lg:pb-0">
+          {renderPanel()}
+        </div>
 
         {/* ── RIGHT SIDEBAR (Cards) ── */}
         <style>{`.hide-sb::-webkit-scrollbar{display:none}`}</style>
-        <div className="hide-sb flex flex-col gap-2 p-2 overflow-auto" style={{ width: 300, scrollbarWidth: 'none', background: L.panel }}>
+        <div className="hide-sb flex flex-col gap-2 p-2 w-full lg:w-[300px] shrink-0 pb-20 lg:pb-2 overflow-auto" style={{ background: 'transparent' }}>
 
           {/* Watchlist Card */}
           <div className="card">
             <div className="card-header">
               <h6 className="card-title text-sm">Watchlist</h6>
               <div className="flex gap-1">
-                <button className="btn btn-icon rounded-full bg-default-100 text-default-500 hover:bg-default-200 hover:text-default-800" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
-                <button className="btn btn-icon rounded-full bg-default-100 text-default-500 hover:bg-default-200 hover:text-default-800" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
+                <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
+                <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
               </div>
             </div>
-            <div className="card-body" style={{ padding: '8px 16px' }}>
-              <table className="w-full">
+            <div className="card-body overflow-x-auto" style={{ padding: '8px 16px' }}>
+              <table className="w-full min-w-[200px]">
                 <thead>
                   <tr>
                     <th className="text-[10px] text-default-400 font-medium text-left pb-1.5">Symbol</th>
@@ -422,9 +388,9 @@ const TradingDashboard = () => {
                 </thead>
                 <tbody>
                   {wl.map(w => (
-                    <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 transition-colors">
-                      <td className={`text-xs py-1 font-semibold ${activeSymbol === w.symbol ? 'text-default-900' : 'text-default-600'}`}>{w.symbol}</td>
-                      <td className="text-xs py-1 text-right font-mono">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
+                    <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors">
+                      <td className={`text-xs py-1 font-semibold ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>{w.symbol}</td>
+                      <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
                       <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
                       <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
                     </tr>
@@ -439,7 +405,7 @@ const TradingDashboard = () => {
           <div className="card">
             <div className="card-body" style={{ padding: '12px 16px' }}>
               <div className="flex items-center gap-2 mb-2">
-                <div className="size-7 rounded-full flex items-center justify-center text-[8px] font-bold text-white" style={{ background: `linear-gradient(135deg, ${L.orange}, #ff6b00)` }}>Au</div>
+                <div className="size-7 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0 bg-gradient-to-br from-amber-500 to-orange-600">Au</div>
                 <div>
                   <div className="text-sm font-bold text-default-900">{activeSymbol}</div>
                   <div className="text-[9px] text-default-400">MetaTrader 5</div>
@@ -457,69 +423,66 @@ const TradingDashboard = () => {
           </div>
         </div>
 
-        {/* ═══ RIGHT NAV TOOLBAR ═══ */}
-        <div style={{ width: 72, borderRadius: 0, display: 'flex', flexDirection: 'column', alignItems: 'center', paddingTop: 12, gap: 8, overflowY: 'auto', background: L.panel }}>
+        {/* ═══ RIGHT NAV TOOLBAR (Bottom Bar on Mobile) ═══ */}
+        <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-2 lg:gap-3 overflow-x-auto lg:overflow-y-auto bg-card/80 dark:bg-[#151821]/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent border-t border-default-200/60 dark:border-default-300/10 lg:border-t-0 lg:backdrop-blur-none">
           {NAV.map(item => {
-            if ('divider' in item) return <div key={item.key} style={{ width: 32, height: 1, margin: '4px 0' }} />;
+            if ('divider' in item) return <div key={item.key} className="hidden lg:block w-8 h-px bg-default-200 dark:bg-default-300/10 my-1 shrink-0" />;
             const active = activePanel === item.key;
             return (
               <button
                 key={item.key}
                 onClick={() => setActivePanel(item.key)}
-                style={{
-                  width: 44, height: 44, borderRadius: 14,
-                  background: active ? L.navBtnActiveBg : L.navBtnBg,
-                  color: active ? L.navBtnActiveText : L.navBtnText,
-                  border: 'none',
-                  display: 'flex', alignItems: 'center', justifyContent: 'center',
-                  cursor: 'pointer', transition: 'all 0.2s',
-                  boxShadow: active ? '0 2px 8px rgba(41,98,255,0.15)' : '0 1px 3px rgba(0,0,0,0.08)',
-                }}
+                className={`shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
+                  active 
+                    ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
+                    : 'bg-card dark:bg-default-200/5 text-default-400 hover:text-default-700 dark:hover:text-default-600 hover:bg-default-100 dark:hover:bg-default-200/10'
+                }`}
+                style={{ width: 40, height: 40 }}
                 title={item.label}
               >
                 {item.icon}
               </button>
             );
           })}
-          {/* Theme Toggle */}
-          <div className="mt-auto flex flex-col items-center gap-2 pb-3">
+          {/* Theme Toggle & Connection */}
+          <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-4 lg:gap-2 px-4 lg:px-0">
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className="btn btn-icon bg-default-100 text-default-500 hover:bg-default-200 hover:text-default-800 transition-all"
+              className="btn btn-icon shrink-0 bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20 dark:hover:text-default-800 transition-all border-none"
               style={{ width: 36, height: 36, borderRadius: 12 }}
               title={darkMode ? 'Light Mode' : 'Dark Mode'}
             >
               {darkMode ? <LuSun size={16} /> : <LuMoon size={16} />}
             </button>
             {/* Connection */}
-            <div className="flex flex-col items-center gap-1">
+            <div className="flex flex-col items-center gap-1 shrink-0">
               <div className={`size-2 rounded-full ${eaConnected ? 'bg-success' : 'bg-danger'}`} />
-              <span className="text-[7px] text-default-400">{eaConnected ? 'ON' : 'OFF'}</span>
+              <span className="text-[7px] text-default-400 hidden lg:block">{eaConnected ? 'ON' : 'OFF'}</span>
             </div>
           </div>
         </div>
       </div>
 
-      {/* ═══ TOAST ═══ */}
+      {/* ═══ TOAST & ALERTS ═══ */}
       {toast && (
-        <div className={`fixed top-4 right-20 z-[999999] min-w-70 rounded-xl p-3 text-white text-xs shadow-lg ${toast.success ? 'bg-success' : 'bg-danger'}`}>
+        <div className={`fixed top-4 right-4 lg:right-20 z-[999999] min-w-[280px] rounded-xl p-3 text-white text-xs shadow-lg ${toast.success ? 'bg-success' : 'bg-danger'}`}>
           <div className="font-bold">{toast.action === 'open' ? (toast.success ? 'Trade Opened!' : 'Open Failed') : (toast.success ? 'Trade Closed!' : 'Close Failed')}</div>
           <div className="text-[10px] opacity-80 mt-0.5">{toast.symbol} {toast.direction} {toast.lot && `${toast.lot} lot`}{toast.error && ` — ${toast.error}`}</div>
-          <button onClick={() => setToast(null)} className="btn btn-icon rounded-full absolute top-1 right-2 bg-transparent text-white border-0 p-0"><LuX size={14} /></button>
+          <button onClick={() => setToast(null)} className="btn btn-icon rounded-full absolute top-1 right-2 bg-transparent text-white border-0 p-0 hover:bg-white/20"><LuX size={14} /></button>
         </div>
       )}
       {alert && (
-        <div className="fixed top-16 right-20 z-[999999] min-w-70 rounded-xl p-3 text-white text-xs shadow-lg bg-warning">
+        <div className="fixed top-16 right-4 lg:right-20 z-[999999] min-w-[280px] rounded-xl p-3 text-white text-xs shadow-lg bg-warning">
           <div className="font-bold">{alert.title}</div>
           <div className="text-[10px] opacity-80 mt-0.5">{alert.message}</div>
-          <button onClick={() => setAlert(null)} className="btn btn-icon rounded-full absolute top-1 right-2 bg-transparent text-white border-0 p-0"><LuX size={14} /></button>
+          <button onClick={() => setAlert(null)} className="btn btn-icon rounded-full absolute top-1 right-2 bg-transparent text-white border-0 p-0 hover:bg-white/20"><LuX size={14} /></button>
         </div>
       )}
 
       {/* ═══ CLOSE MODAL ═══ */}
       {closeModal.show && (
-        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/30" onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })}>
-          <div className="card" style={{ width: 360, borderRadius: 16, padding: 24 }} onClick={e => e.stopPropagation()}>
+        <div className="fixed inset-0 z-[99999] flex items-center justify-center bg-black/30 backdrop-blur-sm" onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })}>
+          <div className="card m-4 !p-6" style={{ width: '100%', maxWidth: 360 }} onClick={e => e.stopPropagation()}>
             <div className="text-center mb-4">
               <div className="size-12 rounded-full bg-danger/10 flex items-center justify-center mx-auto">
                 <LuChevronDown size={24} className="text-danger" />
@@ -528,8 +491,8 @@ const TradingDashboard = () => {
             <h3 className="text-center text-base font-bold text-default-900 mb-2">Close Position?</h3>
             <p className="text-center text-sm text-default-400 mb-6">Close <span className="text-primary font-semibold">{closeModal.symbol}</span> #{closeModal.ticket} at market?</p>
             <div className="flex gap-3">
-              <button onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })} className="btn rounded-full flex-1 bg-default-100 text-default-800 hover:bg-default-200 py-2.5 text-sm font-medium">Cancel</button>
-              <button onClick={handleCloseTrade} className="btn rounded-full flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 text-sm font-medium">Close Trade</button>
+              <button onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })} className="btn rounded-full flex-1 bg-default-100 dark:bg-default-200/10 text-default-800 dark:text-default-700 hover:bg-default-200 dark:hover:bg-default-300/20 py-2.5 text-sm font-medium border-none">Cancel</button>
+              <button onClick={handleCloseTrade} className="btn rounded-full flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 text-sm font-medium border-none">Close Trade</button>
             </div>
           </div>
         </div>

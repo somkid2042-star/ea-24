@@ -208,7 +208,7 @@ const DatabaseSettings = () => {
                 type="text"
                 value={config.db_path || ''}
                 onChange={e => setConfig(prev => ({ ...prev, db_path: e.target.value }))}
-                className="form-input w-full rounded-md border border-default-200 px-3 py-2.5 text-sm text-default-900 focus:border-primary focus:ring-primary"
+                className="form-input"
               />
             </div>
             <div>
@@ -267,7 +267,7 @@ const DatabaseSettings = () => {
             <h5 className="text-base font-semibold text-default-900">Server Ports</h5>
           </div>
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-lg border border-default-100 bg-default-50 p-4 dark:bg-default-100/50">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="mb-1 text-xs font-medium uppercase text-default-400">WebSocket Port</p>
               <p className="text-sm font-semibold text-default-800">{config.ws_port || '8080'}</p>
               <span className="mt-1 text-[10px] text-default-400">Dashboard communication</span>

@@ -89,7 +89,7 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
     send_status(&format!("New version found! Downloading v{}...", latest_version));
     info!("🔥 New version found! Downloading v{}...", latest_version);
 
-    let exe_asset = release.assets.iter().find(|a| a.name == "ea-server.exe");
+    let exe_asset = release.assets.iter().find(|a| a.name == "ea-server");
     if let Some(asset) = exe_asset {
         let download_url = &asset.browser_download_url;
         match download_and_install(download_url, client, github_token.as_deref()).await {
@@ -101,12 +101,6 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
                 let current_exe = std::env::current_exe().unwrap_or_else(|_| PathBuf::from("ea-server.exe"));
                 let mut cmd = std::process::Command::new(&current_exe);
                 
-                #[cfg(target_os = "windows")]
-                {
-                    use std::os::windows::process::CommandExt;
-                    cmd.creation_flags(0x08000000);
-                }
-                
                 let _ = cmd.spawn();
                 std::process::exit(0);
             }
@@ -116,8 +110,8 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
             }
         }
     } else {
-        error!("❌ Could not find ea-server.exe in the latest GitHub release assets.");
-        send_status("Release asset 'ea-server.exe' not found.");
+        error!("❌ Could not find ea-server in the latest GitHub release assets.");
+        send_status("Release asset 'ea-server' not found.");
     }
 }
 
@@ -132,14 +126,20 @@ async fn download_and_install(url: &str, client: reqwest::Client, token: Option<
     let bytes = res.bytes().await.map_err(|e| e.to_string())?;
 
     let current_exe = std::env::current_exe().map_err(|e| e.to_string())?;
-    let old_exe = current_exe.with_file_name("ea-server-old.exe");
-    let new_exe = current_exe.with_file_name("ea-server-new.exe");
+    let old_exe = current_exe.with_file_name("ea-server-old");
+    let new_exe = current_exe.with_file_name("ea-server-new");
 
     // Clean up any previous old.exe silently
     let _ = fs::remove_file(&old_exe);
 
     // Write downloaded bytes to new_exe
     std::fs::write(&new_exe, bytes).map_err(|e| format!("Failed to write new exe: {}", e))?;
+
+    // Make it executable
+    use std::os::unix::fs::PermissionsExt;
+    let mut perms = std::fs::metadata(&new_exe).map_err(|e| format!("Failed to read metadata: {}", e))?.permissions();
+    perms.set_mode(0o755);
+    std::fs::set_permissions(&new_exe, perms).map_err(|e| format!("Failed to set executable permission: {}", e))?;
 
     // Rename current to old (which works even when running on Windows)
     std::fs::rename(&current_exe, &old_exe).map_err(|e| format!("Failed to rename current exe: {}", e))?;

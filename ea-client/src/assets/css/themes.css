@@ -11,34 +11,34 @@
   --font-tourney: 'CamingoCode', sans-serif;
 
   --color-body-bg: var(--color-default-50);
-  --color-body-color: var(--color-default-600);
+  --color-body-color: var(--color-default-700);
 
   --color-card: var(--color-white);
 
-  --color-primary: var(--color-blue-500);
-  --color-secondary: var(--color-violet-500);
-  --color-success: var(--color-green-500);
-  --color-info: var(--color-sky-500);
-  --color-warning: var(--color-amber-500);
-  --color-danger: var(--color-orange-500);
+  --color-primary: #3b82f6;
+  --color-secondary: #8b5cf6;
+  --color-success: #22c55e;
+  --color-info: #06b6d4;
+  --color-warning: #f59e0b;
+  --color-danger: #ef4444;
 
-  --color-default-50: var(--color-zinc-50);
-  --color-default-100: var(--color-zinc-100);
-  --color-default-150: var(--color-zinc-100);
-  --color-default-200: var(--color-zinc-200);
-  --color-default-300: var(--color-zinc-300);
-  --color-default-400: var(--color-zinc-400);
-  --color-default-500: var(--color-zinc-500);
-  --color-default-600: var(--color-zinc-600);
-  --color-default-700: var(--color-zinc-700);
-  --color-default-800: var(--color-zinc-800);
-  --color-default-900: var(--color-zinc-900);
-  --color-default-950: var(--color-zinc-950);
+  --color-default-50: #f8fafc;
+  --color-default-100: #f1f5f9;
+  --color-default-150: #e8edf4;
+  --color-default-200: #e2e8f0;
+  --color-default-300: #cbd5e1;
+  --color-default-400: #94a3b8;
+  --color-default-500: #64748b;
+  --color-default-600: #475569;
+  --color-default-700: #334155;
+  --color-default-800: #1e293b;
+  --color-default-900: #0f172a;
+  --color-default-950: #020617;
 
-  --text-base--line-height: 1.1;
-  --text-xl--line-height: 1.1;
-  --text-2xl--line-height: 1.1;
-  --text-3xl--line-height: 1.1;
+  --text-base--line-height: 1.5;
+  --text-xl--line-height: 1.3;
+  --text-2xl--line-height: 1.2;
+  --text-3xl--line-height: 1.15;
   --text-4xl--line-height: 1.1;
   --text-5xl--line-height: 1.1;
 
@@ -65,32 +65,32 @@
 [data-theme='dark'] {
   color-scheme: dark;
 
-  --color-body-bg: var(--color-zinc-950);
-  --color-body-color: var(--color-zinc-400);
+  --color-body-bg: #0c0e14;
+  --color-body-color: #a1adc0;
 
-  --color-card: var(--color-zinc-900);
+  --color-card: #151821;
 
-  --color-default-50: var(--color-zinc-950);
-  --color-default-100: var(--color-zinc-900);
-  --color-default-150: var(--color-zinc-800);
-  --color-default-200: var(--color-zinc-800);
-  --color-default-300: var(--color-zinc-700);
-  --color-default-400: var(--color-zinc-600);
-  --color-default-500: var(--color-zinc-500);
-  --color-default-600: var(--color-zinc-400);
-  --color-default-700: var(--color-zinc-300);
-  --color-default-800: var(--color-zinc-200);
-  --color-default-900: var(--color-zinc-100);
-  --color-default-950: var(--color-zinc-50);
+  --color-default-50: #0c0e14;
+  --color-default-100: #151821;
+  --color-default-150: #1a1e2a;
+  --color-default-200: #1e2230;
+  --color-default-300: #2a3040;
+  --color-default-400: #475569;
+  --color-default-500: #64748b;
+  --color-default-600: #94a3b8;
+  --color-default-700: #cbd5e1;
+  --color-default-800: #e2e8f0;
+  --color-default-900: #f1f5f9;
+  --color-default-950: #f8fafc;
 
-  --topbar-background: var(--color-default-100);
+  --topbar-background: #151821;
 }
 
 /* Light Menu */
 html[data-theme='light'],
 html[data-sidenav-color='light'] {
   --sidenav-background: var(--color-white);
-  --sidenav-item-color: var(--color-zinc-600);
+  --sidenav-item-color: var(--color-default-600);
   --sidenav-item-active-color: theme(backgroundColor.primary);
   --sidenav-item-active-bg: theme(backgroundColor.primary/10%);
   --sidenav-item-hover-color: theme(backgroundColor.primary);
@@ -100,10 +100,10 @@ html[data-sidenav-color='light'] {
 /* Dark Menu (Dark Mode) */
 html[data-sidenav-color='dark'],
 html[data-theme='dark'][data-sidenav-color='light'] {
-  --sidenav-background: var(--color-zinc-900);
-  --sidenav-item-color: var(--color-zinc-400);
-  --sidenav-item-active-color: var(--color-zinc-50);
-  --sidenav-item-active-bg: var(--color-zinc-800);
-  --sidenav-item-hover-color: var(--color-zinc-300);
-  --sidenav-item-hover-bg: var(--color-zinc-800);
+  --sidenav-background: #151821;
+  --sidenav-item-color: #94a3b8;
+  --sidenav-item-active-color: #f1f5f9;
+  --sidenav-item-active-bg: #1e2230;
+  --sidenav-item-hover-color: #cbd5e1;
+  --sidenav-item-hover-bg: #1e2230;
 }

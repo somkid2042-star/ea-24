@@ -94,6 +94,44 @@ int OnInit()
    Print("Server: ", ServerIP, ":", ServerPort);
    Print("====================================");
    
+   // --- Close duplicate charts with the same symbol ---
+   long thisChart = ChartID();
+   string thisSymbol = ChartSymbol(thisChart);
+   long chart = ChartFirst();
+   while(chart >= 0)
+     {
+      long nextChart = ChartNext(chart);
+      if(chart != thisChart && ChartSymbol(chart) == thisSymbol)
+        {
+         Print("Closing duplicate chart: ", chart, " (", ChartSymbol(chart), ")");
+         ChartClose(chart);
+        }
+      chart = nextChart;
+     }
+   
+   // --- Set chart background to black with clean look ---
+   ChartSetInteger(0, CHART_COLOR_BACKGROUND, clrBlack);
+   ChartSetInteger(0, CHART_COLOR_FOREGROUND, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_GRID, 0x1A1A1A);
+   ChartSetInteger(0, CHART_COLOR_CHART_UP, clrLime);
+   ChartSetInteger(0, CHART_COLOR_CHART_DOWN, clrRed);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BULL, clrLime);
+   ChartSetInteger(0, CHART_COLOR_CANDLE_BEAR, clrRed);
+   ChartSetInteger(0, CHART_COLOR_CHART_LINE, clrWhite);
+   ChartSetInteger(0, CHART_COLOR_BID, clrDodgerBlue);
+   ChartSetInteger(0, CHART_COLOR_ASK, clrOrangeRed);
+   ChartSetInteger(0, CHART_COLOR_LAST, clrYellow);
+   ChartSetInteger(0, CHART_COLOR_STOP_LEVEL, clrRed);
+   ChartSetInteger(0, CHART_SHOW_GRID, false);
+   ChartRedraw(0);
+   
+   // --- Display EA version large on chart ---
+   string versionText = "\n\n\n\n\n"
+                       + "        EA Trading Client\n"
+                       + "        v" + EA_VERSION + "\n"
+                       + "        " + thisSymbol + "\n";
+   Comment(versionText);
+   
    TryConnect();
    EventSetMillisecondTimer(500);
 

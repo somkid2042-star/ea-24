@@ -1,80 +1,87 @@
-use log::{info, error, warn};
-use rusqlite::{Connection, params};
-use std::path::PathBuf;
-use std::sync::Mutex;
+use log::{error, info};
+use sqlx::{postgres::PgPoolOptions, PgPool};
+use tokio::sync::mpsc;
+use chrono::{DateTime, Utc};
 
-/// Thread-safe database wrapper
+/// Thread-safe Async database wrapper
+#[derive(Clone)]
 pub struct Database {
-    conn: Mutex<Connection>,
-    path: PathBuf,
+    pool: PgPool,
+    tick_tx: mpsc::Sender<TickRecord>,
 }
 
-#[allow(dead_code)]
-impl Database {
-    /// Initialize database — creates file + tables if they don't exist
-    pub fn init(db_path: &str) -> Result<Self, String> {
-        let path = PathBuf::from(db_path);
-        let is_memory = db_path == ":memory:";
+#[derive(Debug)]
+struct TickRecord {
+    symbol: String,
+    bid: f64,
+    ask: f64,
+    spread: f64,
+    timestamp: DateTime<Utc>,
+}
 
-        // Create parent directory if needed (skip for in-memory)
-        if !is_memory {
-            if let Some(parent) = path.parent() {
-                if !parent.as_os_str().is_empty() && !parent.exists() {
-                    std::fs::create_dir_all(parent)
-                        .map_err(|e| format!("Failed to create DB directory: {}", e))?;
+impl Database {
+    /// Initialize DB, run migrations, and start background tick batcher
+    pub async fn init(db_url: &str) -> Result<Self, String> {
+        info!("Connecting to PostgreSQL at {}...", db_url);
+        let pool = PgPoolOptions::new()
+            .max_connections(20)
+            .connect(db_url)
+            .await
+            .map_err(|e| format!("Failed to connect to database: {}", e))?;
+
+        Self::create_tables(&pool).await?;
+        Self::insert_defaults(&pool).await?;
+
+        // Channel for batching high-frequency ticks
+        let (tick_tx, mut tick_rx) = mpsc::channel::<TickRecord>(100_000);
+        let batch_pool = pool.clone();
+        
+        tokio::spawn(async move {
+            let mut batch = Vec::with_capacity(500);
+            let mut timer = tokio::time::interval(std::time::Duration::from_secs(1));
+            
+            loop {
+                tokio::select! {
+                    Some(tick) = tick_rx.recv() => {
+                        batch.push(tick);
+                        if batch.len() >= 500 {
+                            Self::flush_ticks(&batch_pool, &mut batch).await;
+                        }
+                    }
+                    _ = timer.tick() => {
+                        if !batch.is_empty() {
+                            Self::flush_ticks(&batch_pool, &mut batch).await;
+                        }
+                    }
                 }
             }
-        }
+        });
 
-        let conn = Connection::open(&path)
-            .map_err(|e| format!("Failed to open database: {}", e))?;
+        info!("✅ Database connected and Tick Batcher running");
+        Ok(Database { pool, tick_tx })
+    }
 
-        // Encrypt the database using AES-256 (skip for in-memory)
-        if !is_memory {
-            conn.execute("PRAGMA key = 'ea24-secure-db-key-x8s9!';", [])
-                .map_err(|e| format!("Failed to encrypt database: {}", e))?;
-        }
-
-        // Enable WAL mode for better concurrent performance (skip for in-memory)
-        if !is_memory {
-            conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA synchronous=NORMAL;")
-                .map_err(|e| format!("Failed to set PRAGMA: {}", e))?;
-        }
-
-        // Hide the DB file on Windows
-        #[cfg(target_os = "windows")]
-        {
-            if db_path != ":memory:" {
-                let mut cmd = std::process::Command::new("attrib");
-                cmd.args(&["+h", db_path]);
-                use std::os::windows::process::CommandExt;
-                cmd.creation_flags(0x08000000);
-                let _ = cmd.output();
-            }
-        }
-
-        // Create tables
-        conn.execute_batch(
-            "
+    async fn create_tables(pool: &PgPool) -> Result<(), String> {
+        let schema = "
             CREATE TABLE IF NOT EXISTS tick_log (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                id          BIGSERIAL PRIMARY KEY,
                 symbol      TEXT NOT NULL,
-                bid         REAL NOT NULL,
-                ask         REAL NOT NULL,
-                spread      REAL NOT NULL DEFAULT 0,
-                timestamp   TEXT NOT NULL DEFAULT (datetime('now'))
+                bid         DOUBLE PRECISION NOT NULL,
+                ask         DOUBLE PRECISION NOT NULL,
+                spread      DOUBLE PRECISION NOT NULL DEFAULT 0,
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS trade_log (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
+                id          BIGSERIAL PRIMARY KEY,
                 action      TEXT NOT NULL,
                 symbol      TEXT,
                 direction   TEXT,
-                lot         REAL,
-                price       REAL,
-                pnl         REAL,
+                lot         DOUBLE PRECISION,
+                price       DOUBLE PRECISION,
+                pnl         DOUBLE PRECISION,
                 source      TEXT DEFAULT 'ea',
-                timestamp   TEXT NOT NULL DEFAULT (datetime('now'))
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS server_config (
@@ -83,205 +90,184 @@ impl Database {
             );
 
             CREATE TABLE IF NOT EXISTS trade_setups (
-                id                      INTEGER PRIMARY KEY AUTOINCREMENT,
+                id                      BIGSERIAL PRIMARY KEY,
                 symbol                  TEXT NOT NULL,
                 strategy                TEXT NOT NULL,
                 timeframe               TEXT NOT NULL DEFAULT 'M5',
-                lot_size                REAL NOT NULL DEFAULT 0.01,
-                risk_percent            REAL NOT NULL DEFAULT 2.0,
+                lot_size                DOUBLE PRECISION NOT NULL DEFAULT 0.01,
+                risk_percent            DOUBLE PRECISION NOT NULL DEFAULT 2.0,
                 mt5_instance            TEXT NOT NULL DEFAULT '',
-                tp_enabled              INTEGER NOT NULL DEFAULT 0,
+                tp_enabled              BOOLEAN NOT NULL DEFAULT false,
                 tp_mode                 TEXT NOT NULL DEFAULT 'pips',
-                tp_value                REAL NOT NULL DEFAULT 50.0,
-                sl_enabled              INTEGER NOT NULL DEFAULT 0,
+                tp_value                DOUBLE PRECISION NOT NULL DEFAULT 50.0,
+                sl_enabled              BOOLEAN NOT NULL DEFAULT false,
                 sl_mode                 TEXT NOT NULL DEFAULT 'pips',
-                sl_value                REAL NOT NULL DEFAULT 30.0,
-                trailing_stop_enabled   INTEGER NOT NULL DEFAULT 0,
-                trailing_stop_points    REAL NOT NULL DEFAULT 50.0,
+                sl_value                DOUBLE PRECISION NOT NULL DEFAULT 30.0,
+                trailing_stop_enabled   BOOLEAN NOT NULL DEFAULT false,
+                trailing_stop_points    DOUBLE PRECISION NOT NULL DEFAULT 50.0,
                 status                  TEXT NOT NULL DEFAULT 'paused',
-                created_at              TEXT NOT NULL DEFAULT (datetime('now'))
+                created_at              TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
             CREATE TABLE IF NOT EXISTS trade_history (
-                id          INTEGER PRIMARY KEY AUTOINCREMENT,
-                ticket      INTEGER UNIQUE NOT NULL,
-                order_id    INTEGER,
-                pos_id      INTEGER,
+                id          BIGSERIAL PRIMARY KEY,
+                ticket      BIGINT UNIQUE NOT NULL,
+                order_id    BIGINT,
+                pos_id      BIGINT,
                 symbol      TEXT NOT NULL,
                 type        TEXT NOT NULL,
-                volume      REAL NOT NULL,
-                price       REAL NOT NULL,
-                profit      REAL NOT NULL,
-                swap        REAL NOT NULL DEFAULT 0,
-                commission  REAL NOT NULL DEFAULT 0,
-                magic       INTEGER NOT NULL DEFAULT 0,
+                volume      DOUBLE PRECISION NOT NULL,
+                price       DOUBLE PRECISION NOT NULL,
+                profit      DOUBLE PRECISION NOT NULL,
+                swap        DOUBLE PRECISION NOT NULL DEFAULT 0,
+                commission  DOUBLE PRECISION NOT NULL DEFAULT 0,
+                magic       BIGINT NOT NULL DEFAULT 0,
                 time        TEXT NOT NULL,
                 comment     TEXT
             );
 
             CREATE INDEX IF NOT EXISTS idx_tick_symbol ON tick_log(symbol);
-            CREATE INDEX IF NOT EXISTS idx_tick_time   ON tick_log(timestamp);
-            CREATE INDEX IF NOT EXISTS idx_trade_time  ON trade_log(timestamp);
+            CREATE INDEX IF NOT EXISTS idx_tick_time ON tick_log(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_trade_time ON trade_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_history_time ON trade_history(time);
-            "
-        ).map_err(|e| format!("Failed to create tables: {}", e))?;
+        ";
+        for q in schema.split(';') {
+            let query_trimmed = q.trim();
+            if !query_trimmed.is_empty() {
+                sqlx::query(query_trimmed)
+                    .execute(pool)
+                    .await
+                    .map_err(|e| format!("Tables err: {}", e))?;
+            }
+        }
+        Ok(())
+    }
 
-        // Insert default config if not exists
+    async fn insert_defaults(pool: &PgPool) -> Result<(), String> {
         let defaults = vec![
-            ("db_path", db_path),
             ("ws_port", "8080"),
             ("tcp_port", "8081"),
             ("http_port", "4173"),
             ("backup_interval_hours", "24"),
             ("tick_retention_days", "30"),
         ];
-        for (key, value) in defaults {
-            conn.execute(
-                "INSERT OR IGNORE INTO server_config (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            ).ok();
-        }
-
-        info!("✅ Database initialized: {:?}", path);
-        Ok(Database {
-            conn: Mutex::new(conn),
-            path,
-        })
-    }
-
-    /// Log a tick from MT5
-    pub fn log_tick(&self, symbol: &str, bid: f64, ask: f64, spread: f64) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute(
-                "INSERT INTO tick_log (symbol, bid, ask, spread) VALUES (?1, ?2, ?3, ?4)",
-                params![symbol, bid, ask, spread],
-            ) {
-                error!("❌ DB log_tick error: {}", e);
-            }
-        }
-    }
-
-    /// Get historical 1-minute (M1) candles aggregated from tick data
-    pub fn get_historical_candles(&self, symbol: &str, limit: i64) -> serde_json::Value {
-        let mut candles = Vec::new();
-        if let Ok(conn) = self.conn.lock() {
-            // Group ticks by minute (YYYY-MM-DD HH:MM:00)
-            let query = "
-                SELECT 
-                    strftime('%s', timestamp) / 60 * 60 as time,
-                    -- Open: First tick in the minute
-                    (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND strftime('%s', t2.timestamp) / 60 * 60 = strftime('%s', t1.timestamp) / 60 * 60 ORDER BY id ASC LIMIT 1) as open,
-                    MAX(bid) as high,
-                    MIN(bid) as low,
-                    -- Close: Last tick in the minute
-                    (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND strftime('%s', t2.timestamp) / 60 * 60 = strftime('%s', t1.timestamp) / 60 * 60 ORDER BY id DESC LIMIT 1) as close
-                FROM tick_log t1
-                WHERE symbol = ?1
-                GROUP BY time
-                ORDER BY time DESC
-                LIMIT ?2
-            ";
-
-            if let Ok(mut stmt) = conn.prepare(query) {
-                if let Ok(rows) = stmt.query_map(params![symbol, limit], |row| {
-                    Ok(serde_json::json!({
-                        "time": row.get::<_, i64>(0)?,
-                        "open": row.get::<_, f64>(1)?,
-                        "high": row.get::<_, f64>(2)?,
-                        "low": row.get::<_, f64>(3)?,
-                        "close": row.get::<_, f64>(4)?,
-                    }))
-                }) {
-                    for row in rows.flatten() {
-                        candles.push(row);
-                    }
-                }
-            }
-        }
         
-        // Reverse so chronological (oldest to newest)
-        candles.reverse();
-        serde_json::Value::Array(candles)
-    }
-
-    /// Log a trade action (panic, stop_trading, start_trading, etc.)
-    pub fn log_trade(&self, action: &str, symbol: &str, direction: &str, lot: f64, price: f64, pnl: f64, source: &str) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute(
-                "INSERT INTO trade_log (action, symbol, direction, lot, price, pnl, source) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
-                params![action, symbol, direction, lot, price, pnl, source],
-            ) {
-                error!("❌ DB log_trade error: {}", e);
-            }
+        for (key, value) in defaults {
+            sqlx::query("INSERT INTO server_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO NOTHING")
+                .bind(key)
+                .bind(value)
+                .execute(pool)
+                .await
+                .map_err(|e| format!("Default config err: {}", e))?;
         }
+        Ok(())
     }
 
-    /// Get a config value
-    pub fn get_config(&self, key: &str) -> Option<String> {
-        if let Ok(conn) = self.conn.lock() {
-            conn.query_row(
-                "SELECT value FROM server_config WHERE key = ?1",
-                params![key],
-                |row| row.get(0),
-            ).ok()
-        } else {
-            None
+    async fn flush_ticks(pool: &PgPool, batch: &mut Vec<TickRecord>) {
+        if batch.is_empty() { return; }
+        
+        let mut symbols = Vec::with_capacity(batch.len());
+        let mut bids = Vec::with_capacity(batch.len());
+        let mut asks = Vec::with_capacity(batch.len());
+        let mut spreads = Vec::with_capacity(batch.len());
+        let mut timestamps = Vec::with_capacity(batch.len());
+
+        for t in batch.iter() {
+            symbols.push(t.symbol.clone());
+            bids.push(t.bid);
+            asks.push(t.ask);
+            spreads.push(t.spread);
+            timestamps.push(t.timestamp);
         }
-    }
 
-    /// Set a config value
-    pub fn set_config(&self, key: &str, value: &str) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute(
-                "INSERT OR REPLACE INTO server_config (key, value) VALUES (?1, ?2)",
-                params![key, value],
-            ) {
-                error!("❌ DB set_config error: {}", e);
-            }
+        let query = "
+            INSERT INTO tick_log (symbol, bid, ask, spread, timestamp)
+            SELECT * FROM UNNEST($1::text[], $2::double precision[], $3::double precision[], $4::double precision[], $5::timestamptz[])
+        ";
+
+        if let Err(e) = sqlx::query(query)
+            .bind(symbols).bind(bids).bind(asks).bind(spreads).bind(timestamps)
+            .execute(pool).await 
+        {
+            error!("❌ Batch insert ticks failed: {}", e);
         }
+
+        batch.clear();
     }
 
-    /// Get all config as JSON object
-    pub fn get_all_config(&self) -> serde_json::Value {
+    /// Fast non-blocking tick logger (sends to Async Batch channel)
+    pub fn log_tick(&self, symbol: &str, bid: f64, ask: f64, spread: f64) {
+        let record = TickRecord {
+            symbol: symbol.to_string(),
+            bid, ask, spread,
+            timestamp: Utc::now(),
+        };
+        let _ = self.tick_tx.try_send(record);
+    }
+
+    pub async fn get_historical_candles(&self, symbol: &str, limit: i64) -> serde_json::Value {
+        let query = "
+            SELECT 
+                EXTRACT(EPOCH FROM timestamp)::bigint / 60 * 60 as time,
+                (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND EXTRACT(EPOCH FROM t2.timestamp)::bigint / 60 * 60 = EXTRACT(EPOCH FROM t1.timestamp)::bigint / 60 * 60 ORDER BY id ASC LIMIT 1) as open,
+                MAX(bid) as high,
+                MIN(bid) as low,
+                (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND EXTRACT(EPOCH FROM t2.timestamp)::bigint / 60 * 60 = EXTRACT(EPOCH FROM t1.timestamp)::bigint / 60 * 60 ORDER BY id DESC LIMIT 1) as close
+            FROM tick_log t1
+            WHERE symbol = $1
+            GROUP BY time, symbol
+            ORDER BY time DESC
+            LIMIT $2
+        ";
+
+        if let Ok(rows) = sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(query)
+            .bind(symbol).bind(limit)
+            .fetch_all(&self.pool).await 
+        {
+            let mut candles: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({"time": row.0, "open": row.1, "high": row.2, "low": row.3, "close": row.4})
+            }).collect();
+            candles.reverse();
+            return serde_json::Value::Array(candles);
+        }
+        serde_json::Value::Array(Vec::new())
+    }
+
+    #[allow(dead_code)]
+    pub async fn log_trade(&self, action: &str, symbol: &str, direction: &str, lot: f64, price: f64, pnl: f64, source: &str) {
+        let _ = sqlx::query("INSERT INTO trade_log (action, symbol, direction, lot, price, pnl, source) VALUES ($1, $2, $3, $4, $5, $6, $7)")
+            .bind(action).bind(symbol).bind(direction).bind(lot).bind(price).bind(pnl).bind(source)
+            .execute(&self.pool).await;
+    }
+
+    #[allow(dead_code)]
+    pub async fn get_config(&self, key: &str) -> Option<String> {
+        sqlx::query_scalar("SELECT value FROM server_config WHERE key = $1")
+            .bind(key).fetch_optional(&self.pool).await.unwrap_or(None)
+    }
+
+    pub async fn set_config(&self, key: &str, value: &str) {
+        let _ = sqlx::query("INSERT INTO server_config (key, value) VALUES ($1, $2) ON CONFLICT (key) DO UPDATE SET value = EXCLUDED.value")
+            .bind(key).bind(value).execute(&self.pool).await;
+    }
+
+    pub async fn get_all_config(&self) -> serde_json::Value {
         let mut map = serde_json::Map::new();
-        if let Ok(conn) = self.conn.lock() {
-            if let Ok(mut stmt) = conn.prepare("SELECT key, value FROM server_config") {
-                if let Ok(rows) = stmt.query_map([], |row| {
-                    Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
-                }) {
-                    for row in rows.flatten() {
-                        map.insert(row.0, serde_json::Value::String(row.1));
-                    }
-                }
-            }
+        if let Ok(rows) = sqlx::query_as::<_, (String, String)>("SELECT key, value FROM server_config").fetch_all(&self.pool).await {
+            for (k, v) in rows { map.insert(k, serde_json::Value::String(v)); }
         }
         serde_json::Value::Object(map)
     }
 
-    /// Get database statistics
-    pub fn get_stats(&self) -> serde_json::Value {
-        let mut total_ticks: i64 = 0;
-        let mut total_trades: i64 = 0;
-        let mut latest_tick_time = String::from("—");
-        let mut latest_trade_time = String::from("—");
-
-        if let Ok(conn) = self.conn.lock() {
-            total_ticks = conn.query_row("SELECT COUNT(*) FROM tick_log", [], |r| r.get(0)).unwrap_or(0);
-            total_trades = conn.query_row("SELECT COUNT(*) FROM trade_log", [], |r| r.get(0)).unwrap_or(0);
-            latest_tick_time = conn.query_row(
-                "SELECT timestamp FROM tick_log ORDER BY id DESC LIMIT 1", [],
-                |r| r.get(0),
-            ).unwrap_or_else(|_| "—".to_string());
-            latest_trade_time = conn.query_row(
-                "SELECT timestamp FROM trade_log ORDER BY id DESC LIMIT 1", [],
-                |r| r.get(0),
-            ).unwrap_or_else(|_| "—".to_string());
-        }
-
-        // Get file size
-        let db_size_bytes = std::fs::metadata(&self.path)
-            .map(|m| m.len())
-            .unwrap_or(0);
+    pub async fn get_stats(&self) -> serde_json::Value {
+        let total_ticks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tick_log").fetch_one(&self.pool).await.unwrap_or(0);
+        let total_trades: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trade_log").fetch_one(&self.pool).await.unwrap_or(0);
+        let latest_tick_time: String = sqlx::query_scalar::<_, DateTime<Utc>>("SELECT timestamp FROM tick_log ORDER BY timestamp DESC LIMIT 1")
+            .fetch_one(&self.pool).await.map(|t| t.to_rfc3339()).unwrap_or_else(|_| "—".to_string());
+        let latest_trade_time: String = sqlx::query_scalar::<_, DateTime<Utc>>("SELECT timestamp FROM trade_log ORDER BY timestamp DESC LIMIT 1")
+            .fetch_one(&self.pool).await.map(|t| t.to_rfc3339()).unwrap_or_else(|_| "—".to_string());
+        
+        let db_size_bytes: i64 = sqlx::query_scalar("SELECT pg_database_size(current_database())").fetch_one(&self.pool).await.unwrap_or(0);
 
         serde_json::json!({
             "total_ticks": total_ticks,
@@ -289,211 +275,123 @@ impl Database {
             "latest_tick_time": latest_tick_time,
             "latest_trade_time": latest_trade_time,
             "db_size_bytes": db_size_bytes,
-            "db_path": self.path.to_string_lossy(),
+            "db_path": "postgresql",
         })
     }
 
-    /// Get all trade setups as JSON array
-    pub fn get_trade_setups(&self) -> serde_json::Value {
-        let mut setups = Vec::new();
-        if let Ok(conn) = self.conn.lock() {
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT id, symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value, trailing_stop_enabled, trailing_stop_points, status, created_at FROM trade_setups ORDER BY id"
-            ) {
-                if let Ok(rows) = stmt.query_map([], |row| {
-                    Ok(serde_json::json!({
-                        "id": row.get::<_, i64>(0)?,
-                        "symbol": row.get::<_, String>(1)?,
-                        "strategy": row.get::<_, String>(2)?,
-                        "timeframe": row.get::<_, String>(3)?,
-                        "lotSize": row.get::<_, f64>(4)?,
-                        "riskPercent": row.get::<_, f64>(5)?,
-                        "mt5Instance": row.get::<_, String>(6)?,
-                        "tpEnabled": row.get::<_, i64>(7)? != 0,
-                        "tpMode": row.get::<_, String>(8)?,
-                        "tpValue": row.get::<_, f64>(9)?,
-                        "slEnabled": row.get::<_, i64>(10)? != 0,
-                        "slMode": row.get::<_, String>(11)?,
-                        "slValue": row.get::<_, f64>(12)?,
-                        "trailingStopEnabled": row.get::<_, i64>(13)? != 0,
-                        "trailingStopPoints": row.get::<_, f64>(14)?,
-                        "status": row.get::<_, String>(15)?,
-                        "createdAt": row.get::<_, String>(16)?,
-                    }))
-                }) {
-                    for row in rows.flatten() {
-                        setups.push(row);
-                    }
-                }
-            }
+    pub async fn get_trade_setups(&self) -> serde_json::Value {
+        #[derive(sqlx::FromRow)]
+        struct SetupRow {
+            id: i64, symbol: String, strategy: String, timeframe: String,
+            lot_size: f64, risk_percent: f64, mt5_instance: String,
+            tp_enabled: bool, tp_mode: String, tp_value: f64,
+            sl_enabled: bool, sl_mode: String, sl_value: f64,
+            trailing_stop_enabled: bool, trailing_stop_points: f64,
+            status: String, created_at: DateTime<Utc>
         }
-        serde_json::Value::Array(setups)
+        let query = "SELECT id, symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value, trailing_stop_enabled, trailing_stop_points, status, created_at FROM trade_setups ORDER BY id";
+        if let Ok(rows) = sqlx::query_as::<_, SetupRow>(query)
+            .fetch_all(&self.pool).await 
+        {
+            let setups: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "id": row.id, "symbol": row.symbol, "strategy": row.strategy, "timeframe": row.timeframe,
+                    "lotSize": row.lot_size, "riskPercent": row.risk_percent, "mt5Instance": row.mt5_instance,
+                    "tpEnabled": row.tp_enabled, "tpMode": row.tp_mode, "tpValue": row.tp_value,
+                    "slEnabled": row.sl_enabled, "slMode": row.sl_mode, "slValue": row.sl_value,
+                    "trailingStopEnabled": row.trailing_stop_enabled, "trailingStopPoints": row.trailing_stop_points,
+                    "status": row.status, "createdAt": row.created_at.to_rfc3339()
+                })
+            }).collect();
+            return serde_json::Value::Array(setups);
+        }
+        serde_json::Value::Array(Vec::new())
     }
 
-    /// Add a new trade setup
-    pub fn add_trade_setup(&self, symbol: &str, strategy: &str, timeframe: &str, lot_size: f64, risk_percent: f64, mt5_instance: &str, tp_enabled: bool, tp_mode: &str, tp_value: f64, sl_enabled: bool, sl_mode: &str, sl_value: f64, trailing_stop_enabled: bool, trailing_stop_points: f64) -> Option<i64> {
-        if let Ok(conn) = self.conn.lock() {
-            match conn.execute(
-                "INSERT INTO trade_setups (symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value, trailing_stop_enabled, trailing_stop_points) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14)",
-                params![symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled as i64, tp_mode, tp_value, sl_enabled as i64, sl_mode, sl_value, trailing_stop_enabled as i64, trailing_stop_points],
-            ) {
-                Ok(_) => {
-                    let id = conn.last_insert_rowid();
-                    info!("✅ Trade setup added: {} {} (id={})", symbol, strategy, id);
-                    Some(id)
-                }
-                Err(e) => {
-                    error!("❌ add_trade_setup error: {}", e);
-                    None
-                }
-            }
-        } else {
-            None
-        }
+    pub async fn add_trade_setup(&self, symbol: &str, strategy: &str, timeframe: &str, lot: f64, risk: f64, mt5: &str, tp_en: bool, tp_mode: &str, tp_val: f64, sl_en: bool, sl_mode: &str, sl_val: f64, ts_en: bool, ts_pts: f64) -> Option<i64> {
+        let q = "INSERT INTO trade_setups (symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value, trailing_stop_enabled, trailing_stop_points) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13,$14) RETURNING id";
+        sqlx::query_scalar(q)
+            .bind(symbol).bind(strategy).bind(timeframe).bind(lot).bind(risk).bind(mt5)
+            .bind(tp_en).bind(tp_mode).bind(tp_val).bind(sl_en).bind(sl_mode).bind(sl_val).bind(ts_en).bind(ts_pts)
+            .fetch_one(&self.pool).await.ok()
     }
 
-    /// Update trade setup status
-    pub fn update_trade_setup_status(&self, id: i64, status: &str) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute(
-                "UPDATE trade_setups SET status = ?1 WHERE id = ?2",
-                params![status, id],
-            ) {
-                error!("❌ update_trade_setup_status error: {}", e);
-            }
+    pub async fn update_trade_setup_status(&self, id: i64, status: &str) {
+        let _ = sqlx::query("UPDATE trade_setups SET status = $1 WHERE id = $2").bind(status).bind(id).execute(&self.pool).await;
+    }
+
+    pub async fn delete_trade_setup(&self, id: i64) {
+        let _ = sqlx::query("DELETE FROM trade_setups WHERE id = $1").bind(id).execute(&self.pool).await;
+    }
+
+    pub async fn update_trade_setup(&self, id: i64, symbol: &str, strategy: &str, timeframe: &str, lot: f64, risk: f64, mt5: &str, tp_en: bool, tp_mode: &str, tp_val: f64, sl_en: bool, sl_mode: &str, sl_val: f64, ts_en: bool, ts_pts: f64) {
+        let q = "UPDATE trade_setups SET symbol=$1, strategy=$2, timeframe=$3, lot_size=$4, risk_percent=$5, mt5_instance=$6, tp_enabled=$7, tp_mode=$8, tp_value=$9, sl_enabled=$10, sl_mode=$11, sl_value=$12, trailing_stop_enabled=$13, trailing_stop_points=$14 WHERE id=$15";
+        let _ = sqlx::query(q)
+            .bind(symbol).bind(strategy).bind(timeframe).bind(lot).bind(risk).bind(mt5)
+            .bind(tp_en).bind(tp_mode).bind(tp_val).bind(sl_en).bind(sl_mode).bind(sl_val).bind(ts_en).bind(ts_pts).bind(id)
+            .execute(&self.pool).await;
+    }
+
+    pub async fn vacuum(&self) -> bool {
+        match sqlx::query("VACUUM ANALYZE").execute(&self.pool).await {
+            Ok(_) => { info!("✅ VACUUM ANALYZE completed"); true },
+            Err(e) => { error!("❌ VACUUM failed: {}", e); false }
         }
     }
 
-    /// Delete a trade setup
-    pub fn delete_trade_setup(&self, id: i64) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute("DELETE FROM trade_setups WHERE id = ?1", params![id]) {
-                error!("❌ delete_trade_setup error: {}", e);
-            }
+    #[allow(dead_code)]
+    pub async fn cleanup_old_ticks(&self, retention_days: i64) {
+        let sql = format!("DELETE FROM tick_log WHERE timestamp < NOW() - INTERVAL '{} days'", retention_days);
+        if let Ok(res) = sqlx::query(&sql).execute(&self.pool).await {
+            let deleted = res.rows_affected();
+            if deleted > 0 { info!("🧹 Cleaned {} old tick records", deleted); }
         }
     }
 
-    /// Update a trade setup (all fields)
-    pub fn update_trade_setup(&self, id: i64, symbol: &str, strategy: &str, timeframe: &str, lot_size: f64, risk_percent: f64, mt5_instance: &str, tp_enabled: bool, tp_mode: &str, tp_value: f64, sl_enabled: bool, sl_mode: &str, sl_value: f64, trailing_stop_enabled: bool, trailing_stop_points: f64) {
-        if let Ok(conn) = self.conn.lock() {
-            if let Err(e) = conn.execute(
-                "UPDATE trade_setups SET symbol=?1, strategy=?2, timeframe=?3, lot_size=?4, risk_percent=?5, mt5_instance=?6, tp_enabled=?7, tp_mode=?8, tp_value=?9, sl_enabled=?10, sl_mode=?11, sl_value=?12, trailing_stop_enabled=?13, trailing_stop_points=?14 WHERE id=?15",
-                params![symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled as i64, tp_mode, tp_value, sl_enabled as i64, sl_mode, sl_value, trailing_stop_enabled as i64, trailing_stop_points, id],
-            ) {
-                error!("❌ update_trade_setup error: {}", e);
-            } else {
-                info!("✅ Trade setup updated: id={}", id);
-            }
-        }
-    }
-
-    /// Run VACUUM to optimize database
-    pub fn vacuum(&self) -> bool {
-        if let Ok(conn) = self.conn.lock() {
-            match conn.execute_batch("VACUUM;") {
-                Ok(_) => {
-                    info!("✅ Database VACUUM completed");
-                    true
-                }
-                Err(e) => {
-                    error!("❌ VACUUM failed: {}", e);
-                    false
-                }
-            }
-        } else {
-            false
-        }
-    }
-
-    /// Clean old ticks based on retention days
-    pub fn cleanup_old_ticks(&self, retention_days: i64) {
-        if let Ok(conn) = self.conn.lock() {
-            match conn.execute(
-                "DELETE FROM tick_log WHERE timestamp < datetime('now', ?1)",
-                params![format!("-{} days", retention_days)],
-            ) {
-                Ok(deleted) => {
-                    if deleted > 0 {
-                        info!("🧹 Cleaned {} old tick records (>{} days)", deleted, retention_days);
-                    }
-                }
-                Err(e) => warn!("⚠️ Tick cleanup error: {}", e),
-            }
-        }
-    }
-
-    /// Save an array of trade history deals from MT5
-    pub fn save_trade_history(&self, deals: &serde_json::Value) {
+    pub async fn save_trade_history(&self, deals: &serde_json::Value) {
         if let Some(deals_arr) = deals.as_array() {
-            if let Ok(mut conn) = self.conn.lock() {
-                let tx = match conn.transaction() {
-                    Ok(tx) => tx,
-                    Err(e) => {
-                        error!("❌ save_trade_history transaction error: {}", e);
-                        return;
-                    }
-                };
-                
-                for deal in deals_arr {
-                    let ticket = deal["ticket"].as_i64().unwrap_or(0);
-                    let order = deal["order"].as_i64().unwrap_or(0);
-                    let pos_id = deal["pos_id"].as_i64().unwrap_or(0);
-                    let symbol = deal["symbol"].as_str().unwrap_or("");
-                    let type_str = deal["type"].as_str().unwrap_or("");
-                    let volume = deal["volume"].as_f64().unwrap_or(0.0);
-                    let price = deal["price"].as_f64().unwrap_or(0.0);
-                    let profit = deal["profit"].as_f64().unwrap_or(0.0);
-                    let swap = deal["swap"].as_f64().unwrap_or(0.0);
-                    let commission = deal["commission"].as_f64().unwrap_or(0.0);
-                    let magic = deal["magic"].as_i64().unwrap_or(0);
-                    let time = deal["time"].as_str().unwrap_or("");
-                    let comment = deal["comment"].as_str().unwrap_or("");
-                    
-                    if ticket == 0 || symbol.is_empty() { continue; }
+            let mut tx = match self.pool.begin().await {
+                Ok(tx) => tx,
+                Err(_) => return,
+            };
+            for deal in deals_arr {
+                let ticket = deal["ticket"].as_i64().unwrap_or(0);
+                if ticket == 0 { continue; }
+                let order = deal["order"].as_i64().unwrap_or(0);
+                let pos_id = deal["pos_id"].as_i64().unwrap_or(0);
+                let sym = deal["symbol"].as_str().unwrap_or("");
+                let ty = deal["type"].as_str().unwrap_or("");
+                let vol = deal["volume"].as_f64().unwrap_or(0.0);
+                let px = deal["price"].as_f64().unwrap_or(0.0);
+                let profit = deal["profit"].as_f64().unwrap_or(0.0);
+                let swap = deal["swap"].as_f64().unwrap_or(0.0);
+                let comm = deal["commission"].as_f64().unwrap_or(0.0);
+                let magic = deal["magic"].as_i64().unwrap_or(0);
+                let time = deal["time"].as_str().unwrap_or("");
+                let comment = deal["comment"].as_str().unwrap_or("");
 
-                    let _ = tx.execute(
-                        "INSERT OR REPLACE INTO trade_history (ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment) VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13)",
-                        params![ticket, order, pos_id, symbol, type_str, volume, price, profit, swap, commission, magic, time, comment],
-                    );
-                }
-                
-                if let Err(e) = tx.commit() {
-                    error!("❌ save_trade_history commit error: {}", e);
-                }
+                let _ = sqlx::query("INSERT INTO trade_history (ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (ticket) DO NOTHING")
+                    .bind(ticket).bind(order).bind(pos_id).bind(sym).bind(ty).bind(vol).bind(px).bind(profit).bind(swap).bind(comm).bind(magic).bind(time).bind(comment)
+                    .execute(&mut *tx).await;
             }
+            let _ = tx.commit().await;
         }
     }
 
-    /// Get stored trade history as JSON array
-    pub fn get_trade_history(&self) -> serde_json::Value {
-        let mut deals = Vec::new();
-        if let Ok(conn) = self.conn.lock() {
-            if let Ok(mut stmt) = conn.prepare(
-                "SELECT ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment FROM trade_history ORDER BY time DESC LIMIT 500"
-            ) {
-                if let Ok(rows) = stmt.query_map([], |row| {
-                    Ok(serde_json::json!({
-                        "ticket": row.get::<_, i64>(0)?,
-                        "order": row.get::<_, i64>(1)?,
-                        "pos_id": row.get::<_, i64>(2)?,
-                        "symbol": row.get::<_, String>(3)?,
-                        "type": row.get::<_, String>(4)?,
-                        "volume": row.get::<_, f64>(5)?,
-                        "price": row.get::<_, f64>(6)?,
-                        "profit": row.get::<_, f64>(7)?,
-                        "swap": row.get::<_, f64>(8)?,
-                        "commission": row.get::<_, f64>(9)?,
-                        "magic": row.get::<_, i64>(10)?,
-                        "time": row.get::<_, String>(11)?,
-                        "comment": row.get::<_, String>(12)?,
-                    }))
-                }) {
-                    for row in rows.flatten() {
-                        deals.push(row);
-                    }
-                }
-            }
+    pub async fn get_trade_history(&self) -> serde_json::Value {
+        let query = "SELECT ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment FROM trade_history ORDER BY time DESC LIMIT 500";
+        if let Ok(rows) = sqlx::query_as::<_, (i64, i64, i64, String, String, f64, f64, f64, f64, f64, i64, String, String)>(query)
+            .fetch_all(&self.pool).await 
+        {
+            let deals: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "ticket": row.0, "order": row.1, "pos_id": row.2, "symbol": row.3, "type": row.4,
+                    "volume": row.5, "price": row.6, "profit": row.7, "swap": row.8, "commission": row.9,
+                    "magic": row.10, "time": row.11, "comment": row.12
+                })
+            }).collect();
+            return serde_json::Value::Array(deals);
         }
-        serde_json::Value::Array(deals)
+        serde_json::Value::Array(Vec::new())
     }
 }

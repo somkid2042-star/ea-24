@@ -30,12 +30,36 @@ log = "0.4"
 # Socket options (SO_REUSEADDR)
 socket2 = "0.5"
 
-# Embedded SQLite database (using SQLCipher for AES-256 encryption)
-rusqlite = { version = "0.31", features = ["bundled-sqlcipher"] }
+# PostgreSQL Database (Async)
+sqlx = { version = "0.7", features = ["runtime-tokio-rustls", "postgres", "chrono", "json"] }
+dotenvy = "0.15"
+chrono = "0.4"
 
-# System tray icon (Windows)
-trayicon = "0.4"
-winit = "0.30"
-image = "0.25"
+# Channels & concurrency
+crossbeam-channel = "0.5"
+# Egui native UI
+eframe = "0.28"
+
+# System info tracking
+sysinfo = "0.33"
+
+# Web dashboard
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
+image = { version = "0.25.10", features = ["png"] }
+base64 = "0.22.1"
+
+[package.metadata.deb]
+maintainer = "EA Developer"
+copyright = "2024"
+license-file = []
+extended-description = "EA Trading Server backend component"
+depends = "$auto"
+section = "finance"
+priority = "optional"
+maintainer-scripts = "debian/"
+assets = [
+    ["target/release/ea-server", "opt/ea-24/", "777"],
+    ["assets/ea-server.desktop", "usr/share/applications/", "644"],
+    ["assets/icon.png", "opt/ea-24/", "644"],
+]

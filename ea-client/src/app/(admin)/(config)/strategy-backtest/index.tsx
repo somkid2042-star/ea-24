@@ -19,7 +19,7 @@ const StrategyBacktest = () => {
       </div>
 
       {/* Parameters */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+      <div className="card !p-5">
         <h5 className="mb-4 text-sm font-semibold text-default-900">Backtest Parameters</h5>
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
@@ -58,7 +58,7 @@ const StrategyBacktest = () => {
               { label: 'Net Profit', value: '+$4,280', sub: '+42.8% return', positive: true },
               { label: 'Max Drawdown', value: '-6.3%', sub: '-$630 peak to valley', positive: false },
             ].map(stat => (
-              <div key={stat.label} className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-4 text-center">
+              <div key={stat.label} className="card !p-4 text-center">
                 <p className="text-xs text-default-400">{stat.label}</p>
                 <p className={`mt-1 text-xl font-bold ${stat.positive === true ? 'text-green-600' : stat.positive === false ? 'text-red-600' : 'text-default-900'}`}>{stat.value}</p>
                 <p className="mt-0.5 text-[10px] text-default-500">{stat.sub}</p>
@@ -67,7 +67,7 @@ const StrategyBacktest = () => {
           </div>
 
           {/* Equity Curve */}
-          <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+          <div className="card !p-5">
             <h5 className="mb-4 text-sm font-semibold text-default-900">Equity Curve — {strategy} on {symbol}</h5>
             <div className="flex items-end gap-0.5" style={{ height: 200 }}>
               {Array.from({ length: 40 }, (_, i) => {
@@ -88,7 +88,7 @@ const StrategyBacktest = () => {
           </div>
 
           {/* Monthly breakdown */}
-          <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+          <div className="card !p-5">
             <h5 className="mb-4 text-sm font-semibold text-default-900">Monthly Performance</h5>
             <div className="grid grid-cols-4 gap-2 md:grid-cols-6">
               {['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'].map(month => {

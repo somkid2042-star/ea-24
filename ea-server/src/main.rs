@@ -1,16 +1,9 @@
-#![cfg_attr(target_os = "windows", windows_subsystem = "windows")]
+// Removed windows subsystem
+
 
 mod db;
 mod updater;
-#[cfg(target_os = "windows")]
-mod tray;
-#[cfg(not(target_os = "windows"))]
-mod tray {
-    #[allow(dead_code)]
-    pub struct TrayState { pub server_online: bool, pub ea_connected: bool, pub ea_version: String, pub ea_symbol: String, pub last_error: Option<String> }
-    impl Default for TrayState { fn default() -> Self { Self { server_online: true, ea_connected: false, ea_version: "—".into(), ea_symbol: String::new(), last_error: None } } }
-    pub fn run_tray(_rx: tokio::sync::watch::Receiver<TrayState>) { loop { std::thread::park(); } }
-}
+mod gui;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -25,22 +18,9 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, watch, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::tray::TrayState;
+use crate::gui::ServerState as TrayState;
 
-#[cfg(target_os = "windows")]
-use std::os::windows::process::CommandExt;
 
-/// Creates a new `Command` that runs without a console window on Windows.
-fn new_hidden_cmd<S: AsRef<std::ffi::OsStr>>(program: S) -> std::process::Command {
-    #[allow(unused_mut)]
-    let mut cmd = std::process::Command::new(program);
-    #[cfg(target_os = "windows")]
-    {
-        const CREATE_NO_WINDOW: u32 = 0x08000000;
-        cmd.creation_flags(CREATE_NO_WINDOW);
-    }
-    cmd
-}
 
 /// The latest EA version shipped with this server
 const LATEST_EA_VERSION: &str = "2.04";
@@ -79,6 +59,9 @@ struct ClientMessage {
     comment: Option<String>,
     // History request fields
     limit: Option<i64>,
+    // Upload fields
+    file_name: Option<String>,
+    content_base64: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -106,6 +89,18 @@ struct EaState {
 // ──────────────────────────────────────────────
 
 fn main() {
+    // ---------------------------------------------------------
+    // Single Instance Lock
+    // ---------------------------------------------------------
+    let lock_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 4174));
+    let _app_lock = match std::net::UdpSocket::bind(lock_addr) {
+        Ok(s) => s,
+        Err(_) => {
+            eprintln!("Another instance of EA Server is already running. Exiting.");
+            std::process::exit(0);
+        }
+    };
+
     // Redirect log output to file (no console window available)
     let log_file = std::fs::File::create("ea-server.log").ok();
     let mut builder = env_logger::Builder::from_env(env_logger::Env::default().default_filter_or("info"));
@@ -137,9 +132,9 @@ fn main() {
         }
     });
 
-    // Run the system tray on the main thread (Windows requires this)
-    info!("🖥️  Starting system tray...");
-    tray::run_tray(tray_rx);
+    // Run the native GUI on the main thread
+    info!("🖥️  Starting native GUI...");
+    gui::run_gui(tray_rx);
 }
 
 async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
@@ -151,14 +146,17 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     let mt5_listener = create_reuse_listener(mt5_addr);
     let http_listener = create_reuse_listener(http_addr);
 
-    // Initialize SQLite database
-    let database = match db::Database::init("data/ea24.db") {
+    let _ = dotenvy::dotenv(); // Load .env file if it exists
+    let db_url = std::env::var("DATABASE_URL")
+        .unwrap_or_else(|_| "postgres://postgres:postgres@localhost:5432/ea24".to_string());
+
+    // Initialize PostgreSQL database
+    let database = match db::Database::init(&db_url).await {
         Ok(db) => Arc::new(db),
         Err(e) => {
             error!("❌ Failed to initialize database: {}", e);
-            error!("   Server will continue without database logging.");
-            // Create in-memory fallback
-            Arc::new(db::Database::init(":memory:").expect("Failed even in-memory DB"))
+            error!("   Please check your PostgreSQL connection string inside .env (DATABASE_URL)");
+            std::process::exit(1);
         }
     };
 
@@ -177,6 +175,28 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
             tokio::time::sleep(tokio::time::Duration::from_secs(7200)).await;
         }
     });
+
+    // Automatically run React development server
+    if std::path::Path::new("../ea-client").exists() {
+        tokio::spawn(async {
+            info!("⚡ Starting React development server...");
+            let child = tokio::process::Command::new("npm")
+                .arg("run")
+                .arg("dev")
+                .current_dir("../ea-client")
+                .kill_on_drop(true)
+                .spawn();
+            
+            match child {
+                Ok(mut c) => {
+                    let _ = c.wait().await;
+                }
+                Err(e) => {
+                    log::warn!("Failed to start React dev server: {}", e);
+                }
+            }
+        });
+    }
 
     let active_eas = Arc::new(AtomicUsize::new(0));
     let ea_state = Arc::new(RwLock::new(EaState {
@@ -217,8 +237,42 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
         }
     });
 
+    // Spawn sysinfo polling loop
+    let sys_tx = tray_tx.clone();
+    tokio::spawn(async move {
+        let mut sys = sysinfo::System::new_all();
+        let mut networks = sysinfo::Networks::new_with_refreshed_list();
+        loop {
+            tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
+            sys.refresh_cpu_usage();
+            sys.refresh_memory();
+            networks.refresh(true);
+
+            let cpu = sys.global_cpu_usage();
+            let ram = sys.used_memory() / 1048576; // bytes to MB
+            let total = sys.total_memory() / 1048576;
+            
+            let mut rx_kb = 0.0;
+            let mut tx_kb = 0.0;
+            for (_interface_name, data) in &networks {
+                rx_kb += data.received() as f32 / 1024.0;
+                tx_kb += data.transmitted() as f32 / 1024.0;
+            }
+
+            sys_tx.send_if_modified(|state| {
+                state.cpu_usage = cpu;
+                state.ram_usage_mb = ram;
+                state.total_ram_mb = total;
+                state.net_rx_kb = rx_kb;
+                state.net_tx_kb = tx_kb;
+                true
+            });
+        }
+    });
+
     // Accept WebSocket connections
     while let Ok((stream, peer_addr)) = ws_listener.accept().await {
+
         let rx = tx.subscribe();
         tokio::spawn(handle_ws_connection(
             stream,
@@ -287,6 +341,7 @@ async fn handle_mt5_connection(
                                         ea_version: ver.clone(),
                                         ea_symbol: sym.clone(),
                                         last_error: None,
+                                        ..TrayState::default()
                                     });
 
                                     // Broadcast ea_info to UI
@@ -323,7 +378,7 @@ async fn handle_mt5_connection(
                                         }
                                     } else if msg_type == Some("trade_history") {
                                         if let Some(deals) = val.get("deals") {
-                                            db.save_trade_history(deals);
+                                            db.save_trade_history(deals).await;
                                         }
                                     } else if msg_type == Some("account_data") {
                                         // Server-side trailing stop
@@ -349,7 +404,7 @@ async fn handle_mt5_connection(
                                             }
 
                                             // 2. Trailing Stop Logic
-                                            let setups = db.get_trade_setups();
+                                            let setups = db.get_trade_setups().await;
                                             if let Some(setups_arr) = setups.as_array() {
                                                 let mut ts_configs = std::collections::HashMap::new();
                                                 for setup in setups_arr {
@@ -459,6 +514,7 @@ async fn handle_mt5_connection(
         ea_version: "—".to_string(),
         ea_symbol: "".to_string(),
         last_error: None,
+        ..TrayState::default()
     });
 }
 
@@ -597,9 +653,17 @@ async fn handle_ws_connection(
                                     "close_mt5" => {
                                         let instance_id = client_msg.instance_id.clone().unwrap_or_default();
                                         info!("🛑 [UI] Closing MT5 for: {}", instance_id);
-                                        let _ = new_hidden_cmd("taskkill")
-                                            .args(&["/IM", "terminal64.exe"])
-                                            .output();
+                                        // Find the install_dir for this instance to kill only this one
+                                        let appdata = get_wine_appdata();
+                                        let idir = appdata.join("MetaQuotes").join("Terminal").join(&instance_id);
+                                        if let Some(install_dir) = read_install_dir(&idir) {
+                                            kill_mt5_instance(&install_dir);
+                                        } else {
+                                            // Fallback: kill all
+                                            let _ = std::process::Command::new("pkill")
+                                                .args(&["-f", "terminal64.exe"])
+                                                .output();
+                                        }
                                         let resp = serde_json::json!({
                                             "type": "close_mt5_status",
                                             "status": "success",
@@ -643,7 +707,7 @@ async fn handle_ws_connection(
                                         // Spawn a new copy of ourselves before exiting
                                         let exe = std::env::current_exe().unwrap_or_default();
                                         info!("🔄 Spawning new server: {:?}", exe);
-                                        let _ = new_hidden_cmd(&exe).spawn();
+                                        let _ = std::process::Command::new(&exe).spawn();
                                         // Small delay for new process to start
                                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                         info!("👋 Old server exiting...");
@@ -658,7 +722,7 @@ async fn handle_ws_connection(
                                         let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
                                         let limit = client_msg.limit.unwrap_or(200);
                                         info!("📊 [UI] History requested for {} (limit {})", sym, limit);
-                                        let candles = db.get_historical_candles(sym, limit);
+                                        let candles = db.get_historical_candles(sym, limit).await;
                                         let resp = serde_json::json!({
                                             "type": "history",
                                             "symbol": sym,
@@ -668,7 +732,7 @@ async fn handle_ws_connection(
                                     }
                                     "get_db_stats" => {
                                         info!("📊 [UI] DB stats requested");
-                                        let stats = db.get_stats();
+                                        let stats = db.get_stats().await;
                                         let resp = serde_json::json!({
                                             "type": "db_stats",
                                             "stats": stats,
@@ -677,7 +741,7 @@ async fn handle_ws_connection(
                                     }
                                     "get_server_config" => {
                                         info!("⚙️ [UI] Config requested");
-                                        let config = db.get_all_config();
+                                        let config = db.get_all_config().await;
                                         let resp = serde_json::json!({
                                             "type": "server_config",
                                             "config": config,
@@ -687,7 +751,7 @@ async fn handle_ws_connection(
                                     "set_server_config" => {
                                         if let (Some(key), Some(value)) = (&client_msg.config_key, &client_msg.config_value) {
                                             info!("💾 [UI] Config set: {} = {}", key, value);
-                                            db.set_config(key, value);
+                                            db.set_config(key, value).await;
                                             let resp = serde_json::json!({
                                                 "type": "config_saved",
                                                 "status": "success",
@@ -698,8 +762,8 @@ async fn handle_ws_connection(
                                     }
                                     "vacuum_db" => {
                                         info!("🧹 [UI] VACUUM requested");
-                                        let success = db.vacuum();
-                                        let stats = db.get_stats();
+                                        let success = db.vacuum().await;
+                                        let stats = db.get_stats().await;
                                         let resp = serde_json::json!({
                                             "type": "vacuum_result",
                                             "status": if success { "success" } else { "error" },
@@ -709,7 +773,7 @@ async fn handle_ws_connection(
                                     }
                                     // === Trade Setup Actions ===
                                     "get_trade_setups" => {
-                                        let setups = db.get_trade_setups();
+                                        let setups = db.get_trade_setups().await;
                                         let resp = serde_json::json!({
                                             "type": "trade_setups",
                                             "setups": setups,
@@ -717,7 +781,7 @@ async fn handle_ws_connection(
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     "get_trade_history" => {
-                                        let history = db.get_trade_history();
+                                        let history = db.get_trade_history().await;
                                         let resp = serde_json::json!({
                                             "type": "trade_history_db",
                                             "deals": history,
@@ -739,8 +803,8 @@ async fn handle_ws_connection(
                                         let sl_v = client_msg.sl_value.unwrap_or(30.0);
                                         let ts_en = client_msg.trailing_stop_enabled.unwrap_or(false);
                                         let ts_pts = client_msg.trailing_stop_points.unwrap_or(50.0);
-                                        if let Some(id) = db.add_trade_setup(sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts) {
-                                            let setups = db.get_trade_setups();
+                                        if let Some(id) = db.add_trade_setup(sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts).await {
+                                            let setups = db.get_trade_setups().await;
                                             let resp = serde_json::json!({
                                                 "type": "trade_setups",
                                                 "setups": setups,
@@ -752,16 +816,16 @@ async fn handle_ws_connection(
                                     "toggle_trade_setup" => {
                                         if let Some(id) = client_msg.setup_id {
                                             // Get current status then toggle
-                                            let current = db.get_trade_setups();
+                                            let current = db.get_trade_setups().await;
                                             if let Some(arr) = current.as_array() {
                                                 for s in arr {
                                                     if s["id"].as_i64() == Some(id) {
                                                         let new_status = if s["status"].as_str() == Some("active") { "paused" } else { "active" };
-                                                        db.update_trade_setup_status(id, new_status);
+                                                        db.update_trade_setup_status(id, new_status).await;
                                                     }
                                                 }
                                             }
-                                            let setups = db.get_trade_setups();
+                                            let setups = db.get_trade_setups().await;
                                             let resp = serde_json::json!({
                                                 "type": "trade_setups",
                                                 "setups": setups,
@@ -771,8 +835,8 @@ async fn handle_ws_connection(
                                     }
                                     "delete_trade_setup" => {
                                         if let Some(id) = client_msg.setup_id {
-                                            db.delete_trade_setup(id);
-                                            let setups = db.get_trade_setups();
+                                            db.delete_trade_setup(id).await;
+                                            let setups = db.get_trade_setups().await;
                                             let resp = serde_json::json!({
                                                 "type": "trade_setups",
                                                 "setups": setups,
@@ -796,8 +860,8 @@ async fn handle_ws_connection(
                                             let sl_v = client_msg.sl_value.unwrap_or(30.0);
                                             let ts_en = client_msg.trailing_stop_enabled.unwrap_or(false);
                                             let ts_pts = client_msg.trailing_stop_points.unwrap_or(50.0);
-                                            db.update_trade_setup(id, sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts);
-                                            let setups = db.get_trade_setups();
+                                            db.update_trade_setup(id, sym, strat, tf, lot, risk, mt5_inst, tp_en, tp_m, tp_v, sl_en, sl_m, sl_v, ts_en, ts_pts).await;
+                                            let setups = db.get_trade_setups().await;
                                             let resp = serde_json::json!({
                                                 "type": "trade_setups",
                                                 "setups": setups,
@@ -825,48 +889,18 @@ async fn handle_ws_connection(
                                         if let Some(instance_id) = client_msg.instance_id.as_deref() {
                                             let instances = scan_mt5_instances();
                                             let result = if let Some(inst) = instances.iter().find(|i| i.id == instance_id) {
-                                                let appdata = std::env::var("APPDATA").unwrap_or_default();
-                                                let experts_dir = PathBuf::from(&appdata)
-                                                    .join("MetaQuotes").join("Terminal").join(instance_id)
-                                                    .join("MQL5").join("Experts");
-                                                let dest_mq5 = experts_dir.join("EATradingClient.mq5");
+                                                let linux_install_dir = PathBuf::from(&inst.install_path);
+                                                let experts_dir = linux_install_dir.join("MQL5").join("Experts");
+                                                
+                                                let src_ex5 = PathBuf::from("mt5").join("EATradingClient.ex5");
+                                                let dest_ex5 = experts_dir.join("EATradingClient.ex5");
 
-                                                // Copy .mq5 source
-                                                let src_mq5 = PathBuf::from("mt5").join("EATradingClient.mq5");
-                                                if src_mq5.exists() {
+                                                if src_ex5.exists() {
                                                     std::fs::create_dir_all(&experts_dir).ok();
-                                                    match std::fs::copy(&src_mq5, &dest_mq5) {
+                                                    match std::fs::copy(&src_ex5, &dest_ex5) {
                                                         Ok(_) => {
-                                                            info!("✅ EA .mq5 copied to {:?}", dest_mq5);
-
-                                                            // Auto-compile with MetaEditor
-                                                            let metaeditor = PathBuf::from(&inst.install_path).join("metaeditor64.exe");
-                                                            if metaeditor.exists() {
-                                                                info!("🔨 Compiling EA with MetaEditor...");
-                                                                match new_hidden_cmd(&metaeditor)
-                                                                    .arg(format!("/compile:{}", dest_mq5.display()))
-                                                                    .arg("/log")
-                                                                    .output()
-                                                                {
-                                                                    Ok(output) => {
-                                                                        let ex5_path = experts_dir.join("EATradingClient.ex5");
-                                                                        if ex5_path.exists() {
-                                                                            info!("✅ EA compiled successfully: {:?}", ex5_path);
-                                                                            "success"
-                                                                        } else {
-                                                                            error!("❌ Compile failed — .ex5 not found. Exit: {}", output.status);
-                                                                            "compile_failed"
-                                                                        }
-                                                                    }
-                                                                    Err(e) => {
-                                                                        error!("❌ MetaEditor launch failed: {}", e);
-                                                                        "compile_error"
-                                                                    }
-                                                                }
-                                                            } else {
-                                                                warn!("⚠️ MetaEditor not found, .mq5 copied but not compiled");
-                                                                "copied_only"
-                                                            }
+                                                            info!("✅ Pre-compiled EA .ex5 copied to {:?}", dest_ex5);
+                                                            "success"
                                                         }
                                                         Err(e) => {
                                                             error!("❌ Copy failed: {}", e);
@@ -874,7 +908,7 @@ async fn handle_ws_connection(
                                                         }
                                                     }
                                                 } else {
-                                                    error!("❌ Source EA not found: {:?}", src_mq5);
+                                                    error!("❌ Source EA not found: {:?}", src_ex5);
                                                     "source_not_found"
                                                 }
                                             } else {
@@ -883,6 +917,44 @@ async fn handle_ws_connection(
                                             let resp = serde_json::json!({
                                                 "type": "deploy_status",
                                                 "instance_id": instance_id,
+                                                "status": result,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "upload_ea" => {
+                                        if let (Some(name), Some(content)) = (client_msg.file_name.as_deref(), client_msg.content_base64.as_deref()) {
+                                            use base64::{Engine as _, engine::general_purpose};
+                                            // Handle cases where JS might prepend "data:application/octet-stream;base64,"
+                                            let b64_str = if content.contains(',') {
+                                                content.split(',').nth(1).unwrap_or(content)
+                                            } else {
+                                                content
+                                            };
+                                            
+                                            let result = match general_purpose::STANDARD.decode(b64_str) {
+                                                Ok(bytes) => {
+                                                    let mt5_dir = PathBuf::from("mt5");
+                                                    std::fs::create_dir_all(&mt5_dir).ok();
+                                                    let filepath = mt5_dir.join(name);
+                                                    match std::fs::write(&filepath, bytes) {
+                                                        Ok(_) => {
+                                                            info!("✅ EA file uploaded and saved to {:?}", filepath);
+                                                            "success"
+                                                        }
+                                                        Err(e) => {
+                                                            error!("❌ Failed to write uploaded EA: {}", e);
+                                                            "write_failed"
+                                                        }
+                                                    }
+                                                }
+                                                Err(e) => {
+                                                    error!("❌ Failed to decode Base64 EA content: {}", e);
+                                                    "decode_error"
+                                                }
+                                            };
+                                            let resp = serde_json::json!({
+                                                "type": "upload_status",
                                                 "status": result,
                                             });
                                             let _ = write.send(Message::Text(resp.to_string())).await;
@@ -925,10 +997,35 @@ async fn handle_ws_connection(
 //  MT5 Auto-Discovery
 // ──────────────────────────────────────────────
 
+fn get_wine_appdata() -> PathBuf {
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let prefix = PathBuf::from(std::env::var("WINEPREFIX").unwrap_or_else(|_| format!("{}/.wine", home)));
+    let user = std::env::var("USER").unwrap_or_else(|_| "crossover".to_string());
+    
+    let win7_path = prefix.join("drive_c").join("users").join(&user).join("AppData").join("Roaming");
+    if win7_path.exists() {
+        return win7_path;
+    }
+    prefix.join("drive_c").join("users").join(&user).join("Application Data")
+}
+
+fn win_to_linux_path(win_path: &str) -> PathBuf {
+    let p = win_path.replace("\\", "/");
+    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
+    let prefix = std::env::var("WINEPREFIX").unwrap_or_else(|_| format!("{}/.wine", home));
+    
+    if p.to_uppercase().starts_with("C:/") {
+        PathBuf::from(prefix).join("drive_c").join(&p[3..])
+    } else if p.to_uppercase().starts_with("Z:/") {
+        PathBuf::from(format!("/{}", &p[3..]))
+    } else {
+        PathBuf::from(p)
+    }
+}
+
 fn scan_mt5_instances() -> Vec<Mt5Instance> {
-    let appdata = std::env::var("APPDATA")
-        .unwrap_or_else(|_| "C:\\Users\\Default\\AppData\\Roaming".to_string());
-    let terminal_path = PathBuf::from(&appdata).join("MetaQuotes").join("Terminal");
+    let appdata = get_wine_appdata();
+    let terminal_path = appdata.join("MetaQuotes").join("Terminal");
 
     let mut instances: Vec<Mt5Instance> = Vec::new();
 
@@ -976,13 +1073,14 @@ fn scan_mt5_instances() -> Vec<Mt5Instance> {
                 .to_string_lossy()
                 .to_string();
 
+            let linux_install_dir = win_to_linux_path(&install_dir);
             let terminal_exe = PathBuf::from(&install_dir).join("terminal64.exe");
-            let experts_dir = path.join("MQL5").join("Experts");
+            let experts_dir = linux_install_dir.join("MQL5").join("Experts");
             let has_experts = experts_dir.exists();
 
             let ea_mq5 = experts_dir.join("EATradingClient.mq5");
             let ea_ex5 = experts_dir.join("EATradingClient.ex5");
-            let ea_deployed = ea_mq5.exists() || ea_ex5.exists();
+            let ea_deployed = ea_ex5.exists();
 
             let ea_version = if ea_mq5.exists() {
                 read_ea_version_from_mq5(&ea_mq5)
@@ -1000,7 +1098,7 @@ fn scan_mt5_instances() -> Vec<Mt5Instance> {
             instances.push(Mt5Instance {
                 id: folder_name,
                 broker_name,
-                install_path: install_dir,
+                install_path: linux_install_dir.to_string_lossy().to_string(),
                 terminal_exe: terminal_exe.to_string_lossy().to_string(),
                 ea_deployed,
                 ea_version,
@@ -1030,9 +1128,8 @@ fn read_ea_version_from_mq5(path: &Path) -> String {
 // inside the WebSocket handler's "deploy_ea_to" action (with MetaEditor compile support).
 
 fn launch_mt5_by_id(instance_id: &str) -> bool {
-    let appdata = std::env::var("APPDATA")
-        .unwrap_or_else(|_| "C:\\Users\\Default\\AppData\\Roaming".to_string());
-    let instance_dir = PathBuf::from(&appdata)
+    let appdata = get_wine_appdata();
+    let instance_dir = appdata
         .join("MetaQuotes")
         .join("Terminal")
         .join(instance_id);
@@ -1074,6 +1171,39 @@ fn read_install_dir(instance_dir: &Path) -> Option<String> {
         .to_string())
 }
 
+/// Helper to dynamically find a viable symbol from Market Watch history
+fn find_valid_symbol(linux_install_dir: &Path) -> String {
+    let mut valid_symbol = "XAUUSD".to_string(); // Default
+
+    // Look at bases/<broker>/history/<symbol> directories
+    let bases_dir = linux_install_dir.join("bases");
+    if let Ok(entries) = std::fs::read_dir(&bases_dir) {
+        for entry in entries.flatten() {
+            if entry.path().is_dir() {
+                let history_dir = entry.path().join("history");
+                if let Ok(hist_entries) = std::fs::read_dir(history_dir) {
+                    for hist_entry in hist_entries.flatten() {
+                        let symbol_dir = hist_entry.path();
+                        if symbol_dir.is_dir() {
+                            let name = symbol_dir.file_name().unwrap_or_default().to_string_lossy().to_string();
+                            let lower = name.to_lowercase();
+                            let ignore = ["config", "symb", "mail", "symbols", "custom", "cache", "ticks"];
+                            if !ignore.contains(&lower.as_str()) && !name.is_empty() {
+                                valid_symbol = name.clone();
+                                // Prefer XAUUSD or Gold variants if we stumble on them
+                                if lower.starts_with("xauusd") || lower.starts_with("gold") {
+                                    return name;
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+    }
+    valid_symbol
+}
+
 /// Spawn MT5 with a custom `.ini` to auto-attach the EA on XAUUSD M1
 fn launch_mt5_instance(instance_dir: &Path) {
     info!("🚀 Attempting to auto-launch MT5 from {:?}", instance_dir);
@@ -1083,80 +1213,44 @@ fn launch_mt5_instance(instance_dir: &Path) {
         None => return,
     };
 
-    let exe_path = PathBuf::from(&install_dir).join("terminal64.exe");
+    let linux_install_dir = win_to_linux_path(&install_dir);
+    let exe_path = linux_install_dir.join("terminal64.exe");
     if !exe_path.exists() {
         error!("terminal64.exe not found at {:?}", exe_path);
         return;
     }
 
-    // Step 1: Ensure EA is compiled (.mq5 → .ex5)
-    let ea_mq5 = instance_dir.join("MQL5").join("Experts").join("EATradingClient.mq5");
-    let ea_ex5 = instance_dir.join("MQL5").join("Experts").join("EATradingClient.ex5");
-    let metaeditor = PathBuf::from(&install_dir).join("metaeditor64.exe");
+    let symbol = find_valid_symbol(&linux_install_dir);
+    info!("🔎 Auto-selected chart symbol: {}", symbol);
 
-    // Only compile if .ex5 doesn't exist at all (per user request)
-    let needs_compile = !ea_ex5.exists();
+    // Step 1: Ensure EA is deployed to both AppData and Install paths
+    let experts_appdata = instance_dir.join("MQL5").join("Experts");
+    let experts_install = linux_install_dir.join("MQL5").join("Experts");
+    std::fs::create_dir_all(&experts_appdata).ok();
+    std::fs::create_dir_all(&experts_install).ok();
 
-    if needs_compile && ea_mq5.exists() && metaeditor.exists() {
-        info!("🔧 Compiling EA with MetaEditor (non-blocking)...");
-        // Use spawn() instead of output() to avoid blocking
-        match new_hidden_cmd(&metaeditor)
-            .args(&[
-                "/compile", &ea_mq5.to_string_lossy(),
-                "/log",
-                "/include", &instance_dir.join("MQL5").to_string_lossy(),
-            ])
-            .spawn()
-        {
-            Ok(mut child) => {
-                // Wait up to 10 seconds for compile
-                let timeout = std::time::Duration::from_secs(10);
-                let start = std::time::Instant::now();
-                loop {
-                    match child.try_wait() {
-                        Ok(Some(_)) => {
-                            info!("✅ MetaEditor compile finished");
-                            break;
-                        }
-                        Ok(None) => {
-                            if start.elapsed() > timeout {
-                                info!("⏱️ MetaEditor timeout — killing process");
-                                let _ = child.kill();
-                                break;
-                            }
-                            std::thread::sleep(std::time::Duration::from_millis(500));
-                        }
-                        Err(e) => {
-                            error!("❌ Error waiting for MetaEditor: {}", e);
-                            break;
-                        }
-                    }
-                }
-                // Verify .ex5 was created
-                if ea_ex5.exists() {
-                    info!("✅ EA .ex5 found: {:?}", ea_ex5);
-                } else {
-                    error!("❌ EA .ex5 not found after compile");
-                }
-            }
-            Err(e) => error!("❌ Failed to spawn MetaEditor: {}", e),
-        }
-    } else if ea_ex5.exists() {
-        info!("✅ EA .ex5 already up to date, skipping compile");
+    let source_mq5 = Path::new("mt5/EATradingClient.mq5");
+    let source_ex5 = Path::new("mt5/EATradingClient.ex5");
+    
+    // Copy to AppData (where MT5 reads from)
+    if source_mq5.exists() { std::fs::copy(source_mq5, experts_appdata.join("EATradingClient.mq5")).ok(); }
+    if source_ex5.exists() { std::fs::copy(source_ex5, experts_appdata.join("EATradingClient.ex5")).ok(); }
+    
+    // Copy to Install Dir (where MetaEditor compiles from)
+    if source_mq5.exists() { std::fs::copy(source_mq5, experts_install.join("EATradingClient.mq5")).ok(); }
+    if source_ex5.exists() { std::fs::copy(source_ex5, experts_install.join("EATradingClient.ex5")).ok(); }
+
+    let ea_ex5 = experts_appdata.join("EATradingClient.ex5");
+    if !ea_ex5.exists() {
+        warn!("⚠️ EA .ex5 not found in AppData {:?}. Please deploy it from the dashboard.", instance_dir.file_name().unwrap_or_default());
     } else {
-        if !ea_mq5.exists() { error!("EA source not found: {:?}", ea_mq5); }
-        if !metaeditor.exists() { error!("MetaEditor not found: {:?}", metaeditor); }
+        info!("✅ EA .ex5 verified present in AppData");
     }
 
-    // If MT5 is running, close gracefully first so it saves its state, then we can append to terminal.ini
+    // If THIS MT5 instance is running, close only this one
     if is_mt5_running(&install_dir) {
-        info!("⏳ Closing MT5 gracefully (saving session)...");
-        let _ = new_hidden_cmd("powershell")
-            .args(&["-Command", &format!(
-                "Get-Process terminal64 -ErrorAction SilentlyContinue | Where-Object {{ $_.Path -like '*{}*' }} | ForEach-Object {{ $_.CloseMainWindow() | Out-Null }}",
-                install_dir.replace('\\', "\\\\")
-            )])
-            .output();
+        info!("⏳ Closing MT5 instance gracefully: {}", install_dir);
+        kill_mt5_instance(&install_dir);
 
         for i in 0..20 {
             std::thread::sleep(std::time::Duration::from_millis(500));
@@ -1166,17 +1260,114 @@ fn launch_mt5_instance(instance_dir: &Path) {
             }
         }
         if is_mt5_running(&install_dir) {
-            info!("⚠️ MT5 still running, force closing...");
-            let _ = new_hidden_cmd("taskkill")
-                .args(&["/F", "/IM", "terminal64.exe"])
-                .output();
+            info!("⚠️ MT5 still running, force killing...");
+            force_kill_mt5_instance(&install_dir);
             std::thread::sleep(std::time::Duration::from_secs(2));
         }
     }
 
+    // Step 2: Auto-configure common.ini for EA permissions
+    let common_ini_path = linux_install_dir.join("Config").join("common.ini");
+    if common_ini_path.exists() {
+        info!("⚙️ Auto-configuring EA permissions in common.ini...");
+        let bytes = std::fs::read(&common_ini_path).unwrap_or_default();
+        let is_utf16le = bytes.starts_with(&[0xFF, 0xFE]);
+        let content = if is_utf16le {
+            let u16_data: Vec<u16> = bytes[2..]
+                .chunks_exact(2)
+                .map(|c| u16::from_le_bytes([c[0], c[1]]))
+                .collect();
+            String::from_utf16_lossy(&u16_data)
+        } else {
+            String::from_utf8_lossy(&bytes).into_owned()
+        };
+
+        let mut result_lines: Vec<String> = Vec::new();
+        let mut in_experts = false;
+        let mut set_dll = false;
+        let mut set_enabled = false;
+        let mut set_webrequest = false;
+
+        for line in content.lines() {
+            let trimmed = line.trim().trim_matches('\0');
+            if trimmed.starts_with('[') {
+                // If leaving [Experts] section, ensure all keys were set
+                if in_experts {
+                    if !set_dll { result_lines.push("AllowDllImport=1".to_string()); }
+                    if !set_enabled { result_lines.push("Enabled=1".to_string()); }
+                    if !set_webrequest { result_lines.push("WebRequest=1".to_string()); }
+                    // Note: WebRequestUrl uses encrypted format, cannot set programmatically
+                }
+                in_experts = trimmed.to_lowercase() == "[experts]";
+                if in_experts {
+                    set_dll = false;
+                    set_enabled = false;
+                    set_webrequest = false;
+                }
+                result_lines.push(line.to_string());
+            } else if in_experts && trimmed.contains('=') {
+                let key = trimmed.split('=').next().unwrap_or("").trim();
+                match key {
+                    "AllowDllImport" => {
+                        result_lines.push("AllowDllImport=1".to_string());
+                        set_dll = true;
+                    }
+                    "Enabled" => {
+                        result_lines.push("Enabled=1".to_string());
+                        set_enabled = true;
+                    }
+                    "WebRequest" => {
+                        result_lines.push("WebRequest=1".to_string());
+                        set_webrequest = true;
+                    }
+                    "WebRequestUrl" => {
+                        // Keep existing encrypted value — MT5 uses encrypted format
+                        result_lines.push(line.to_string());
+                    }
+                    _ => {
+                        result_lines.push(line.to_string());
+                    }
+                }
+            } else {
+                result_lines.push(line.to_string());
+            }
+        }
+
+        // Handle case where [Experts] was the last section
+        if in_experts {
+            if !set_dll { result_lines.push("AllowDllImport=1".to_string()); }
+            if !set_enabled { result_lines.push("Enabled=1".to_string()); }
+            if !set_webrequest { result_lines.push("WebRequest=1".to_string()); }
+            // Note: WebRequestUrl uses encrypted format, cannot set programmatically
+        }
+
+        let final_text = result_lines.join("\r\n");
+        use std::io::Write;
+        if let Ok(mut file) = std::fs::File::create(&common_ini_path) {
+            if is_utf16le {
+                let _ = file.write_all(&[0xFF, 0xFE]);
+                let u16_chars: Vec<u16> = final_text.encode_utf16().collect();
+                let u8_bytes: Vec<u8> = u16_chars.iter().flat_map(|&c| c.to_le_bytes().into_iter()).collect();
+                let _ = file.write_all(&u8_bytes);
+            } else {
+                let _ = file.write_all(final_text.as_bytes());
+            }
+            info!("✅ EA permissions configured: AllowDllImport=1, Enabled=1, WebRequest=127.0.0.1");
+        }
+    }
     // Clone terminal.ini → ea_startup.ini, append [StartUp], launch with /config (absolute path)
-    let terminal_ini_path = instance_dir.join("config").join("terminal.ini");
-    let ea_startup_ini_path = instance_dir.join("config").join("ea_startup.ini");
+    let config_dir = instance_dir.join("config");
+    std::fs::create_dir_all(&config_dir).ok();
+
+    let mut terminal_ini_path = config_dir.join("terminal.ini");
+    let ea_startup_ini_path = config_dir.join("ea_startup.ini");
+
+    if !terminal_ini_path.exists() {
+        let install_dir_config = linux_install_dir.join("Config").join("terminal.ini");
+        if install_dir_config.exists() {
+            terminal_ini_path = install_dir_config;
+        }
+    }
 
     if terminal_ini_path.exists() {
         use std::io::Write;
@@ -1194,26 +1385,38 @@ fn launch_mt5_instance(instance_dir: &Path) {
             String::from_utf8_lossy(&bytes).into_owned()
         };
 
-        // Parse into sections, removing ALL existing [StartUp] and [Experts] blocks
+        // Parse into sections, removing [StartUp], [Experts], and [Window] blocks
         let mut result_lines: Vec<String> = Vec::new();
         let mut skip_section = false;
+
         for line in content.lines() {
             let trimmed = line.trim().trim_matches('\0');
             if trimmed.starts_with('[') {
-                // Check if this section should be skipped
                 let section_lower = trimmed.to_lowercase();
-                skip_section = section_lower == "[startup]" || section_lower == "[experts]";
+                skip_section = section_lower == "[startup]"
+                    || section_lower == "[experts]"
+                    || section_lower == "[window]";
             }
             if !skip_section && !trimmed.is_empty() {
                 result_lines.push(line.to_string());
             }
         }
 
+        // Force fullscreen chart: hide all panels
+        result_lines.push(String::new());
+        result_lines.push("[Window]".to_string());
+        result_lines.push("MarketWatch=0".to_string());
+        result_lines.push("Navigator=0".to_string());
+        result_lines.push("Terminal=0".to_string());
+        result_lines.push("DataWindow=0".to_string());
+        result_lines.push("Tester=0".to_string());
+        result_lines.push("ToolBox=0".to_string());
+
         // Append our clean EA startup config
         result_lines.push(String::new());
         result_lines.push("[StartUp]".to_string());
         result_lines.push("Expert=EATradingClient".to_string());
-        result_lines.push("Symbol=XAUUSD".to_string());
+        result_lines.push(format!("Symbol={}", symbol));
         result_lines.push("Period=M1".to_string());
         result_lines.push(String::new());
         result_lines.push("[Experts]".to_string());
@@ -1236,33 +1439,122 @@ fn launch_mt5_instance(instance_dir: &Path) {
         }
     } else {
         error!("❌ terminal.ini not found at {:?}", terminal_ini_path);
-        let fallback = "[StartUp]\r\nExpert=EATradingClient\r\nSymbol=XAUUSD\r\nPeriod=M1\r\n\r\n[Experts]\r\nAllowLiveTrading=1\r\nEnabled=1\r\n";
+        let fallback = format!("[Window]\r\nMarketWatch=0\r\nNavigator=0\r\nTerminal=0\r\nDataWindow=0\r\nTester=0\r\nToolBox=0\r\n\r\n[StartUp]\r\nExpert=EATradingClient\r\nSymbol={}\r\nPeriod=M1\r\n\r\n[Experts]\r\nAllowLiveTrading=1\r\nEnabled=1\r\n", symbol);
         let _ = std::fs::write(&ea_startup_ini_path, fallback);
     }
 
-    // Launch MT5 with ABSOLUTE path to /config
-    let config_arg = format!("/config:{}", ea_startup_ini_path.to_string_lossy());
+    // Step: Auto-compile .mq5 ONLY when version has changed
+    let mq5_path = linux_install_dir.join("MQL5").join("Experts").join("EATradingClient.mq5");
+    let metaeditor_path = linux_install_dir.join("MetaEditor64.exe");
+    if mq5_path.exists() && metaeditor_path.exists() {
+        let source_version = read_ea_version_from_mq5(&mq5_path);
+        let ex5_exists = ea_ex5.exists();
+        // Read version embedded in the currently running server constant
+        let deployed_version = if ex5_exists {
+            // Compare source .mq5 version vs server's LATEST_EA_VERSION
+            LATEST_EA_VERSION.to_string()
+        } else {
+            "none".to_string()
+        };
+
+        if !ex5_exists || source_version != deployed_version {
+            info!("🔧 Version changed ({} → {}), auto-compiling EA via MetaEditor...", deployed_version, source_version);
+            let mq5_win = format!("Z:{}", mq5_path.display().to_string().replace('/', "\\"));
+            if let Ok(_) = std::process::Command::new("wine")
+                .arg(&metaeditor_path)
+                .arg(&mq5_win)
+                .spawn()
+            {
+                std::thread::sleep(std::time::Duration::from_secs(5));
+                if let Ok(output) = std::process::Command::new("xdotool")
+                    .args(&["search", "--name", "MetaEditor"])
+                    .output()
+                {
+                    let ids = String::from_utf8_lossy(&output.stdout);
+                    for wid in ids.lines() {
+                        let wid = wid.trim();
+                        if !wid.is_empty() {
+                            let _ = std::process::Command::new("xdotool")
+                                .args(&["windowactivate", "--sync", wid])
+                                .output();
+                            std::thread::sleep(std::time::Duration::from_millis(500));
+                            let _ = std::process::Command::new("xdotool")
+                                .args(&["key", "F7"])
+                                .output();
+                            info!("🔧 Sent F7 compile to MetaEditor (window {})", wid);
+                        }
+                    }
+                }
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                let _ = std::process::Command::new("pkill")
+                    .args(&["-f", "MetaEditor64.exe"])
+                    .output();
+                info!("🔧 MetaEditor closed");
+                std::thread::sleep(std::time::Duration::from_secs(2));
+
+                // IMPORTANT: MetaEditor outputs to install dir, copy to AppData and cache
+                let compiled_ex5 = linux_install_dir.join("MQL5").join("Experts").join("EATradingClient.ex5");
+                if compiled_ex5.exists() {
+                    let experts_appdata = instance_dir.join("MQL5").join("Experts");
+                    std::fs::copy(&compiled_ex5, experts_appdata.join("EATradingClient.ex5")).ok();
+                    std::fs::copy(&compiled_ex5, Path::new("mt5/EATradingClient.ex5")).ok();
+                    info!("✅ Copied newly compiled EATradingClient.ex5 to AppData");
+                }
+            }
+        } else {
+            info!("✅ EA version {} is up-to-date, skipping compile", source_version);
+        }
+    }
+
+    // Launch MT5 with ABSOLUTE path to /config map to Z: so Wine understands
+    let config_arg = format!("/config:Z:{}", ea_startup_ini_path.display().to_string().replace('/', "\\"));
     info!("🚀 Spawning: {:?} {}", exe_path, config_arg);
-    match new_hidden_cmd(&exe_path).arg(&config_arg).spawn() {
-        Ok(_) => info!("✅ Successfully launched MT5 with EA!"),
+    match std::process::Command::new("wine").arg(&exe_path).arg(&config_arg).spawn() {
+        Ok(_) => {
+            info!("✅ Successfully launched MT5 with EA!");
+            // Minimize the MT5 window after it loads
+            std::thread::spawn(|| {
+                std::thread::sleep(std::time::Duration::from_secs(10));
+                info!("🔽 Attempting to minimize MT5 window...");
+                let search = std::process::Command::new("xdotool")
+                    .args(&["search", "--name", "MetaTrader"])
+                    .output();
+                match search {
+                    Ok(output) => {
+                        let ids = String::from_utf8_lossy(&output.stdout);
+                        for wid in ids.lines() {
+                            let wid = wid.trim();
+                            if !wid.is_empty() {
+                                let _ = std::process::Command::new("xdotool")
+                                    .args(&["windowminimize", wid])
+                                    .output();
+                                info!("🔽 Minimized MT5 window: {}", wid);
+                            }
+                        }
+                    }
+                    Err(e) => warn!("⚠️ xdotool search failed: {}", e),
+                }
+            });
+        }
         Err(e) => error!("❌ Failed to spawn MT5: {}", e),
     }
 }
 
 /// Check if a specific MT5 instance is running by matching its install path
 fn is_mt5_running(install_dir: &str) -> bool {
-    // Use wmic to get full executable paths of all terminal64.exe processes
-    match new_hidden_cmd("wmic")
-        .args(&["process", "where", "name='terminal64.exe'", "get", "ExecutablePath", "/FORMAT:CSV"])
+    // Use pgrep to list processes containing terminal64.exe and the install dir
+    match std::process::Command::new("pgrep")
+        .args(&["-f", "-a", "terminal64.exe"])
         .output()
     {
         Ok(output) => {
             let text = String::from_utf8_lossy(&output.stdout);
-            // Normalize install_dir for comparison (lowercase, forward slashes)
-            let normalized_install = install_dir.to_lowercase().replace('/', "\\");
+            let normalized_install = install_dir.replace('\\', "/");
+            let win_install = install_dir.to_lowercase();
+            
             for line in text.lines() {
                 let lower_line = line.to_lowercase();
-                if lower_line.contains(&normalized_install) {
+                if lower_line.contains(&win_install) || lower_line.contains(&normalized_install.to_lowercase()) {
                     return true;
                 }
             }
@@ -1272,6 +1564,51 @@ fn is_mt5_running(install_dir: &str) -> bool {
     }
 }
 
+/// Kill a specific MT5 instance gracefully by matching its install path
+fn kill_mt5_instance(install_dir: &str) {
+    if let Ok(output) = std::process::Command::new("pgrep")
+        .args(&["-f", "-a", "terminal64.exe"])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        let normalized = install_dir.replace('\\', "/").to_lowercase();
+        let win_path = install_dir.to_lowercase();
+        for line in text.lines() {
+            let lower = line.to_lowercase();
+            if lower.contains(&win_path) || lower.contains(&normalized) {
+                if let Some(pid) = line.split_whitespace().next() {
+                    info!("🛑 Killing MT5 process {} for {}", pid, install_dir);
+                    let _ = std::process::Command::new("kill")
+                        .arg(pid)
+                        .output();
+                }
+            }
+        }
+    }
+}
+
+/// Force kill a specific MT5 instance
+fn force_kill_mt5_instance(install_dir: &str) {
+    if let Ok(output) = std::process::Command::new("pgrep")
+        .args(&["-f", "-a", "terminal64.exe"])
+        .output()
+    {
+        let text = String::from_utf8_lossy(&output.stdout);
+        let normalized = install_dir.replace('\\', "/").to_lowercase();
+        let win_path = install_dir.to_lowercase();
+        for line in text.lines() {
+            let lower = line.to_lowercase();
+            if lower.contains(&win_path) || lower.contains(&normalized) {
+                if let Some(pid) = line.split_whitespace().next() {
+                    info!("💀 Force killing MT5 process {} for {}", pid, install_dir);
+                    let _ = std::process::Command::new("kill")
+                        .args(&["-9", pid])
+                        .output();
+                }
+            }
+        }
+    }
+}
 
 use rust_embed::RustEmbed;
 
@@ -1297,6 +1634,26 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
 
     let clean_path = path.split('?').next().unwrap_or(path);
     let mut relative = clean_path.trim_start_matches('/');
+
+    // Handle MT5 Icon dynamically
+    if relative.starts_with("icon/") {
+        let instance_id = relative.trim_start_matches("icon/");
+        let instances = scan_mt5_instances();
+        if let Some(inst) = instances.iter().find(|i| i.id == instance_id) {
+            // Convert Wine path e.g. C:\Program Files\... to native Linux path ~/.wine/drive_c/...
+            let linux_install_dir = win_to_linux_path(&inst.install_path);
+            let icon_path = linux_install_dir.join("Terminal.ico");
+            if let Ok(bytes) = std::fs::read(&icon_path) {
+                let response = format!(
+                    "HTTP/1.1 200 OK\r\nContent-Type: image/x-icon\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nCache-Control: public, max-age=86400\r\nConnection: close\r\n\r\n",
+                    bytes.len()
+                );
+                let _ = stream.write_all(response.as_bytes()).await;
+                let _ = stream.write_all(&bytes).await;
+                return;
+            }
+        }
+    }
 
     if relative.is_empty() {
         relative = "index.html";

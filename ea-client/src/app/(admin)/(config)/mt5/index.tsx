@@ -7,7 +7,6 @@ import {
   LuFolderOpen,
   LuLink,
   LuMonitorSmartphone,
-  LuPackage,
   LuPlay,
   LuRefreshCw,
   LuSquare,
@@ -41,6 +40,7 @@ type ActionStatus = {
 
 const WS_URL = getWsUrl();
 const WS_HOST = WS_URL.replace(/^ws:\/\//, '').split(':')[0] || window.location.hostname;
+const HTTP_URL = `http://${WS_HOST}:4173`;
 
 const MT5Settings = () => {
   const [instances, setInstances] = useState<Mt5Instance[]>([]);
@@ -146,6 +146,17 @@ const MT5Settings = () => {
             }
             break;
 
+          case 'upload_status':
+            setActionStatuses((prev) => ({
+              ...prev,
+              upload_ea: {
+                type: data.status === 'success' ? 'success' : 'error',
+                message: data.status === 'success' ? 'EA Uploaded successfully!' : 'Upload failed',
+              },
+            }));
+            // Provide a small delay before clearing it out or let global timer do it
+            break;
+
           case 'setup_webrequest_status':
             setActionStatuses((prev) => ({
               ...prev,
@@ -222,14 +233,6 @@ const MT5Settings = () => {
     sendAction('scan_mt5');
   };
 
-  const handleDeploy = (instanceId: string) => {
-    setActionStatuses((prev) => ({
-      ...prev,
-      [`deploy_${instanceId}`]: { type: 'loading', message: 'Deploying...' },
-    }));
-    sendAction('deploy_ea_to', { instance_id: instanceId });
-  };
-
   const handleLaunch = (instanceId: string) => {
     setActionStatuses((prev) => ({
       ...prev,
@@ -261,6 +264,10 @@ const MT5Settings = () => {
 
   return (
     <main className="space-y-6">
+      <style>{`
+        ::-webkit-scrollbar { display: none; }
+        * { scrollbar-width: none; }
+      `}</style>
       {/* Page Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -271,6 +278,7 @@ const MT5Settings = () => {
         </div>
       </div>
 
+      {/* Target EA Upload Section removed per user request */}
 
       {/* Section 1: EA Live Status */}
       <div className="card">
@@ -282,7 +290,7 @@ const MT5Settings = () => {
 
           <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
             {/* Connection Status */}
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">Connection</p>
               <div className="mt-2 flex items-center gap-2">
                 <span
@@ -295,7 +303,7 @@ const MT5Settings = () => {
             </div>
 
             {/* EA Version */}
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">EA Version</p>
               <p className="mt-2 text-sm font-semibold text-default-900">
                 v{eaStatus.version}
@@ -308,24 +316,41 @@ const MT5Settings = () => {
             </div>
 
             {/* Symbol */}
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">Symbol</p>
               <p className="mt-2 text-sm font-bold text-primary">{eaStatus.symbol || '-'}</p>
             </div>
 
             {/* Trading Status */}
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
-              <p className="text-xs font-medium uppercase text-default-400">Trading</p>
-              <div className="mt-2 flex items-center gap-2">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4 relative">
+              <p className="text-xs font-medium uppercase text-default-400">Algo Trading</p>
+              <div className="mt-2 flex items-center justify-between">
                 <span
-                  className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
+                  className={`inline-flex items-center gap-1.5 rounded-full px-2.5 py-1 text-xs font-medium ${
                     tradingEnabled
                       ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
                       : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'
                   }`}
                 >
-                  {tradingEnabled ? '● Enabled' : '○ Disabled'}
+                  <span className={`size-1.5 rounded-full ${tradingEnabled ? 'bg-green-500' : 'bg-red-500'}`}></span>
+                  {tradingEnabled ? 'Enabled' : 'Disabled'}
                 </span>
+                
+                {/* Global Toggle Switch */}
+                <button
+                  onClick={handleToggleTrading}
+                  disabled={!eaStatus.connected || !wsConnected}
+                  className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 ${
+                    tradingEnabled ? 'bg-green-500' : 'bg-default-300 dark:bg-default-600'
+                  }`}
+                  title={tradingEnabled ? 'Click to Stop Trading' : 'Click to Start Trading'}
+                >
+                  <span
+                    className={`inline-block size-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
+                      tradingEnabled ? 'translate-x-6' : 'translate-x-1'
+                    }`}
+                  />
+                </button>
               </div>
             </div>
           </div>
@@ -383,8 +408,6 @@ const MT5Settings = () => {
           {/* Instance Cards */}
           <div className="space-y-3">
             {instances.map((inst) => {
-              const deployStatus = getActionStatus(`deploy_${inst.id}`);
-
               return (
                 <div
                   key={inst.id}
@@ -394,8 +417,18 @@ const MT5Settings = () => {
                     {/* Instance Info */}
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-3">
-                        <div className="flex size-10 shrink-0 items-center justify-center rounded-lg bg-primary/10">
-                          <LuChartCandlestick className="size-5 text-primary" />
+                        <div className="relative flex size-10 shrink-0 items-center justify-center rounded-lg bg-default-800 overflow-hidden">
+                          <img
+                            src={`${HTTP_URL}/icon/${inst.id}`}
+                            alt="MT5 Icon"
+                            className="absolute inset-0 size-full object-contain p-1.5"
+                            onError={(e) => {
+                              // If icon fails to load, hide image and show the fallback icon sibling
+                              e.currentTarget.style.display = 'none';
+                              (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
+                            }}
+                          />
+                          <LuChartCandlestick className="size-5 text-primary fallback-icon" style={{ display: 'none' }} />
                         </div>
                         <div className="min-w-0">
                           <h6 className="truncate text-sm font-semibold text-default-900">
@@ -462,77 +495,44 @@ const MT5Settings = () => {
                      </div>
                     </div>
 
-                    {/* Action Buttons */}
-                    <div className="flex shrink-0 flex-wrap items-center gap-3">
-                      {/* Deploy EA Button - hidden if version matches server */}
-                      {(!inst.ea_deployed || inst.ea_version !== eaStatus.latestVersion) && (
-                        <button
-                          onClick={() => handleDeploy(inst.id)}
-                          disabled={deployStatus.type === 'loading' || !wsConnected}
-                          className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
-                        >
-                          {deployStatus.type === 'loading' ? (
-                            <><LuRefreshCw className="size-3.5 animate-spin" /> Deploying...</>
-                          ) : deployStatus.type === 'success' ? (
-                            <><LuCircleCheck className="size-3.5" /> Deployed!</>
-                          ) : (
-                            <><LuPackage className="size-3.5" /> {inst.ea_deployed ? 'Update EA' : 'Deploy EA'}</>
-                          )}
-                        </button>
-                      )}
-
-                      {/* Stop/Start Trading per instance */}
-                      <button
-                        onClick={handleToggleTrading}
-                        disabled={!eaStatus.connected || !wsConnected}
-                        className={`btn disabled:opacity-40 ${
-                          tradingEnabled
-                            ? 'bg-warning/10 text-warning hover:bg-warning hover:text-white'
-                            : 'bg-success/10 text-success hover:bg-success hover:text-white'
-                        }`}
-                      >
-                        {tradingEnabled ? (
-                          <><LuSquare className="size-3" /> Stop Trading</>
-                        ) : (
-                          <><LuPlay className="size-3" /> Start Trading</>
-                        )}
-                      </button>
-
-                      {/* Open Chart + EA button (only when MT5 is running and EA is NOT active) */}
-                      {inst.mt5_running && !eaStatus.connected && (
+                    {/* Action Buttons - Simplified 1-Click Flow */}
+                    <div className="flex shrink-0 items-center justify-end min-w-[160px]">
+                      {!inst.mt5_running ? (
                         <button
                           onClick={() => handleLaunch(inst.id)}
                           disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
-                          className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
+                          className="btn flex w-full items-center justify-center gap-2 bg-primary py-2.5 text-white shadow-sm hover:bg-primary-600 disabled:opacity-60 transition-all font-medium"
                         >
                           {getActionStatus(`launch_${inst.id}`).type === 'loading' ? (
-                            <><LuRefreshCw className="size-3 animate-spin" /> Opening...</>
+                            <><LuRefreshCw className="size-4 animate-spin" /> Starting...</>
                           ) : (
-                            <><LuChartCandlestick className="size-3" /> Open Chart + EA</>
+                            <><LuPlay className="size-4" /> Start MT5</>
                           )}
                         </button>
+                      ) : (
+                        <div className="flex w-full items-center gap-2">
+                          <button
+                            onClick={() => handleLaunch(inst.id)}
+                            disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
+                            className="btn flex-1 items-center justify-center bg-default-100 py-2.5 text-default-700 hover:bg-default-200 dark:bg-default-800 dark:text-default-300 dark:hover:bg-default-700 disabled:opacity-50 transition-all"
+                            title="Restart MT5 & Re-attach EA"
+                          >
+                            <LuRefreshCw className={`size-4 ${getActionStatus(`launch_${inst.id}`).type === 'loading' ? 'animate-spin' : ''}`} />
+                          </button>
+                          
+                          <button
+                            onClick={() => handleToggleMt5(inst.id, true)}
+                            disabled={getActionStatus(`close_${inst.id}`).type === 'loading' || !wsConnected}
+                            className="btn flex-[3] items-center justify-center gap-2 bg-danger/10 py-2.5 text-danger hover:bg-danger hover:text-white disabled:opacity-50 transition-all font-medium z-10"
+                          >
+                            {getActionStatus(`close_${inst.id}`).type === 'loading' ? (
+                              <><LuRefreshCw className="size-4 animate-spin" /> Stopping...</>
+                            ) : (
+                              <><LuSquare className="size-4" /> Stop MT5</>
+                            )}
+                          </button>
+                        </div>
                       )}
-
-                      {/* MT5 Toggle Switch - shows real per-instance status */}
-                      <div className="flex items-center gap-2">
-                        <span className="text-xs font-medium text-default-500">MT5</span>
-                        <button
-                          onClick={() => handleToggleMt5(inst.id, inst.mt5_running)}
-                          disabled={(!inst.ea_deployed && !inst.mt5_running) || !wsConnected}
-                          className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors duration-200 focus:outline-none disabled:opacity-40 ${
-                            inst.mt5_running
-                              ? 'bg-green-500'
-                              : 'bg-default-300 dark:bg-default-600'
-                          }`}
-                          title={inst.mt5_running ? 'MT5 is running' : 'Click to open MT5 + EA'}
-                        >
-                          <span
-                            className={`inline-block size-4 rounded-full bg-white shadow-sm transition-transform duration-200 ${
-                              inst.mt5_running ? 'translate-x-6' : 'translate-x-1'
-                            }`}
-                          />
-                        </button>
-                      </div>
                     </div>
                   </div>
                 </div>
@@ -551,7 +551,7 @@ const MT5Settings = () => {
           </div>
 
           <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">WebSocket Server</p>
               <p className="mt-1 font-mono text-sm text-default-900">{WS_URL}</p>
               <p className={`mt-1 text-xs ${wsConnected ? 'text-green-600 dark:text-green-400' : 'text-red-500'}`}>

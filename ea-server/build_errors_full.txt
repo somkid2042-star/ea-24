@@ -1,0 +1,176 @@
+    Checking ea-server v0.5.3 (/home/chaihanid2042/Desktop/ea-24/ea-server)
+error: #[derive(RustEmbed)] folder '/home/chaihanid2042/Desktop/ea-24/ea-server/../ea-client/dist/' does not exist. cwd: '/home/chaihanid2042/Desktop/ea-24/ea-server'
+    --> src/main.rs:1288:1
+     |
+1288 | / #[folder = "../ea-client/dist/"]
+1289 | | struct WebAssets;
+     | |_________________^
+
+error[E0432]: unresolved import `chrono`
+ --> src/db.rs:4:5
+  |
+4 | use chrono::{DateTime, Utc};
+  |     ^^^^^^ use of unresolved module or unlinked crate `chrono`
+  |
+  = help: if you wanted to use a crate named `chrono`, use `cargo add chrono` to add it to your `Cargo.toml`
+
+warning: unused import: `warn`
+ --> src/db.rs:1:24
+  |
+1 | use log::{error, info, warn};
+  |                        ^^^^
+  |
+  = note: `#[warn(unused_imports)]` (part of `#[warn(unused)]`) on by default
+
+error[E0282]: type annotations needed
+   --> src/db.rs:256:40
+    |
+256 |   ...String = sqlx::query_scalar::<_, Date...
+    |  _____________^
+257 | | ...ool).await.map(|t| t.to_rfc3339()).un...
+    | |_____________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/db.rs:257:47
+    |
+257 | ...).await.map(|t| t.to_rfc3339()).unwrap_...
+    |                 ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+257 |             .fetch_one(&self.pool).await.map(|t: /* Type */| t.to_rfc3339()).unwrap_or_else(|_| "—".to_string());
+    |                                                ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/db.rs:258:41
+    |
+258 |   ... String = sqlx::query_scalar::<_, Dat...
+    |  ______________^
+259 | | ...ool).await.map(|t| t.to_rfc3339()).un...
+    | |_____________^ cannot infer type
+
+error[E0282]: type annotations needed
+   --> src/db.rs:259:47
+    |
+259 | ...).await.map(|t| t.to_rfc3339()).unwrap_...
+    |                 ^  - type must be known at this point
+    |
+help: consider giving this closure parameter an explicit type
+    |
+259 |             .fetch_one(&self.pool).await.map(|t: /* Type */| t.to_rfc3339()).unwrap_or_else(|_| "—".to_string());
+    |                                                ++++++++++++
+
+error[E0282]: type annotations needed
+   --> src/db.rs:278:34
+    |
+278 | ...ec<_> = rows.into_iter().map(|row| {
+    |            ^^^^ cannot infer type
+
+error[E0599]: no function or associated item named `get` found for struct `WebAssets` in the current scope
+    --> src/main.rs:1314:32
+     |
+1289 | struct WebAssets;
+     | ---------------- function or associated item `get` not found for this struct
+...
+1314 |     let mut asset = WebAssets::get(relati...
+     |                                ^^^ function or associated item not found in `WebAssets`
+     |
+     = help: items from traits can only be used if the trait is implemented and in scope
+     = note: the following traits define an item `get`, perhaps you need to implement one of them:
+             candidate #1: `Embed`
+             candidate #2: `SliceIndex`
+             candidate #3: `icu_collections::codepointtrie::cptrie::TypedCodePointTrie`
+             candidate #4: `icu_properties::names::PropertyEnumToValueNameLookup`
+             candidate #5: `icu_provider::baked::DataStore`
+             candidate #6: `nix::sys::socket::GetSockOpt`
+             candidate #7: `rustls::server::server_conn::StoresServerSessions`
+             candidate #8: `rustls::server::server_conn::StoresServerSessions`
+             candidate #9: `sqlx::Row`
+             candidate #10: `zbus::interface::Interface`
+
+error[E0599]: no function or associated item named `get` found for struct `WebAssets` in the current scope
+    --> src/main.rs:1318:28
+     |
+1289 | struct WebAssets;
+     | ---------------- function or associated item `get` not found for this struct
+...
+1318 |         asset = WebAssets::get("index.htm...
+     |                            ^^^ function or associated item not found in `WebAssets`
+     |
+     = help: items from traits can only be used if the trait is implemented and in scope
+     = note: the following traits define an item `get`, perhaps you need to implement one of them:
+             candidate #1: `Embed`
+             candidate #2: `SliceIndex`
+             candidate #3: `icu_collections::codepointtrie::cptrie::TypedCodePointTrie`
+             candidate #4: `icu_properties::names::PropertyEnumToValueNameLookup`
+             candidate #5: `icu_provider::baked::DataStore`
+             candidate #6: `nix::sys::socket::GetSockOpt`
+             candidate #7: `rustls::server::server_conn::StoresServerSessions`
+             candidate #8: `rustls::server::server_conn::StoresServerSessions`
+             candidate #9: `sqlx::Row`
+             candidate #10: `zbus::interface::Interface`
+
+error[E0282]: type annotations needed
+    --> src/main.rs:1334:31
+     |
+1334 |         status, content_type, body.len()
+     |                               ^^^^ cannot infer type
+
+error[E0063]: missing fields `cpu_usage`, `ram_usage_mb` and `total_ram_mb` in initializer of `ServerState`
+   --> src/main.rs:289:58
+    |
+289 | ...ay_tx.send(TrayState {
+    |               ^^^^^^^^^ missing `cpu_usage`, `ram_usage_mb` and `total_ram_mb`
+
+error[E0599]: no method named `as_array` found for opaque type `impl Future<Output = ...>` in the current scope
+   --> src/main.rs:358:78
+    |
+358 | ..._arr) = setups.as_array() {
+    |                   ^^^^^^^^
+    |
+    = note: the full name for the type has been written to '/home/chaihanid2042/Desktop/ea-24/ea-server/target/debug/deps/ea_server-2483383c118ccd38.long-type-13702299641405424252.txt'
+    = note: consider using `--verbose` to print the full type name to the console
+help: consider `await`ing on the `Future` and calling the method on its `Output`
+    |
+358 |                                             if let Some(setups_arr) = setups.await.as_array() {
+    |                                                                              ++++++
+help: there is a method `as_any` with a similar name
+    |
+358 -                                             if let Some(setups_arr) = setups.as_array() {
+358 +                                             if let Some(setups_arr) = setups.as_any() {
+    |
+
+error[E0063]: missing fields `cpu_usage`, `ram_usage_mb` and `total_ram_mb` in initializer of `ServerState`
+   --> src/main.rs:461:26
+    |
+461 |     let _ = tray_tx.send(TrayState {
+    |                          ^^^^^^^^^ missing `cpu_usage`, `ram_usage_mb` and `total_ram_mb`
+
+error[E0599]: no method named `global_cpu_info` found for struct `sysinfo::System` in the current scope
+   --> src/main.rs:211:27
+    |
+211 | ...   let cpu = sys.global_cpu_info().cpu_...
+    |                     ^^^^^^^^^^^^^^^
+    |
+help: there is a method `global_cpu_usage` with a similar name
+    |
+211 -             let cpu = sys.global_cpu_info().cpu_usage();
+211 +             let cpu = sys.global_cpu_usage().cpu_usage();
+    |
+
+error[E0425]: cannot find function `new_hidden_cmd` in this scope
+    --> src/main.rs:1114:15
+     |
+1114 |         match new_hidden_cmd(&metaeditor)
+     |               ^^^^^^^^^^^^^^ not found in this scope
+
+error[E0282]: type annotations needed
+    --> src/main.rs:1127:27
+     |
+1127 |                     match child.try_wait() {
+     |                           ^^^^^ cannot infer type
+
+Some errors have detailed explanations: E0063, E0282, E0425, E0432, E0599.
+For more information about an error, try `rustc --explain E0063`.
+warning: `ea-server` (bin "ea-server") generated 1 warning
+error: could not compile `ea-server` (bin "ea-server") due to 16 previous errors; 1 warning emitted

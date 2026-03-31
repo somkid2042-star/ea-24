@@ -278,7 +278,7 @@ const TradeSetup = () => {
       {/* Setup Cards */}
       <div className="grid gap-4 md:grid-cols-2">
         {setups.map(s => (
-          <div key={s.id} className={`rounded-xl border bg-white dark:bg-default-50 p-5 transition hover:shadow-md ${editId === s.id ? 'border-primary ring-2 ring-primary/20' : 'border-default-200'}`}>
+          <div key={s.id} className={`card !p-5 transition hover:shadow-md ${editId === s.id ? '!border-primary ring-2 ring-primary/20' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-primary">{s.symbol}</span>

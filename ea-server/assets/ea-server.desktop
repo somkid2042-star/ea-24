@@ -1,0 +1,9 @@
+[Desktop Entry]
+Version=1.0
+Type=Application
+Name=EA Server
+Comment=EA Trading Server Control Panel
+Exec=/opt/ea-24/ea-server
+Icon=/opt/ea-24/icon.png
+Terminal=false
+Categories=Finance;Utility;

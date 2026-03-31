@@ -1,0 +1,16 @@
+#!/bin/sh
+set -e
+
+# Make the installation directory writable by everyone so the auto-updater
+# (which runs as a normal user) can replace the ea-server executable.
+if [ -d "/opt/ea-24" ]; then
+    chmod -R 777 /opt/ea-24
+    echo "Permissions for /opt/ea-24 updated to allow user-space auto-updating."
+fi
+
+# Ensure desktop environment is updated to detect the new icon/launcher
+if command -v update-desktop-database >/dev/null 2>&1; then
+    update-desktop-database -q
+fi
+
+exit 0

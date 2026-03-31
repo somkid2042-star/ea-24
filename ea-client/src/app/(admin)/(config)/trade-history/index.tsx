@@ -97,7 +97,7 @@ const TradeHistory = () => {
 
       {/* Summary Cards */}
       <div className="grid grid-cols-2 gap-4 lg:grid-cols-5">
-        <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+        <div className="card !p-5">
           <div className="mb-3 flex items-center justify-between"><span className="text-xs font-medium uppercase tracking-wider text-default-400">Net Profit</span><div className={`rounded-lg p-2 ${netProfit >= 0 ? 'bg-green-50 dark:bg-green-500/20 text-green-500' : 'bg-red-50 dark:bg-red-500/20 text-red-500'}`}>{netProfit >= 0 ? <LuTrendingUp className="size-4" /> : <LuTrendingDown className="size-4" />}</div></div>
           <p className={`text-2xl font-bold ${netProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{netProfit >= 0 ? '+' : ''}${netProfit.toFixed(2)}</p>
           <p className="mt-1 text-xs text-default-500">Profit + Swap + Comm</p>
@@ -127,7 +127,7 @@ const TradeHistory = () => {
       {/* Symbol Breakdown + Fees */}
       <div className="grid grid-cols-1 gap-5 lg:grid-cols-3">
         {/* Symbol breakdown */}
-        <div className="lg:col-span-2 rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+        <div className="lg:col-span-2 card !p-5">
           <h5 className="mb-4 text-sm font-semibold text-default-900">By Symbol</h5>
           {symbolStats.length > 0 ? (
             <div className="space-y-3">
@@ -146,7 +146,7 @@ const TradeHistory = () => {
         </div>
 
         {/* Fees */}
-        <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 p-5">
+        <div className="card !p-5">
           <h5 className="mb-4 text-sm font-semibold text-default-900">Fees & Costs</h5>
           <div className="space-y-3">
             <div className="flex items-center justify-between"><span className="text-xs text-default-500">Gross Profit</span><span className={`text-sm font-bold ${totalProfit >= 0 ? 'text-green-600' : 'text-red-600'}`}>{totalProfit >= 0 ? '+' : ''}${totalProfit.toFixed(2)}</span></div>
@@ -159,7 +159,7 @@ const TradeHistory = () => {
       </div>
 
       {/* Deals Table */}
-      <div className="rounded-xl border border-default-200 bg-white dark:bg-default-50 overflow-hidden">
+      <div className="card overflow-hidden">
         <div className="px-5 py-4 border-b border-default-200 flex items-center justify-between">
           <h5 className="text-sm font-semibold text-default-900">Closed Deals</h5>
           <span className="text-xs text-default-500">{totalDeals} deals (last 30 days)</span>
