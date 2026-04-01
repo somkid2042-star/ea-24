@@ -126,10 +126,20 @@ impl Database {
                 comment     TEXT
             );
 
+            CREATE TABLE IF NOT EXISTS strategy_signals (
+                id          BIGSERIAL PRIMARY KEY,
+                setup_id    BIGINT NOT NULL,
+                signal_type TEXT NOT NULL,
+                reason      TEXT,
+                executed    BOOLEAN DEFAULT false,
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tick_symbol ON tick_log(symbol);
             CREATE INDEX IF NOT EXISTS idx_tick_time ON tick_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_trade_time ON trade_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_history_time ON trade_history(time);
+            CREATE INDEX IF NOT EXISTS idx_signal_time ON strategy_signals(timestamp DESC);
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();
@@ -394,4 +404,108 @@ impl Database {
         }
         serde_json::Value::Array(Vec::new())
     }
+
+    // ──────────────────────────────────────────
+    //  Strategy Engine helpers
+    // ──────────────────────────────────────────
+
+    /// Get only active trade setups
+    pub async fn get_active_setups(&self) -> serde_json::Value {
+        #[derive(sqlx::FromRow)]
+        struct SetupRow {
+            id: i64, symbol: String, strategy: String, timeframe: String,
+            lot_size: f64, risk_percent: f64, mt5_instance: String,
+            tp_enabled: bool, tp_mode: String, tp_value: f64,
+            sl_enabled: bool, sl_mode: String, sl_value: f64,
+            trailing_stop_enabled: bool, trailing_stop_points: f64,
+            status: String, created_at: DateTime<Utc>
+        }
+        let query = "SELECT id, symbol, strategy, timeframe, lot_size, risk_percent, mt5_instance, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value, trailing_stop_enabled, trailing_stop_points, status, created_at FROM trade_setups WHERE status = 'active' ORDER BY id";
+        if let Ok(rows) = sqlx::query_as::<_, SetupRow>(query)
+            .fetch_all(&self.pool).await 
+        {
+            let setups: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "id": row.id, "symbol": row.symbol, "strategy": row.strategy, "timeframe": row.timeframe,
+                    "lotSize": row.lot_size, "riskPercent": row.risk_percent, "mt5Instance": row.mt5_instance,
+                    "tpEnabled": row.tp_enabled, "tpMode": row.tp_mode, "tpValue": row.tp_value,
+                    "slEnabled": row.sl_enabled, "slMode": row.sl_mode, "slValue": row.sl_value,
+                    "trailingStopEnabled": row.trailing_stop_enabled, "trailingStopPoints": row.trailing_stop_points,
+                    "status": row.status, "createdAt": row.created_at.to_rfc3339()
+                })
+            }).collect();
+            return serde_json::Value::Array(setups);
+        }
+        serde_json::Value::Array(Vec::new())
+    }
+
+    /// Aggregate recent ticks into OHLC candles for strategy computation
+    pub async fn get_candles_for_strategy(&self, symbol: &str, tf_minutes: i64, count: i64) -> Vec<crate::strategy::Candle> {
+        let tf_secs = tf_minutes * 60;
+        // Aggregate ticks into OHLC candles
+        let reliable_query = format!(
+            "SELECT 
+                (EXTRACT(EPOCH FROM timestamp)::bigint / {tf}) * {tf} as time,
+                (SELECT t2.bid FROM tick_log t2 WHERE t2.symbol = $1 AND (EXTRACT(EPOCH FROM t2.timestamp)::bigint / {tf}) * {tf} = (EXTRACT(EPOCH FROM t1.timestamp)::bigint / {tf}) * {tf} ORDER BY t2.id ASC LIMIT 1) as open,
+                MAX(bid) as high,
+                MIN(bid) as low,
+                (SELECT t2.bid FROM tick_log t2 WHERE t2.symbol = $1 AND (EXTRACT(EPOCH FROM t2.timestamp)::bigint / {tf}) * {tf} = (EXTRACT(EPOCH FROM t1.timestamp)::bigint / {tf}) * {tf} ORDER BY t2.id DESC LIMIT 1) as close
+            FROM tick_log t1
+            WHERE symbol = $1
+              AND timestamp > NOW() - INTERVAL '{hours} hours'
+            GROUP BY time, symbol
+            ORDER BY time ASC
+            LIMIT $2",
+            tf = tf_secs,
+            hours = (tf_minutes * count) / 60 + 2 // buffer hours
+        );
+
+        if let Ok(rows) = sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(&reliable_query)
+            .bind(symbol).bind(count)
+            .fetch_all(&self.pool).await
+        {
+            return rows.into_iter().map(|row| {
+                crate::strategy::Candle {
+                    time: row.0,
+                    open: row.1,
+                    high: row.2,
+                    low: row.3,
+                    close: row.4,
+                }
+            }).collect();
+        }
+        Vec::new()
+    }
+
+    /// Log a strategy signal
+    pub async fn log_strategy_signal(&self, setup_id: i64, signal_type: &str, reason: &str) {
+        let _ = sqlx::query(
+            "INSERT INTO strategy_signals (setup_id, signal_type, reason, executed) VALUES ($1, $2, $3, true)"
+        )
+            .bind(setup_id).bind(signal_type).bind(reason)
+            .execute(&self.pool).await;
+    }
+
+    /// Get recent signals for UI display
+    pub async fn get_recent_signals(&self, limit: i64) -> serde_json::Value {
+        let query = "SELECT s.id, s.setup_id, s.signal_type, s.reason, s.executed, s.timestamp, ts.symbol, ts.strategy 
+            FROM strategy_signals s 
+            LEFT JOIN trade_setups ts ON s.setup_id = ts.id 
+            ORDER BY s.timestamp DESC LIMIT $1";
+        if let Ok(rows) = sqlx::query_as::<_, (i64, i64, String, Option<String>, bool, DateTime<Utc>, Option<String>, Option<String>)>(query)
+            .bind(limit)
+            .fetch_all(&self.pool).await
+        {
+            let signals: Vec<_> = rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "id": row.0, "setup_id": row.1, "signal_type": row.2,
+                    "reason": row.3, "executed": row.4, "timestamp": row.5.to_rfc3339(),
+                    "symbol": row.6, "strategy": row.7
+                })
+            }).collect();
+            return serde_json::Value::Array(signals);
+        }
+        serde_json::Value::Array(Vec::new())
+    }
 }
+

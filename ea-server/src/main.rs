@@ -4,6 +4,7 @@
 mod db;
 mod updater;
 mod gui;
+mod strategy;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -268,6 +269,14 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
                 true
             });
         }
+    });
+
+    // Spawn Strategy Engine
+    let engine_db = database.clone();
+    let engine_tx = tx.clone();
+    let engine_ea = ea_state.clone();
+    tokio::spawn(async move {
+        strategy::run_strategy_engine(engine_db, engine_tx, engine_ea).await;
     });
 
     // Accept WebSocket connections
@@ -922,6 +931,15 @@ async fn handle_ws_connection(
                                             let _ = write.send(Message::Text(resp.to_string())).await;
                                         }
                                     }
+                                    "get_signals" => {
+                                        let limit = client_msg.limit.unwrap_or(20);
+                                        let signals = db.get_recent_signals(limit).await;
+                                        let resp = serde_json::json!({
+                                            "type": "strategy_signals",
+                                            "signals": signals,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
                                     "upload_ea" => {
                                         if let (Some(name), Some(content)) = (client_msg.file_name.as_deref(), client_msg.content_base64.as_deref()) {
                                             use base64::{Engine as _, engine::general_purpose};
@@ -978,7 +996,7 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") {
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;

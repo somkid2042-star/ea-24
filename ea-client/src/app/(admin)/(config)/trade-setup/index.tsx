@@ -1,7 +1,7 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX } from 'react-icons/lu';
+import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown } from 'react-icons/lu';
 
-const allStrategies = ['Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert'];
+const allStrategies = ['Auto', 'Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper'];
 const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const profitModes = [
   { value: 'rr', label: 'R:R' },
@@ -72,6 +72,9 @@ const TradeSetup = () => {
   const [editId, setEditId] = useState<number | null>(null);
   const [form, setForm] = useState<SetupForm>({ ...defaultForm });
   const [deleteModal, setDeleteModal] = useState<{ show: boolean; id: number; symbol: string }>({ show: false, id: 0, symbol: '' });
+  const [signals, setSignals] = useState<{setup_id: number; signal: string; symbol: string; strategy: string; reason: string; timestamp: string}[]>([]);
+  const [signalLog, setSignalLog] = useState<any[]>([]);
+  const [showSignalLog, setShowSignalLog] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWs = useCallback(() => {
@@ -89,6 +92,15 @@ const TradeSetup = () => {
         if (data.type === 'market_watch') {
           setMarketWatch(data.symbols || []);
           if (data.symbols?.length > 0) setForm(prev => prev.symbol === '' ? { ...prev, symbol: data.symbols[0].symbol } : prev);
+        }
+        if (data.type === 'strategy_signal') {
+          setSignals(prev => {
+            const filtered = prev.filter(s => s.setup_id !== data.setup_id);
+            return [{ setup_id: data.setup_id, signal: data.signal, symbol: data.symbol, strategy: data.strategy, reason: data.reason, timestamp: new Date().toISOString() }, ...filtered];
+          });
+        }
+        if (data.type === 'strategy_signals') {
+          setSignalLog(data.signals || []);
         }
       } catch { /* */ }
     };
@@ -307,6 +319,23 @@ const TradeSetup = () => {
               <div className="rounded-lg bg-default-50 dark:bg-default-100/50 p-2 text-center"><p className="text-[10px] text-default-400">Lot / Risk</p><p className="text-xs font-semibold text-default-800">{s.lotSize} / {s.riskPercent}%</p></div>
             </div>
 
+            {/* Last Signal Badge */}
+            {(() => {
+              const sig = signals.find(sg => sg.setup_id === s.id);
+              if (!sig) return null;
+              const isBuy = sig.signal === 'BUY';
+              return (
+                <div className={`mb-2 rounded-lg border px-3 py-2 ${isBuy ? 'border-green-300/50 dark:border-green-500/20 bg-green-50 dark:bg-green-500/10' : 'border-red-300/50 dark:border-red-500/20 bg-red-50 dark:bg-red-500/10'}`}>
+                  <div className="flex items-center gap-2">
+                    <LuActivity className={`size-3.5 ${isBuy ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`} />
+                    <span className={`text-xs font-bold ${isBuy ? 'text-green-700 dark:text-green-400' : 'text-red-700 dark:text-red-400'}`}>{sig.signal}</span>
+                    <span className="text-[10px] text-default-500 ml-auto">{new Date(sig.timestamp).toLocaleTimeString()}</span>
+                  </div>
+                  <p className="text-[10px] text-default-500 mt-0.5 truncate">{sig.reason}</p>
+                </div>
+              );
+            })()}
+
             {/* TP / SL / TS indicators */}
             <div className="flex flex-wrap gap-2">
               {s.tpEnabled ? (
@@ -347,6 +376,42 @@ const TradeSetup = () => {
       {setups.length === 0 && !showForm && (
         <div className="rounded-xl border border-dashed border-default-300 dark:border-default-400/20 p-10 text-center">
           <p className="text-default-400">No trade setups yet — click "Add Setup" to create one</p>
+        </div>
+      )}
+
+      {/* Signal Log */}
+      {setups.length > 0 && (
+        <div className="card !p-0 overflow-hidden">
+          <button
+            onClick={() => { setShowSignalLog(!showSignalLog); if (!showSignalLog) send({ action: 'get_signals', limit: 20 }); }}
+            className="flex w-full items-center justify-between p-4 hover:bg-default-50 dark:hover:bg-default-100/30 transition"
+          >
+            <div className="flex items-center gap-2">
+              <LuActivity className="size-4 text-primary" />
+              <span className="text-sm font-semibold text-default-900">Strategy Signal Log</span>
+              <span className="rounded-full bg-primary/10 px-2 py-0.5 text-[10px] font-medium text-primary">{signalLog.length}</span>
+            </div>
+            <LuChevronDown className={`size-4 text-default-400 transition ${showSignalLog ? 'rotate-180' : ''}`} />
+          </button>
+          {showSignalLog && (
+            <div className="border-t border-default-200/50 dark:border-default-100/20">
+              {signalLog.length > 0 ? (
+                <div className="divide-y divide-default-200/50 dark:divide-default-100/20 max-h-64 overflow-y-auto">
+                  {signalLog.map((sig: any) => (
+                    <div key={sig.id} className="flex items-center gap-3 px-4 py-2.5 text-xs">
+                      <span className={`rounded px-1.5 py-0.5 font-bold text-[10px] ${sig.signal_type === 'BUY' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>{sig.signal_type}</span>
+                      <span className="font-semibold text-default-800">{sig.symbol}</span>
+                      <span className="text-default-500">{sig.strategy}</span>
+                      <span className="text-default-400 truncate flex-1 max-w-xs">{sig.reason}</span>
+                      <span className="text-default-400 text-[10px] ml-auto whitespace-nowrap">{new Date(sig.timestamp).toLocaleString()}</span>
+                    </div>
+                  ))}
+                </div>
+              ) : (
+                <p className="p-4 text-center text-xs text-default-400">No signals recorded yet. Engine will generate signals when setups are active and EA is connected.</p>
+              )}
+            </div>
+          )}
         </div>
       )}
 

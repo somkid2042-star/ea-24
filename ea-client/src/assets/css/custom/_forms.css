@@ -5,8 +5,8 @@ _forms.scss
 */
 
 .form-input {
-  @apply bg-default-100/50 dark:bg-default-900/40 h-10 py-0 rounded-xl outline-none block w-full border-none transition-all text-default-800 placeholder:text-default-400;
-  @apply focus-visible:ring-[3px] focus-visible:ring-primary/20 focus-visible:bg-default-100 dark:focus-visible:bg-default-900/60;
+  @apply bg-default-100/50 dark:bg-default-200/40 h-10 py-0 rounded-xl outline-none block w-full border-none transition-all text-default-800 placeholder:text-default-400;
+  @apply focus-visible:ring-[3px] focus-visible:ring-primary/20 focus-visible:bg-default-100 dark:focus-visible:bg-default-200/60;
   @apply disabled:cursor-not-allowed disabled:opacity-70;
   @apply [&[readonly]]:bg-default-100/80 [&[readonly]]:cursor-not-allowed [&[readonly]]:text-default-600/80;
   @apply file:h-full [&[type=file]]:py-0;
@@ -20,8 +20,8 @@ _forms.scss
 }
 
 .form-select {
-  @apply bg-default-100/50 dark:bg-default-900/40 h-10 py-0 rounded-xl outline-none block w-full border-none transition-all text-default-800 placeholder:text-default-400;
-  @apply focus-visible:ring-[3px] focus-visible:ring-primary/20 focus-visible:bg-default-100 dark:focus-visible:bg-default-900/60;
+  @apply bg-default-100/50 dark:bg-default-200/40 h-10 py-0 rounded-xl outline-none block w-full border-none transition-all text-default-800 placeholder:text-default-400;
+  @apply focus-visible:ring-[3px] focus-visible:ring-primary/20 focus-visible:bg-default-100 dark:focus-visible:bg-default-200/60;
   @apply disabled:cursor-not-allowed disabled:opacity-70;
   @apply cursor-pointer;
   transition-property: all;

@@ -47,6 +47,7 @@ const NAV: NavItem[] = [
   { key: 'builder', icon: <LuWrench size={20} />, label: 'Builder' },
   { key: 'backtest', icon: <LuFlaskConical size={20} />, label: 'Backtest' },
   { key: 'trades', icon: <LuArrowLeftRight size={20} />, label: 'Trades' },
+  { key: 'setup', icon: <LuSettings size={20} />, label: 'Setup' },
   { key: 'history', icon: <LuHistory size={20} />, label: 'History' },
 ];
 
@@ -359,69 +360,73 @@ const TradingDashboard = () => {
       <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
 
         {/* ── CONTENT AREA (Chart or Page Panel) ── */}
-        <div className="flex flex-col flex-1 overflow-auto h-full pb-16 lg:pb-0">
+        <div className="flex flex-col flex-1 overflow-auto h-full pb-16 lg:pb-0 px-4 lg:px-6 pt-2">
           {renderPanel()}
         </div>
 
-        {/* ── RIGHT SIDEBAR (Cards) ── */}
-        <style>{`.hide-sb::-webkit-scrollbar{display:none}`}</style>
-        <div className="hide-sb flex flex-col gap-2 p-2 w-full lg:w-[300px] shrink-0 pb-20 lg:pb-2 overflow-auto" style={{ background: 'transparent' }}>
+        {/* ── RIGHT SIDEBAR (Cards) — only on Dashboard ── */}
+        {activePanel === 'chart' && (
+          <>
+            <style>{`.hide-sb::-webkit-scrollbar{display:none}`}</style>
+            <div className="hide-sb flex flex-col gap-2 p-2 w-full lg:w-[300px] shrink-0 pb-20 lg:pb-2 overflow-auto" style={{ background: 'transparent' }}>
 
-          {/* Watchlist Card */}
-          <div className="card">
-            <div className="card-header">
-              <h6 className="card-title text-sm">Watchlist</h6>
-              <div className="flex gap-1">
-                <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
-                <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
-              </div>
-            </div>
-            <div className="card-body overflow-x-auto" style={{ padding: '8px 16px' }}>
-              <table className="w-full min-w-[200px]">
-                <thead>
-                  <tr>
-                    <th className="text-[10px] text-default-400 font-medium text-left pb-1.5">Symbol</th>
-                    <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">Last</th>
-                    <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">Change</th>
-                    <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">%</th>
-                  </tr>
-                </thead>
-                <tbody>
-                  {wl.map(w => (
-                    <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors">
-                      <td className={`text-xs py-1 font-semibold ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>{w.symbol}</td>
-                      <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
-                      <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
-                      <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
-                    </tr>
-                  ))}
-                </tbody>
-              </table>
-            </div>
-          </div>
-
-
-          {/* Symbol Info Card */}
-          <div className="card">
-            <div className="card-body" style={{ padding: '12px 16px' }}>
-              <div className="flex items-center gap-2 mb-2">
-                <div className="size-7 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0 bg-gradient-to-br from-amber-500 to-orange-600">Au</div>
-                <div>
-                  <div className="text-sm font-bold text-default-900">{activeSymbol}</div>
-                  <div className="text-[9px] text-default-400">MetaTrader 5</div>
+              {/* Watchlist Card */}
+              <div className="card">
+                <div className="card-header">
+                  <h6 className="card-title text-sm">Watchlist</h6>
+                  <div className="flex gap-1">
+                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
+                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
+                  </div>
+                </div>
+                <div className="card-body overflow-x-auto" style={{ padding: '8px 16px' }}>
+                  <table className="w-full min-w-[200px]">
+                    <thead>
+                      <tr>
+                        <th className="text-[10px] text-default-400 font-medium text-left pb-1.5">Symbol</th>
+                        <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">Last</th>
+                        <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">Change</th>
+                        <th className="text-[10px] text-default-400 font-medium text-right pb-1.5">%</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {wl.map(w => (
+                        <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors">
+                          <td className={`text-xs py-1 font-semibold ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>{w.symbol}</td>
+                          <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
+                          <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
+                          <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
               </div>
-              <div className="text-xl font-bold text-default-900">{bid > 0 ? bid.toFixed(digits) : '—'} <span className="text-[10px] text-default-400">{account?.currency || 'USD'}</span></div>
-              {bid > 0 && (
-                <div className="flex gap-3 text-[10px] text-default-400 mt-1">
-                  <span>Bid: <span className="text-danger">{bid.toFixed(digits)}</span></span>
-                  <span>Ask: <span className="text-success">{ask.toFixed(digits)}</span></span>
-                  <span>Spread: {spread.toFixed(1)}</span>
+
+
+              {/* Symbol Info Card */}
+              <div className="card">
+                <div className="card-body" style={{ padding: '12px 16px' }}>
+                  <div className="flex items-center gap-2 mb-2">
+                    <div className="size-7 rounded-full flex items-center justify-center text-[8px] font-bold text-white shrink-0 bg-gradient-to-br from-amber-500 to-orange-600">Au</div>
+                    <div>
+                      <div className="text-sm font-bold text-default-900">{activeSymbol}</div>
+                      <div className="text-[9px] text-default-400">MetaTrader 5</div>
+                    </div>
+                  </div>
+                  <div className="text-xl font-bold text-default-900">{bid > 0 ? bid.toFixed(digits) : '—'} <span className="text-[10px] text-default-400">{account?.currency || 'USD'}</span></div>
+                  {bid > 0 && (
+                    <div className="flex gap-3 text-[10px] text-default-400 mt-1">
+                      <span>Bid: <span className="text-danger">{bid.toFixed(digits)}</span></span>
+                      <span>Ask: <span className="text-success">{ask.toFixed(digits)}</span></span>
+                      <span>Spread: {spread.toFixed(1)}</span>
+                    </div>
+                  )}
                 </div>
-              )}
+              </div>
             </div>
-          </div>
-        </div>
+          </>
+        )}
 
         {/* ═══ RIGHT NAV TOOLBAR (Bottom Bar on Mobile) ═══ */}
         <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-2 lg:gap-3 overflow-x-auto lg:overflow-y-auto bg-card/80 dark:bg-[#151821]/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent border-t border-default-200/60 dark:border-default-300/10 lg:border-t-0 lg:backdrop-blur-none">
