@@ -411,7 +411,7 @@ const MT5Settings = () => {
               return (
                 <div
                   key={inst.id}
-                  className="rounded-xl border border-default-200 bg-gradient-to-r from-default-50/50 to-default-50/10 p-5 transition hover:shadow-md hover:shadow-primary/5 dark:from-default-100 dark:to-default-50"
+                  className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-gradient-to-r from-default-50/50 to-default-50/10 p-5 transition hover:shadow-md hover:shadow-primary/5 dark:from-default-200/5 dark:to-transparent"
                 >
                   <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
                     {/* Instance Info */}
@@ -558,14 +558,14 @@ const MT5Settings = () => {
                 {wsConnected ? '● Connected' : '○ Disconnected'}
               </p>
             </div>
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">MT5 TCP Server</p>
               <p className="mt-1 font-mono text-sm text-default-900">{WS_HOST}:8081</p>
               <p className={`mt-1 text-xs ${eaStatus.connected ? 'text-green-600 dark:text-green-400' : 'text-default-400'}`}>
                 {eaStatus.connected ? '● EA Connected' : '○ Waiting for EA'}
               </p>
             </div>
-            <div className="rounded-lg border border-default-100 bg-default-50/50 p-4 dark:bg-default-50/20">
+            <div className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 p-4">
               <p className="text-xs font-medium uppercase text-default-400">Server EA Version</p>
               <p className="mt-1 font-mono text-sm text-default-900">v{eaStatus.latestVersion}</p>
               <p className="mt-1 text-xs text-default-400">Latest version on server</p>

@@ -3,7 +3,7 @@ import { Link } from 'react-router';
 
 const Footer = () => {
   return (
-    <footer className="mt-auto footer flex items-center py-5 border-t border-default-200">
+    <footer className="mt-auto footer flex items-center py-5 border-t border-default-200/60 dark:border-default-300/10">
       <div className="lg:px-8 px-6 w-full flex md:justify-between justify-center gap-4">
         <div>
           {currentYear} © {appName}

@@ -287,10 +287,10 @@ const TradingDashboard = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden border-none">
+    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden rounded-2xl border border-default-200/40 dark:border-default-300/10 shadow-2xl">
 
       {/* ═══ TOP BAR ═══ */}
-      <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-card dark:bg-[#151821] border-b border-default-200/60 dark:border-default-300/10" style={{ height: 52 }}>
+      <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-card dark:bg-[#151821] border-b border-default-200/60 dark:border-default-300/10 rounded-t-2xl" style={{ height: 52 }}>
         {/* Left: Traffic lights + Logo */}
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center" style={{ gap: 8 }}>

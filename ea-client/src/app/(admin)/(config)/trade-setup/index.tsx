@@ -52,8 +52,8 @@ const WS_URL = getWsUrl();
 
 const modeLabel = (m: string) => profitModes.find(p => p.value === m)?.label || m;
 const modeUnit = (m: string) => m === 'rr' ? 'R' : m === 'pips' ? 'pips' : '$';
-const selectCls = "form-select w-full rounded-md border border-default-200 px-2 py-1.5 text-xs text-default-900 focus:border-primary focus:ring-primary";
-const inputCls = "form-input w-full rounded-md border border-default-200 px-2 py-1.5 text-xs text-default-900 focus:border-primary focus:ring-primary";
+const selectCls = "form-select text-xs";
+const inputCls = "form-input form-input-sm";
 
 // Toggle Switch Component
 const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
@@ -345,7 +345,7 @@ const TradeSetup = () => {
       </div>
 
       {setups.length === 0 && !showForm && (
-        <div className="rounded-xl border border-dashed border-default-300 p-10 text-center">
+        <div className="rounded-xl border border-dashed border-default-300 dark:border-default-400/20 p-10 text-center">
           <p className="text-default-400">No trade setups yet — click "Add Setup" to create one</p>
         </div>
       )}
@@ -353,7 +353,7 @@ const TradeSetup = () => {
       {/* Delete Confirmation Modal */}
       {deleteModal.show && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50 backdrop-blur-sm" onClick={() => setDeleteModal({ show: false, id: 0, symbol: '' })}>
-          <div className="mx-4 w-full max-w-sm rounded-2xl bg-white dark:bg-gray-900 p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
+          <div className="mx-4 w-full max-w-sm rounded-2xl bg-card p-6 shadow-2xl" onClick={e => e.stopPropagation()}>
             <div className="mb-4 flex size-12 items-center justify-center rounded-full bg-red-100 dark:bg-red-500/20 mx-auto">
               <LuTrash2 className="size-6 text-red-600 dark:text-red-400" />
             </div>

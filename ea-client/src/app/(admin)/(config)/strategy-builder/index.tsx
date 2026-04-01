@@ -34,17 +34,17 @@ const StrategyBuilder = () => {
         <div className="grid grid-cols-1 gap-4 md:grid-cols-3">
           <div>
             <label className="mb-1.5 block text-sm font-medium text-default-700">Strategy Name</label>
-            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Scalper Pro v2" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+            <input type="text" value={name} onChange={e => setName(e.target.value)} placeholder="e.g. Scalper Pro v2" className="form-input" />
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-default-700">Type</label>
-            <select value={type} onChange={e => setType(e.target.value)} className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none">
+            <select value={type} onChange={e => setType(e.target.value)} className="form-select">
               {strategyTypes.map(t => <option key={t} value={t}>{t}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1.5 block text-sm font-medium text-default-700">Description</label>
-            <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+            <input type="text" value={description} onChange={e => setDescription(e.target.value)} placeholder="Brief description" className="form-input" />
           </div>
         </div>
       </div>
@@ -79,12 +79,12 @@ const StrategyBuilder = () => {
         </div>
         <div className="space-y-3">
           {rules.map((rule, i) => (
-            <div key={rule.id} className="flex items-center gap-3 rounded-lg border border-default-200 p-3">
+            <div key={rule.id} className="flex items-center gap-3 rounded-lg border border-default-200/60 dark:border-default-300/10 bg-default-50/30 dark:bg-default-200/5 p-3">
               <span className="flex size-6 items-center justify-center rounded-full bg-primary/10 text-xs font-bold text-primary">{i + 1}</span>
               <select
                 value={rule.condition}
                 onChange={e => setRules(rules.map(r => r.id === rule.id ? { ...r, condition: e.target.value } : r))}
-                className="rounded-md border border-default-200 px-2 py-1.5 text-xs focus:border-primary focus:outline-none"
+                className="form-select !h-8 text-xs"
               >
                 <option value="entry">Entry</option>
                 <option value="exit">Exit</option>
@@ -95,7 +95,7 @@ const StrategyBuilder = () => {
                 value={rule.description}
                 onChange={e => setRules(rules.map(r => r.id === rule.id ? { ...r, description: e.target.value } : r))}
                 placeholder="Describe the rule condition..."
-                className="flex-1 rounded-md border border-default-200 px-3 py-1.5 text-xs focus:border-primary focus:outline-none"
+                className="form-input form-input-sm flex-1"
               />
               <button onClick={() => removeRule(rule.id)} className="btn btn-icon btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white">
                 <LuTrash2 className="size-4" />
@@ -111,19 +111,19 @@ const StrategyBuilder = () => {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
             <label className="mb-1 block text-xs text-default-500">Default Lot Size</label>
-            <input type="number" step="0.01" defaultValue="0.01" className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            <input type="number" step="0.01" defaultValue="0.01" className="form-input" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-default-500">Max Risk per Trade (%)</label>
-            <input type="number" step="0.5" defaultValue="2" className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            <input type="number" step="0.5" defaultValue="2" className="form-input" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-default-500">Stop Loss (pips)</label>
-            <input type="number" defaultValue="20" className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            <input type="number" defaultValue="20" className="form-input" />
           </div>
           <div>
             <label className="mb-1 block text-xs text-default-500">Take Profit (pips)</label>
-            <input type="number" defaultValue="40" className="w-full rounded-md border border-default-200 px-3 py-2 text-sm focus:border-primary focus:outline-none" />
+            <input type="number" defaultValue="40" className="form-input" />
           </div>
         </div>
       </div>

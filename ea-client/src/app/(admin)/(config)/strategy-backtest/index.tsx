@@ -24,23 +24,23 @@ const StrategyBacktest = () => {
         <div className="grid grid-cols-2 gap-4 md:grid-cols-4">
           <div>
             <label className="mb-1.5 block text-xs text-default-500">Strategy</label>
-            <select value={strategy} onChange={e => setStrategy(e.target.value)} className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none">
+            <select value={strategy} onChange={e => setStrategy(e.target.value)} className="form-select">
               {strategies.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1.5 block text-xs text-default-500">Symbol</label>
-            <select value={symbol} onChange={e => setSymbol(e.target.value)} className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none">
+            <select value={symbol} onChange={e => setSymbol(e.target.value)} className="form-select">
               {symbols.map(s => <option key={s} value={s}>{s}</option>)}
             </select>
           </div>
           <div>
             <label className="mb-1.5 block text-xs text-default-500">Start Date</label>
-            <input type="date" defaultValue="2025-01-01" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+            <input type="date" defaultValue="2025-01-01" className="form-input" />
           </div>
           <div>
             <label className="mb-1.5 block text-xs text-default-500">End Date</label>
-            <input type="date" defaultValue="2025-12-31" className="w-full rounded-md border border-default-200 px-3 py-2.5 text-sm focus:border-primary focus:outline-none" />
+            <input type="date" defaultValue="2025-12-31" className="form-input" />
           </div>
         </div>
         <button onClick={runBacktest} className="mt-4 btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
@@ -60,7 +60,7 @@ const StrategyBacktest = () => {
             ].map(stat => (
               <div key={stat.label} className="card !p-4 text-center">
                 <p className="text-xs text-default-400">{stat.label}</p>
-                <p className={`mt-1 text-xl font-bold ${stat.positive === true ? 'text-green-600' : stat.positive === false ? 'text-red-600' : 'text-default-900'}`}>{stat.value}</p>
+                <p className={`mt-1 text-xl font-bold ${stat.positive === true ? 'text-green-600 dark:text-green-400' : stat.positive === false ? 'text-red-600 dark:text-red-400' : 'text-default-900'}`}>{stat.value}</p>
                 <p className="mt-0.5 text-[10px] text-default-500">{stat.sub}</p>
               </div>
             ))}
@@ -96,7 +96,7 @@ const StrategyBacktest = () => {
                 return (
                   <div key={month} className={`rounded-lg p-3 text-center ${val >= 0 ? 'bg-green-50 dark:bg-green-500/20' : 'bg-red-50 dark:bg-red-500/20'}`}>
                     <p className="text-xs font-medium text-default-600">{month}</p>
-                    <p className={`text-sm font-bold ${val >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                    <p className={`text-sm font-bold ${val >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                       {val >= 0 ? <LuTrendingUp className="inline size-3 mr-0.5" /> : <LuTrendingDown className="inline size-3 mr-0.5" />}
                       ${Math.abs(val)}
                     </p>

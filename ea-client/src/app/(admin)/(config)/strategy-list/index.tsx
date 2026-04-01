@@ -52,7 +52,7 @@ const StrategyList = () => {
                   <h5 className="text-sm font-semibold text-default-900">{s.name}</h5>
                   <span className="rounded-full bg-primary/10 px-2.5 py-0.5 text-[10px] font-medium text-primary">{s.type}</span>
                   <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${
-                    s.status === 'active' ? 'bg-green-100 text-green-700' : 'bg-default-100 text-default-500'
+                    s.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-default-100 text-default-500 dark:bg-default-200/10'
                   }`}>
                     {s.status === 'active' ? '● Active' : '○ Inactive'}
                   </span>
@@ -60,7 +60,7 @@ const StrategyList = () => {
                 <p className="mt-1 text-xs text-default-500">{s.description}</p>
                 <div className="mt-2 flex flex-wrap gap-1">
                   {s.indicators.map(ind => (
-                    <span key={ind} className="rounded bg-default-100 px-2 py-0.5 text-[10px] text-default-600">{ind}</span>
+                    <span key={ind} className="rounded bg-default-100 dark:bg-default-200/10 px-2 py-0.5 text-[10px] text-default-600">{ind}</span>
                   ))}
                 </div>
               </div>

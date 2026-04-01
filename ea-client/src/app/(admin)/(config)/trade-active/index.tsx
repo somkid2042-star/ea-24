@@ -69,7 +69,7 @@ const ActiveTrades = () => {
       <div className="card overflow-hidden">
         <div className="overflow-x-auto">
           <table className="w-full text-left text-sm">
-            <thead className="border-b border-default-200 bg-default-50/50 text-xs uppercase text-default-400">
+            <thead className="border-b border-default-200/60 dark:border-default-300/10 bg-default-50/50 dark:bg-default-200/5 text-xs uppercase text-default-400">
               <tr>
                 <th className="px-4 py-3">Symbol</th>
                 <th className="px-4 py-3">Type</th>
@@ -84,19 +84,19 @@ const ActiveTrades = () => {
                 <th className="px-4 py-3">Action</th>
               </tr>
             </thead>
-            <tbody className="divide-y divide-default-100">
+            <tbody className="divide-y divide-default-200/60 dark:divide-default-300/10">
               {positions.length > 0 ? positions.map(t => (
-                <tr key={t.ticket} className="transition hover:bg-default-50/50">
+                <tr key={t.ticket} className="transition hover:bg-default-50/50 dark:hover:bg-default-200/5">
                   <td className="px-4 py-3 font-semibold text-primary">{t.symbol}</td>
                   <td className="px-4 py-3">
-                    <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${t.type === 'BUY' ? 'bg-green-100 text-green-700' : 'bg-red-100 text-red-700'}`}>{t.type}</span>
+                    <span className={`inline-flex rounded px-2 py-0.5 text-xs font-bold ${t.type === 'BUY' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400'}`}>{t.type}</span>
                   </td>
                   <td className="px-4 py-3 text-default-600">{t.volume.toFixed(2)}</td>
                   <td className="px-4 py-3 font-mono text-xs text-default-600">{t.open_price}</td>
                   <td className="px-4 py-3 font-mono text-xs text-default-900 font-medium">{t.current_price}</td>
                   <td className="px-4 py-3 font-mono text-xs text-red-400">{t.sl}</td>
                   <td className="px-4 py-3 font-mono text-xs text-green-500">{t.tp}</td>
-                  <td className={`px-4 py-3 font-semibold ${t.pnl >= 0 ? 'text-green-600' : 'text-red-600'}`}>
+                  <td className={`px-4 py-3 font-semibold ${t.pnl >= 0 ? 'text-green-600 dark:text-green-400' : 'text-red-600 dark:text-red-400'}`}>
                     {t.pnl >= 0 ? '+' : ''}${t.pnl.toFixed(2)}
                   </td>
                   <td className="px-4 py-3 text-xs text-default-500">{t.comment || 'EA-Web'}</td>
