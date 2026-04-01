@@ -3,22 +3,20 @@ import { useNavigate } from 'react-router-dom';
 import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
-  LuChartCandlestick, LuServer, LuDatabase, LuShieldCheck,
-  LuList, LuWrench, LuFlaskConical, LuArrowLeftRight, LuHistory,
-  LuSettings, LuPlus, LuX, LuChevronDown,
-  LuSun, LuMoon,
+  LuLayoutDashboard, LuServer, LuShieldCheck,
+  LuWorkflow, LuBriefcase, LuHistory,
+  LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
+  LuSun, LuMoon, LuChartCandlestick, LuSettings
 } from 'react-icons/lu';
-import { FiHome } from 'react-icons/fi';
 import { getWsUrl } from '@/utils/config';
 
 /* ── Lazy-loaded page components ── */
 const MT5Page = lazy(() => import('@/app/(admin)/(config)/mt5/index'));
 const ServerPage = lazy(() => import('@/app/(admin)/(config)/server/index'));
-const DatabasePage = lazy(() => import('@/app/(admin)/(config)/database/index'));
+
 const SecurityPage = lazy(() => import('@/app/(admin)/(config)/security/index'));
-const StrategyListPage = lazy(() => import('@/app/(admin)/(config)/strategy-list/index'));
 const StrategyBuilderPage = lazy(() => import('@/app/(admin)/(config)/strategy-builder/index'));
-const StrategyBacktestPage = lazy(() => import('@/app/(admin)/(config)/strategy-backtest/index'));
+
 const TradeActivePage = lazy(() => import('@/app/(admin)/(config)/trade-active/index'));
 const TradeSetupPage = lazy(() => import('@/app/(admin)/(config)/trade-setup/index'));
 const TradeHistoryPage = lazy(() => import('@/app/(admin)/(config)/trade-history/index'));
@@ -33,32 +31,28 @@ type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: str
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'database' | 'security' | 'strategies' | 'builder' | 'backtest' | 'trades' | 'setup' | 'history';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean } | { key: string; divider: true };
 
-const NAV: NavItem[] = [
-  { key: 'chart', icon: <FiHome size={20} />, label: 'Home' },
+const TOP_NAV: NavItem[] = [
+  { key: 'chart', icon: <LuLayoutDashboard size={20} />, label: 'Home' },
+  { key: 'strategies', icon: <LuWorkflow size={20} />, label: 'Strategies' },
+  { key: 'trades', icon: <LuBriefcase size={20} />, label: 'Trades' },
+  { key: 'setup', icon: <LuSlidersHorizontal size={20} />, label: 'Setup' },
+  { key: 'history', icon: <LuHistory size={20} />, label: 'History' },
+];
+
+const BOTTOM_NAV: NavItem[] = [
+  { key: 'security', icon: <LuShieldCheck size={20} />, label: 'Security' },
   { key: 'mt5', icon: <LuChartCandlestick size={20} />, label: 'MT5' },
   { key: 'server', icon: <LuServer size={20} />, label: 'Server' },
-  { key: 'database', icon: <LuDatabase size={20} />, label: 'Database' },
-  { key: 'security', icon: <LuShieldCheck size={20} />, label: 'Security' },
-  { key: 'd1', divider: true },
-  { key: 'strategies', icon: <LuList size={20} />, label: 'Strategies' },
-  { key: 'builder', icon: <LuWrench size={20} />, label: 'Builder' },
-  { key: 'backtest', icon: <LuFlaskConical size={20} />, label: 'Backtest' },
-  { key: 'trades', icon: <LuArrowLeftRight size={20} />, label: 'Trades' },
-  { key: 'setup', icon: <LuSettings size={20} />, label: 'Setup' },
-  { key: 'history', icon: <LuHistory size={20} />, label: 'History' },
 ];
 
 const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticComponent<React.ComponentType>> = {
   mt5: MT5Page,
   server: ServerPage,
-  database: DatabasePage,
   security: SecurityPage,
-  strategies: StrategyListPage,
-  builder: StrategyBuilderPage,
-  backtest: StrategyBacktestPage,
+  strategies: StrategyBuilderPage,
   trades: TradeActivePage,
   setup: TradeSetupPage,
   history: TradeHistoryPage,
@@ -288,7 +282,7 @@ const TradingDashboard = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden rounded-2xl border border-default-200/40 dark:border-default-300/10 shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden rounded-2xl shadow-2xl">
 
       {/* ═══ TOP BAR ═══ */}
       <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-card dark:bg-[#151821] border-b border-default-200/60 dark:border-default-300/10 rounded-t-2xl" style={{ height: 52 }}>
@@ -341,7 +335,7 @@ const TradingDashboard = () => {
         </div>
 
         {/* Right balance */}
-        <div className="flex items-center gap-5">
+        <div className="flex items-center gap-5 pr-2">
           <div className="text-right hidden sm:block">
             <div className="text-[10px] text-default-400">Balance</div>
             <div className="text-xs font-bold text-default-900">${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
@@ -350,17 +344,16 @@ const TradingDashboard = () => {
             <div className="text-[10px] text-default-400">Equity</div>
             <div className={`text-xs font-bold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}</div>
           </div>
-          <div className="size-8 rounded-full shrink-0" style={{ background: 'linear-gradient(135deg, #8b5cf6, #ec4899)' }} />
         </div>
       </div>
 
 
 
       {/* ═══ MAIN AREA ═══ */}
-      <div className="flex flex-col lg:flex-row flex-1 overflow-hidden relative">
+      <div className="flex flex-col lg:flex-row flex-1 min-h-0 relative">
 
         {/* ── CONTENT AREA (Chart or Page Panel) ── */}
-        <div className="flex flex-col flex-1 overflow-auto h-full pb-16 lg:pb-0 px-4 lg:px-6 pt-2">
+        <div className="flex flex-col flex-1 min-h-0 overflow-auto pb-16 lg:pb-0 px-4 lg:px-6 pt-2">
           {renderPanel()}
         </div>
 
@@ -429,33 +422,100 @@ const TradingDashboard = () => {
         )}
 
         {/* ═══ RIGHT NAV TOOLBAR (Bottom Bar on Mobile) ═══ */}
-        <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-2 lg:gap-3 overflow-x-auto lg:overflow-y-auto bg-card/80 dark:bg-[#151821]/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent border-t border-default-200/60 dark:border-default-300/10 lg:border-t-0 lg:backdrop-blur-none">
-          {NAV.map(item => {
-            if ('divider' in item) return <div key={item.key} className="hidden lg:block w-8 h-px bg-default-200 dark:bg-default-300/10 my-1 shrink-0" />;
+        <style>{`
+          .mac-tooltip { position: relative; }
+          .mac-tooltip::before {
+            content: attr(data-tip);
+            position: absolute;
+            right: calc(100% + 10px);
+            top: 50%;
+            transform: translateY(-50%) scale(0.92);
+            padding: 4px 10px;
+            border-radius: 6px;
+            background: rgba(30,30,30,0.92);
+            color: #f0f0f0;
+            font-size: 12px;
+            font-weight: 500;
+            letter-spacing: 0.01em;
+            white-space: nowrap;
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease, transform 0.15s ease;
+            box-shadow: 0 2px 8px rgba(0,0,0,0.22);
+            z-index: 99999;
+          }
+          .mac-tooltip::after {
+            content: '';
+            position: absolute;
+            right: calc(100% + 4px);
+            top: 50%;
+            transform: translateY(-50%);
+            border: 4px solid transparent;
+            border-left-color: rgba(30,30,30,0.92);
+            pointer-events: none;
+            opacity: 0;
+            transition: opacity 0.15s ease;
+            z-index: 99999;
+          }
+          .mac-tooltip:hover::before {
+            opacity: 1;
+            transform: translateY(-50%) scale(1);
+            transition-delay: 0.4s;
+          }
+          .mac-tooltip:hover::after {
+            opacity: 1;
+            transition-delay: 0.4s;
+          }
+          @media (max-width: 1023px) {
+            .mac-tooltip::before, .mac-tooltip::after { display: none; }
+          }
+        `}</style>
+        <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-2 lg:gap-3 overflow-x-auto lg:overflow-visible bg-card/80 dark:bg-card/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent lg:backdrop-blur-none border-t border-default-200/60 dark:border-default-300/10 lg:border-none z-50">
+          {TOP_NAV.map(item => {
+            if ('divider' in item) return null;
             const active = activePanel === item.key;
             return (
               <button
                 key={item.key}
                 onClick={() => setActivePanel(item.key)}
-                className={`shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
+                data-tip={item.label}
+                className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
                   active 
                     ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
-                    : 'bg-card dark:bg-default-200/5 text-default-400 hover:text-default-700 dark:hover:text-default-600 hover:bg-default-100 dark:hover:bg-default-200/10'
+                    : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-default-100 hover:bg-default-300 dark:hover:bg-default-200/60'
                 }`}
                 style={{ width: 40, height: 40 }}
-                title={item.label}
               >
                 {item.icon}
               </button>
             );
           })}
           {/* Theme Toggle & Connection */}
-          <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-4 lg:gap-2 px-4 lg:px-0">
+          <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-3 lg:gap-3 px-4 lg:px-0">
+            {BOTTOM_NAV.map(item => {
+              if ('divider' in item) return null;
+              const active = activePanel === item.key;
+              return (
+                <button
+                  key={item.key}
+                  onClick={() => setActivePanel(item.key)}
+                  data-tip={item.label}
+                  className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
+                    active 
+                      ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
+                      : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-default-100 hover:bg-default-300 dark:hover:bg-default-200/60'
+                  }`}
+                  style={{ width: 40, height: 40 }}
+                >
+                  {item.icon}
+                </button>
+              );
+            })}
             <button
               onClick={() => setDarkMode(!darkMode)}
-              className="btn btn-icon shrink-0 bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20 dark:hover:text-default-800 transition-all border-none"
+              data-tip={darkMode ? 'Light Mode' : 'Dark Mode'}
+              className="mac-tooltip btn btn-icon shrink-0 bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-default-100 transition-all border-none"
               style={{ width: 36, height: 36, borderRadius: 12 }}
-              title={darkMode ? 'Light Mode' : 'Dark Mode'}
             >
               {darkMode ? <LuSun size={16} /> : <LuMoon size={16} />}
             </button>
