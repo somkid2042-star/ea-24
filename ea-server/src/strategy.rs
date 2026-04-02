@@ -646,11 +646,23 @@ pub async fn run_strategy_engine(
         }
     });
 
+    let mut last_candle_requests: std::collections::HashMap<String, tokio::time::Instant> = std::collections::HashMap::new();
+
     loop {
         tokio::time::sleep(tokio::time::Duration::from_secs(ENGINE_INTERVAL_SECS)).await;
 
         let ea = ea_state.read().await;
-        if !ea.connected { continue; }
+        if !ea.connected {
+            // Broadcast status: waiting for EA
+            let status = serde_json::json!({
+                "type": "engine_status",
+                "status": "waiting_ea",
+                "message": "⏳ Waiting for EA connection...",
+                "setups": serde_json::Value::Array(vec![]),
+            });
+            let _ = tx.send(status.to_string());
+            continue;
+        }
         drop(ea);
 
         {
@@ -662,7 +674,16 @@ pub async fn run_strategy_engine(
 
         let account = match &last_account {
             Some(a) => a,
-            None => continue,
+            None => {
+                let status = serde_json::json!({
+                    "type": "engine_status",
+                    "status": "waiting_account",
+                    "message": "⏳ Waiting for account data...",
+                    "setups": serde_json::Value::Array(vec![]),
+                });
+                let _ = tx.send(status.to_string());
+                continue;
+            },
         };
 
         let balance = account["balance"].as_f64().unwrap_or(0.0);
@@ -671,19 +692,46 @@ pub async fn run_strategy_engine(
             let dd = ((balance - equity) / balance) * 100.0;
             if dd > MAX_DRAWDOWN_PCT {
                 warn!("🛑 [Engine] Drawdown {:.2}% > max {:.1}% — skipping", dd, MAX_DRAWDOWN_PCT);
+                let status = serde_json::json!({
+                    "type": "engine_status",
+                    "status": "drawdown_limit",
+                    "message": format!("🛑 Drawdown {:.2}% > max {:.1}% — paused", dd, MAX_DRAWDOWN_PCT),
+                    "setups": serde_json::Value::Array(vec![]),
+                });
+                let _ = tx.send(status.to_string());
                 continue;
             }
         }
 
         let positions = account["positions"].as_array();
         let open_count = positions.map(|p| p.len()).unwrap_or(0);
-        if open_count >= MAX_POSITIONS { continue; }
+        if open_count >= MAX_POSITIONS {
+            let status = serde_json::json!({
+                "type": "engine_status",
+                "status": "max_positions",
+                "message": format!("🛑 Max positions reached ({}/{})", open_count, MAX_POSITIONS),
+                "setups": serde_json::Value::Array(vec![]),
+            });
+            let _ = tx.send(status.to_string());
+            continue;
+        }
 
         let setups = db.get_active_setups().await;
         let setups_arr = match setups.as_array() {
             Some(arr) if !arr.is_empty() => arr.clone(),
-            _ => continue,
+            _ => {
+                let status = serde_json::json!({
+                    "type": "engine_status",
+                    "status": "no_setups",
+                    "message": "💤 No active setups",
+                    "setups": serde_json::Value::Array(vec![]),
+                });
+                let _ = tx.send(status.to_string());
+                continue;
+            },
         };
+
+        let mut setup_statuses = Vec::new();
 
         for setup in &setups_arr {
             let setup_id = setup["id"].as_i64().unwrap_or(0);
@@ -701,7 +749,14 @@ pub async fn run_strategy_engine(
             if symbol.is_empty() || strategy.is_empty() { continue; }
 
             let cooldown_key = format!("{}_{}", symbol, strategy);
-            if !cooldown.can_trade(&cooldown_key, COOLDOWN_SECS) { continue; }
+            if !cooldown.can_trade(&cooldown_key, COOLDOWN_SECS) {
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "cooldown",
+                    "message": "⏱ Cooldown (60s between trades)",
+                }));
+                continue;
+            }
 
             let has_existing = positions.map(|ps| {
                 ps.iter().any(|p| {
@@ -709,19 +764,57 @@ pub async fn run_strategy_engine(
                         && p["comment"].as_str().map(|c| c.contains(&strategy.replace(' ', ""))).unwrap_or(false)
                 })
             }).unwrap_or(false);
-            if has_existing { continue; }
+            if has_existing {
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "has_position",
+                    "message": "📌 Position already open",
+                }));
+                continue;
+            }
 
             let tf_minutes = match timeframe {
                 "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
                 "H1" => 60, "H4" => 240, "D1" => 1440, _ => 5,
             };
             let candles = db.get_candles_for_strategy(symbol, tf_minutes, 100).await;
-            if candles.len() < 50 { continue; }
+            if candles.len() < 50 { 
+                let req_key = format!("{}_{}", symbol, tf_minutes);
+                let can_req = match last_candle_requests.get(&req_key) {
+                    Some(last) => last.elapsed().as_secs() > 30, // Request every 30s max
+                    None => true,
+                };
+                
+                if can_req {
+                    info!("⏳ [Engine] Requesting historical candles for {} M{} (has {}/50)", symbol, tf_minutes, candles.len());
+                    let cmd = serde_json::json!({
+                        "action": "request_candles",
+                        "symbol": symbol,
+                        "timeframe": tf_minutes,
+                        "count": 200
+                    }).to_string();
+                    let _ = tx.send(cmd);
+                    last_candle_requests.insert(req_key, tokio::time::Instant::now());
+                }
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "loading_candles",
+                    "message": format!("📊 Loading candle data ({}/50)...", candles.len()),
+                }));
+                continue; 
+            }
 
             let indicators = compute_indicators(&candles);
             let (signal, reason) = evaluate_strategy(strategy, &indicators);
 
-            if signal == Signal::None { continue; }
+            if signal == Signal::None {
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "scanning",
+                    "message": "🔍 Scanning for signals...",
+                }));
+                continue;
+            }
 
             let direction = match signal {
                 Signal::Buy => "BUY", Signal::Sell => "SELL", Signal::None => unreachable!(),
@@ -741,6 +834,12 @@ pub async fn run_strategy_engine(
 
             info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5}", direction, symbol, strategy, lot, tp_price, sl_price);
             info!("   Reason: {}", reason);
+
+            setup_statuses.push(serde_json::json!({
+                "setup_id": setup_id,
+                "status": "signal_sent",
+                "message": format!("🚀 {} signal sent!", direction),
+            }));
 
             if let Err(e) = tx.send(cmd.to_string()) {
                 error!("❌ [Engine] Failed to send trade command: {}", e);
@@ -764,5 +863,14 @@ pub async fn run_strategy_engine(
 
             if open_count + 1 >= MAX_POSITIONS { break; }
         }
+
+        // Broadcast all setup statuses to UI
+        let engine_status = serde_json::json!({
+            "type": "engine_status",
+            "status": "running",
+            "message": format!("🧠 Evaluating {} setups | {} positions open", setups_arr.len(), open_count),
+            "setups": setup_statuses,
+        });
+        let _ = tx.send(engine_status.to_string());
     }
 }

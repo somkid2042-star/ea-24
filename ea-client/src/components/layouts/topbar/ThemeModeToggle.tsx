@@ -17,8 +17,8 @@ const ThemeModeToggle = () => {
         type="button"
         onClick={() => changeTheme(theme === 'light' ? 'dark' : 'light')}
       >
-        <TbSun className="text-xl absolute dark:scale-100 dark:rotate-0 scale-0 rotate-90 transition-all duration-200" />
-        <TbMoon className="text-xl absolute dark:scale-0 dark:-rotate-90 scale-100 rotate-0 transition-all duration-200" />
+        <TbSun className="size-4.5 absolute dark:scale-100 dark:rotate-0 scale-0 rotate-90 transition-all duration-200" />
+        <TbMoon className="size-4.5 absolute dark:scale-0 dark:-rotate-90 scale-100 rotate-0 transition-all duration-200" />
       </button>
     </div>
   );

@@ -24,7 +24,15 @@ use crate::gui::ServerState as TrayState;
 
 
 /// The latest EA version shipped with this server
-const LATEST_EA_VERSION: &str = "2.04";
+const LATEST_EA_VERSION: &str = "2.05";
+
+/// Compare version strings as floating point numbers.
+/// Returns true if `latest` is strictly greater than `current`.
+fn is_update_available(current: &str, latest: &str) -> bool {
+    let cur: f64 = current.parse().unwrap_or(0.0);
+    let lat: f64 = latest.parse().unwrap_or(0.0);
+    lat > cur
+}
 
 // ──────────────────────────────────────────────
 //  Structs
@@ -238,19 +246,27 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
         }
     });
 
-    // Spawn sysinfo polling loop
+    // Spawn sysinfo polling loop — track only THIS process
     let sys_tx = tray_tx.clone();
+    let sys_db = database.clone();
     tokio::spawn(async move {
-        let mut sys = sysinfo::System::new_all();
+        let pid = sysinfo::Pid::from_u32(std::process::id());
+        let mut sys = sysinfo::System::new();
         let mut networks = sysinfo::Networks::new_with_refreshed_list();
+        // Initial refresh so first delta is valid
+        sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
+        sys.refresh_memory();
         loop {
             tokio::time::sleep(tokio::time::Duration::from_secs(1)).await;
-            sys.refresh_cpu_usage();
+            sys.refresh_processes(sysinfo::ProcessesToUpdate::Some(&[pid]), true);
             sys.refresh_memory();
             networks.refresh(true);
 
-            let cpu = sys.global_cpu_usage();
-            let ram = sys.used_memory() / 1048576; // bytes to MB
+            let (cpu, ram) = if let Some(proc) = sys.process(pid) {
+                (proc.cpu_usage(), proc.memory() / 1048576) // bytes to MB
+            } else {
+                (0.0, 0)
+            };
             let total = sys.total_memory() / 1048576;
             
             let mut rx_kb = 0.0;
@@ -260,12 +276,15 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
                 tx_kb += data.transmitted() as f32 / 1024.0;
             }
 
+            let db_pool_size = sys_db.size();
+
             sys_tx.send_if_modified(|state| {
                 state.cpu_usage = cpu;
                 state.ram_usage_mb = ram;
                 state.total_ram_mb = total;
                 state.net_rx_kb = rx_kb;
                 state.net_tx_kb = tx_kb;
+                state.db_pool_size = db_pool_size;
                 true
             });
         }
@@ -319,6 +338,7 @@ async fn handle_mt5_connection(
 
     let mut digits_map: std::collections::HashMap<String, i64> = std::collections::HashMap::new();
     let mut last_risk_alert = std::time::Instant::now() - std::time::Duration::from_secs(3600);
+    let mut is_real_ea = false; // Tracks if this connection has sent ea_info
 
     loop {
         tokio::select! {
@@ -342,6 +362,7 @@ async fn handle_mt5_connection(
                                     state.connected = true;
                                     state.version = ver.clone();
                                     state.symbol = sym.clone();
+                                    is_real_ea = true;
 
                                     // Update tray icon
                                     let _ = tray_tx.send(TrayState {
@@ -359,7 +380,7 @@ async fn handle_mt5_connection(
                                         "version": ver,
                                         "latest_version": LATEST_EA_VERSION,
                                         "symbol": sym,
-                                        "update_available": ver != LATEST_EA_VERSION,
+                                        "update_available": is_update_available(&ver, LATEST_EA_VERSION),
                                     }).to_string();
                                     let _ = tx.send(info_msg);
                                 }
@@ -388,6 +409,11 @@ async fn handle_mt5_connection(
                                     } else if msg_type == Some("trade_history") {
                                         if let Some(deals) = val.get("deals") {
                                             db.save_trade_history(deals).await;
+                                        }
+                                    } else if msg_type == Some("candle_data") {
+                                        if let Some(candles) = val.get("candles") {
+                                            let sym = val["symbol"].as_str().unwrap_or("");
+                                            db.insert_candles_as_ticks(sym, candles).await;
                                         }
                                     } else if msg_type == Some("account_data") {
                                         // Server-side trailing stop
@@ -509,8 +535,8 @@ async fn handle_mt5_connection(
         }
     }
 
-    // Reset state on disconnect
-    {
+    // Reset state on disconnect — only if this was a real EA connection
+    if is_real_ea {
         let mut state = ea_state.write().await;
         state.connected = false;
     }
@@ -564,7 +590,7 @@ async fn handle_ws_connection(
         "ea_connected": state.connected,
         "ea_version": state.version,
         "ea_symbol": state.symbol,
-        "update_available": state.connected && state.version != LATEST_EA_VERSION,
+        "update_available": state.connected && is_update_available(&state.version, LATEST_EA_VERSION),
         "server_uptime_secs": server_start.elapsed().as_secs(),
     });
     drop(state);
@@ -617,6 +643,22 @@ async fn handle_ws_connection(
                                     "stop_trading" | "start_trading" => {
                                         info!("⚡ [UI] Forwarding {} to EA", action);
                                         let cmd = serde_json::json!({ "action": action }).to_string();
+                                        let _ = tx.send(cmd);
+                                    }
+                                    "request_candles" => {
+                                        let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
+                                        let tf = client_msg.timeframe.as_deref().unwrap_or("M5");
+                                        let tf_minutes: i64 = match tf {
+                                            "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
+                                            "H1" => 60, "H4" => 240, "D1" => 1440, _ => 5,
+                                        };
+                                        info!("📊 [UI] Requesting candles for {} {}", sym, tf);
+                                        let cmd = serde_json::json!({
+                                            "action": "request_candles",
+                                            "symbol": sym,
+                                            "timeframe": tf_minutes,
+                                            "count": 500
+                                        }).to_string();
                                         let _ = tx.send(cmd);
                                     }
                                     "open_trade" => {
@@ -729,12 +771,22 @@ async fn handle_ws_connection(
                                 match action.as_str() {
                                     "get_history" => {
                                         let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
-                                        let limit = client_msg.limit.unwrap_or(200);
-                                        info!("📊 [UI] History requested for {} (limit {})", sym, limit);
-                                        let candles = db.get_historical_candles(sym, limit).await;
+                                        let limit = client_msg.limit.unwrap_or(500);
+                                        let tf = client_msg.timeframe.as_deref().unwrap_or("M1");
+                                        let tf_minutes: i64 = match tf {
+                                            "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
+                                            "H1" => 60, "H4" => 240, "D1" => 1440, _ => 1,
+                                        };
+                                        info!("📊 [UI] History requested for {} {} (limit {})", sym, tf, limit);
+                                        let candles_raw = db.get_candles_for_strategy(sym, tf_minutes, limit).await;
+                                        let candles: Vec<serde_json::Value> = candles_raw.iter().map(|c| {
+                                            serde_json::json!({ "time": c.time, "open": c.open, "high": c.high, "low": c.low, "close": c.close })
+                                        }).collect();
+                                        info!("📊 [UI] Returning {} candles for {} {}", candles.len(), sym, tf);
                                         let resp = serde_json::json!({
                                             "type": "history",
                                             "symbol": sym,
+                                            "timeframe": tf,
                                             "candles": candles,
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
@@ -931,6 +983,125 @@ async fn handle_ws_connection(
                                             let _ = write.send(Message::Text(resp.to_string())).await;
                                         }
                                     }
+                                    "update_ea" => {
+                                        info!("🔄 [UI] Update EA requested — compile & deploy to all running MT5");
+                                        let instances = scan_mt5_instances();
+                                        let running: Vec<_> = instances.iter().filter(|i| i.mt5_running).collect();
+                                        
+                                        let mq5_src = PathBuf::from("mt5").join("EATradingClient.mq5");
+                                        let mut results = Vec::new();
+                                        
+                                        if !mq5_src.exists() {
+                                            error!("❌ Source .mq5 not found at {:?}", mq5_src);
+                                            let resp = serde_json::json!({
+                                                "type": "deploy_status",
+                                                "status": "error",
+                                                "message": "Source .mq5 file not found",
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        } else {
+                                            for inst in &running {
+                                                let linux_dir = PathBuf::from(&inst.install_path);
+                                                let experts_dir = linux_dir.join("MQL5").join("Experts");
+                                                let dest_mq5 = experts_dir.join("EATradingClient.mq5");
+                                                let metaeditor = linux_dir.join("MetaEditor64.exe");
+                                                
+                                                std::fs::create_dir_all(&experts_dir).ok();
+                                                
+                                                // 1. Copy .mq5 source
+                                                match std::fs::copy(&mq5_src, &dest_mq5) {
+                                                    Ok(_) => info!("✅ Copied .mq5 to {:?}", dest_mq5),
+                                                    Err(e) => {
+                                                        error!("❌ Copy .mq5 failed: {}", e);
+                                                        results.push(format!("{}: copy failed", inst.id));
+                                                        continue;
+                                                    }
+                                                }
+                                                
+                                                // 2. Compile with MetaEditor
+                                                if metaeditor.exists() {
+                                                    let mq5_win = format!("Z:{}", dest_mq5.display().to_string().replace('/', "\\"));
+                                                    info!("🔧 Compiling EA via MetaEditor: {}", mq5_win);
+                                                    
+                                                    if let Ok(_) = std::process::Command::new("wine")
+                                                        .arg(&metaeditor)
+                                                        .arg(&mq5_win)
+                                                        .spawn()
+                                                    {
+                                                        std::thread::sleep(std::time::Duration::from_secs(5));
+                                                        // Send F7 to compile
+                                                        if let Ok(output) = std::process::Command::new("xdotool")
+                                                            .args(&["search", "--name", "MetaEditor"])
+                                                            .output()
+                                                        {
+                                                            let ids = String::from_utf8_lossy(&output.stdout);
+                                                            for wid in ids.lines() {
+                                                                let wid = wid.trim();
+                                                                if !wid.is_empty() {
+                                                                    let _ = std::process::Command::new("xdotool")
+                                                                        .args(&["windowactivate", "--sync", wid])
+                                                                        .output();
+                                                                    std::thread::sleep(std::time::Duration::from_millis(500));
+                                                                    let _ = std::process::Command::new("xdotool")
+                                                                        .args(&["key", "F7"])
+                                                                        .output();
+                                                                    info!("🔧 Sent F7 compile to MetaEditor (window {})", wid);
+                                                                }
+                                                            }
+                                                        }
+                                                        std::thread::sleep(std::time::Duration::from_secs(10));
+                                                        let _ = std::process::Command::new("pkill")
+                                                            .args(&["-f", "MetaEditor64.exe"])
+                                                            .output();
+                                                        info!("🔧 MetaEditor closed");
+                                                        std::thread::sleep(std::time::Duration::from_secs(2));
+                                                        
+                                                        // Copy compiled .ex5 to cache and AppData
+                                                        let compiled_ex5 = experts_dir.join("EATradingClient.ex5");
+                                                        if compiled_ex5.exists() {
+                                                            // Copy to server cache
+                                                            std::fs::copy(&compiled_ex5, Path::new("mt5/EATradingClient.ex5")).ok();
+                                                            
+                                                            // Also copy to AppData for this instance 
+                                                            let home = std::env::var("HOME").unwrap_or_default();
+                                                            let user = std::env::var("USER").unwrap_or_else(|_| "user".to_string());
+                                                            let appdata_experts = PathBuf::from(&home)
+                                                                .join(".wine/drive_c/users")
+                                                                .join(&user)
+                                                                .join("AppData/Roaming/MetaQuotes/Terminal")
+                                                                .join(&inst.id)
+                                                                .join("MQL5/Experts");
+                                                            std::fs::create_dir_all(&appdata_experts).ok();
+                                                            std::fs::copy(&compiled_ex5, appdata_experts.join("EATradingClient.ex5")).ok();
+                                                            
+                                                            info!("✅ EA compiled and deployed to {}", inst.broker_name);
+                                                            results.push(format!("{}: success", inst.broker_name));
+                                                        } else {
+                                                            error!("❌ Compiled .ex5 not found after MetaEditor");
+                                                            results.push(format!("{}: compile failed", inst.broker_name));
+                                                        }
+                                                    }
+                                                } else {
+                                                    // No MetaEditor — just copy .ex5 if available
+                                                    let src_ex5 = PathBuf::from("mt5").join("EATradingClient.ex5");
+                                                    if src_ex5.exists() {
+                                                        std::fs::copy(&src_ex5, experts_dir.join("EATradingClient.ex5")).ok();
+                                                        results.push(format!("{}: ex5 copied (no compile)", inst.broker_name));
+                                                    } else {
+                                                        results.push(format!("{}: no MetaEditor or .ex5", inst.broker_name));
+                                                    }
+                                                }
+                                            }
+                                            
+                                            let resp = serde_json::json!({
+                                                "type": "deploy_status",
+                                                "status": if results.iter().any(|r| r.contains("success")) { "success" } else { "partial" },
+                                                "message": format!("Updated {} instance(s): {}", results.len(), results.join(", ")),
+                                                "results": results,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
                                     "get_signals" => {
                                         let limit = client_msg.limit.unwrap_or(20);
                                         let signals = db.get_recent_signals(limit).await;
@@ -996,7 +1167,7 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") {
+                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;

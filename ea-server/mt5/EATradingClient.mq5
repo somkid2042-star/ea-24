@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "EA Trading"
 #property link      "https://ea-trading.local"
-#property version   "2.04"
+#property version   "2.05"
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.04"
+#define EA_VERSION "2.05"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -315,6 +315,13 @@ void ProcessCommand(const string msg)
    if(StringFind(msg, "\"modify_sl\"") >= 0)
      {
       HandleModifySL(msg);
+      return;
+     }
+   
+   // Request candles (historical OHLC)
+   if(StringFind(msg, "\"request_candles\"") >= 0)
+     {
+      HandleRequestCandles(msg);
       return;
      }
   }
@@ -632,5 +639,67 @@ void SendTradeHistory()
    int sent = SocketSend(socket, data, (uint)(ArraySize(data) - 1));
    if(sent < 0)
      { isConnected = false; }
+  }
+
+//+------------------------------------------------------------------+
+//| Handle request_candles command - send historical OHLC data        |
+//+------------------------------------------------------------------+
+void HandleRequestCandles(const string msg)
+  {
+   string sym = JsonGetString(msg, "symbol");
+   long tf_minutes = JsonGetLong(msg, "timeframe");
+   long count = JsonGetLong(msg, "count");
+   
+   if(StringLen(sym) == 0) sym = _Symbol;
+   if(count <= 0) count = 200;
+   if(count > 500) count = 500;
+   
+   // Map minutes to ENUM_TIMEFRAMES
+   ENUM_TIMEFRAMES tf = PERIOD_M5;
+   if(tf_minutes == 1)   tf = PERIOD_M1;
+   else if(tf_minutes == 5)   tf = PERIOD_M5;
+   else if(tf_minutes == 15)  tf = PERIOD_M15;
+   else if(tf_minutes == 30)  tf = PERIOD_M30;
+   else if(tf_minutes == 60)  tf = PERIOD_H1;
+   else if(tf_minutes == 240) tf = PERIOD_H4;
+   else if(tf_minutes == 1440) tf = PERIOD_D1;
+   
+   // Make sure symbol is available
+   SymbolSelect(sym, true);
+   
+   MqlRates rates[];
+   ArraySetAsSeries(rates, false);
+   int copied = CopyRates(sym, tf, 0, (int)count, rates);
+   
+   if(copied <= 0)
+     {
+      Print("CopyRates failed for ", sym, " TF=", tf_minutes, " err=", GetLastError());
+      SendResponse("{\"type\":\"candle_data\",\"symbol\":\"" + sym + "\",\"candles\":[],\"count\":0}");
+      return;
+     }
+   
+   int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+   
+   // Build JSON array of candles
+   string json = "{\"type\":\"candle_data\"";
+   json += ",\"symbol\":\"" + sym + "\"";
+   json += ",\"timeframe\":" + IntegerToString(tf_minutes);
+   json += ",\"count\":" + IntegerToString(copied);
+   json += ",\"candles\":[";
+   
+   for(int i = 0; i < copied; i++)
+     {
+      if(i > 0) json += ",";
+      json += "{\"t\":" + IntegerToString((long)rates[i].time);
+      json += ",\"o\":" + DoubleToString(rates[i].open, digits);
+      json += ",\"h\":" + DoubleToString(rates[i].high, digits);
+      json += ",\"l\":" + DoubleToString(rates[i].low, digits);
+      json += ",\"c\":" + DoubleToString(rates[i].close, digits);
+      json += "}";
+     }
+   json += "]}";
+   
+   SendResponse(json);
+   Print("Sent ", copied, " candles for ", sym, " TF=M", tf_minutes);
   }
 //+------------------------------------------------------------------+

@@ -20,6 +20,10 @@ struct TickRecord {
 }
 
 impl Database {
+    pub fn size(&self) -> u32 {
+        self.pool.size()
+    }
+
     /// Initialize DB, run migrations, and start background tick batcher
     pub async fn init(db_url: &str) -> Result<Self, String> {
         info!("Connecting to PostgreSQL at {}...", db_url);
@@ -205,6 +209,78 @@ impl Database {
         batch.clear();
     }
 
+    pub async fn insert_candles_as_ticks(&self, symbol: &str, candles: &serde_json::Value) {
+        let arr = match candles.as_array() {
+            Some(a) => a,
+            None => return,
+        };
+        
+        let mut symbols = Vec::with_capacity(arr.len() * 4);
+        let mut bids = Vec::with_capacity(arr.len() * 4);
+        let mut asks = Vec::with_capacity(arr.len() * 4);
+        let mut spreads = Vec::with_capacity(arr.len() * 4);
+        let mut timestamps = Vec::with_capacity(arr.len() * 4);
+
+        for c in arr {
+            let t = c["t"].as_i64().unwrap_or(0);
+            let o = c["o"].as_f64().unwrap_or(0.0);
+            let h = c["h"].as_f64().unwrap_or(0.0);
+            let l = c["l"].as_f64().unwrap_or(0.0);
+            let c_val = c["c"].as_f64().unwrap_or(0.0);
+
+            if t == 0 { continue; }
+            let dt = match chrono::DateTime::from_timestamp(t, 0) {
+                Some(d) => d,
+                None => continue,
+            };
+
+            // Insert 4 mock ticks to simulate OHLC exactly
+            // 1. Open
+            symbols.push(symbol.to_string());
+            bids.push(o);
+            asks.push(o);
+            spreads.push(0.0);
+            timestamps.push(dt);
+            
+            // 2. High
+            symbols.push(symbol.to_string());
+            bids.push(h);
+            asks.push(h);
+            spreads.push(0.0);
+            timestamps.push(dt + chrono::Duration::seconds(1));
+            
+            // 3. Low
+            symbols.push(symbol.to_string());
+            bids.push(l);
+            asks.push(l);
+            spreads.push(0.0);
+            timestamps.push(dt + chrono::Duration::seconds(2));
+            
+            // 4. Close
+            symbols.push(symbol.to_string());
+            bids.push(c_val);
+            asks.push(c_val);
+            spreads.push(0.0);
+            timestamps.push(dt + chrono::Duration::seconds(3));
+        }
+
+        if symbols.is_empty() { return; }
+
+        let query = "
+            INSERT INTO tick_log (symbol, bid, ask, spread, timestamp)
+            SELECT * FROM UNNEST($1::text[], $2::double precision[], $3::double precision[], $4::double precision[], $5::timestamptz[])
+        ";
+
+        if let Err(e) = sqlx::query(query)
+            .bind(symbols).bind(bids).bind(asks).bind(spreads).bind(timestamps)
+            .execute(&self.pool).await 
+        {
+            error!("❌ Failed to insert historical candles as ticks: {}", e);
+        } else {
+            info!("✅ Inserted {} historical candles for {}", arr.len(), symbol);
+        }
+    }
+
     /// Fast non-blocking tick logger (sends to Async Batch channel)
     pub fn log_tick(&self, symbol: &str, bid: f64, ask: f64, spread: f64) {
         let record = TickRecord {
@@ -218,14 +294,22 @@ impl Database {
     pub async fn get_historical_candles(&self, symbol: &str, limit: i64) -> serde_json::Value {
         let query = "
             SELECT 
-                EXTRACT(EPOCH FROM timestamp)::bigint / 60 * 60 as time,
-                (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND EXTRACT(EPOCH FROM t2.timestamp)::bigint / 60 * 60 = EXTRACT(EPOCH FROM t1.timestamp)::bigint / 60 * 60 ORDER BY id ASC LIMIT 1) as open,
+                time,
+                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
                 MAX(bid) as high,
                 MIN(bid) as low,
-                (SELECT bid FROM tick_log t2 WHERE t2.symbol = t1.symbol AND EXTRACT(EPOCH FROM t2.timestamp)::bigint / 60 * 60 = EXTRACT(EPOCH FROM t1.timestamp)::bigint / 60 * 60 ORDER BY id DESC LIMIT 1) as close
-            FROM tick_log t1
-            WHERE symbol = $1
-            GROUP BY time, symbol
+                (array_agg(bid ORDER BY timestamp DESC))[1] as close
+            FROM (
+                SELECT 
+                    (EXTRACT(EPOCH FROM timestamp)::bigint / 60) * 60 as time,
+                    bid,
+                    timestamp
+                FROM tick_log
+                WHERE symbol = $1
+                ORDER BY timestamp DESC
+                LIMIT $2 * 60 * 5 -- roughly 5 ticks per sec buffer
+            ) sub
+            GROUP BY time
             ORDER BY time DESC
             LIMIT $2
         ";
@@ -442,22 +526,30 @@ impl Database {
     /// Aggregate recent ticks into OHLC candles for strategy computation
     pub async fn get_candles_for_strategy(&self, symbol: &str, tf_minutes: i64, count: i64) -> Vec<crate::strategy::Candle> {
         let tf_secs = tf_minutes * 60;
-        // Aggregate ticks into OHLC candles
+        let tick_limit = count * tf_secs * 5; // buffer
+
         let reliable_query = format!(
             "SELECT 
-                (EXTRACT(EPOCH FROM timestamp)::bigint / {tf}) * {tf} as time,
-                (SELECT t2.bid FROM tick_log t2 WHERE t2.symbol = $1 AND (EXTRACT(EPOCH FROM t2.timestamp)::bigint / {tf}) * {tf} = (EXTRACT(EPOCH FROM t1.timestamp)::bigint / {tf}) * {tf} ORDER BY t2.id ASC LIMIT 1) as open,
+                time,
+                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
                 MAX(bid) as high,
                 MIN(bid) as low,
-                (SELECT t2.bid FROM tick_log t2 WHERE t2.symbol = $1 AND (EXTRACT(EPOCH FROM t2.timestamp)::bigint / {tf}) * {tf} = (EXTRACT(EPOCH FROM t1.timestamp)::bigint / {tf}) * {tf} ORDER BY t2.id DESC LIMIT 1) as close
-            FROM tick_log t1
-            WHERE symbol = $1
-              AND timestamp > NOW() - INTERVAL '{hours} hours'
-            GROUP BY time, symbol
+                (array_agg(bid ORDER BY timestamp DESC))[1] as close
+            FROM (
+                SELECT 
+                    (EXTRACT(EPOCH FROM timestamp)::bigint / {tf}) * {tf} as time,
+                    bid,
+                    timestamp
+                FROM tick_log
+                WHERE symbol = $1
+                ORDER BY timestamp DESC
+                LIMIT {tick_limit}
+            ) sub
+            GROUP BY time
             ORDER BY time ASC
             LIMIT $2",
             tf = tf_secs,
-            hours = (tf_minutes * count) / 60 + 2 // buffer hours
+            tick_limit = tick_limit
         );
 
         if let Ok(rows) = sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(&reliable_query)

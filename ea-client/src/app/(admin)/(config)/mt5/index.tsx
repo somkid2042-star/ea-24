@@ -4,6 +4,7 @@ import {
   LuCircleCheck,
   LuCircleX,
   LuCpu,
+  LuDownload,
   LuFolderOpen,
   LuLink,
   LuMonitorSmartphone,
@@ -55,6 +56,7 @@ const MT5Settings = () => {
   });
   const [tradingEnabled, setTradingEnabled] = useState(true);
   const [actionStatuses, setActionStatuses] = useState<Record<string, ActionStatus>>({});
+  const [updatingEa, setUpdatingEa] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   // WebSocket connection
@@ -115,18 +117,19 @@ const MT5Settings = () => {
             break;
 
           case 'deploy_status':
+            setUpdatingEa(false);
             setActionStatuses((prev) => ({
               ...prev,
               [`deploy_${data.instance_id || 'all'}`]: {
                 type: data.status === 'success' ? 'success' : 'error',
-                message: data.status === 'success' ? 'EA deployed!' : 'Deploy failed',
+                message: data.message || (data.status === 'success' ? 'EA updated!' : 'Update failed'),
               },
             }));
             // Auto re-scan after deploy
-            if (data.status === 'success' && wsRef.current?.readyState === 1) {
+            if (wsRef.current?.readyState === 1) {
               setTimeout(() => {
                 wsRef.current?.send(JSON.stringify({ action: 'scan_mt5' }));
-              }, 500);
+              }, 2000);
             }
             break;
 
@@ -356,6 +359,53 @@ const MT5Settings = () => {
           </div>
         </div>
       </div>
+
+      {/* EA Update Available Banner */}
+      {eaStatus.updateAvailable && (
+        <div className="card !p-0 overflow-hidden border-amber-300/50 dark:border-amber-500/20">
+          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-500/10 dark:to-orange-500/5 p-4">
+            <div className="flex items-center justify-between flex-wrap gap-3">
+              <div className="flex items-center gap-3">
+                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/15 dark:bg-amber-500/20">
+                  <LuDownload className="size-5 text-amber-600 dark:text-amber-400" />
+                </div>
+                <div>
+                  <h5 className="text-sm font-semibold text-amber-800 dark:text-amber-300">EA Update Available</h5>
+                  <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
+                    v{eaStatus.version} → v{eaStatus.latestVersion} · New features & bug fixes
+                  </p>
+                </div>
+              </div>
+              <button
+                onClick={() => {
+                  setUpdatingEa(true);
+                  sendAction('update_ea');
+                  setTimeout(() => setUpdatingEa(false), 60000);
+                }}
+                disabled={updatingEa || !wsConnected}
+                className="btn bg-amber-500 text-white hover:bg-amber-600 shadow-sm disabled:opacity-50 font-medium px-5"
+              >
+                {updatingEa ? (
+                  <><LuRefreshCw className="size-4 animate-spin" /> Compiling & Deploying...</>
+                ) : (
+                  <><LuDownload className="size-4" /> Update EA Now</>
+                )}
+              </button>
+            </div>
+            {/* Deploy result message */}
+            {actionStatuses['deploy_all']?.type === 'success' && (
+              <div className="mt-3 rounded-lg bg-green-100 dark:bg-green-500/15 px-3 py-2 text-xs font-medium text-green-700 dark:text-green-400">
+                ✅ {actionStatuses['deploy_all']?.message}
+              </div>
+            )}
+            {actionStatuses['deploy_all']?.type === 'error' && (
+              <div className="mt-3 rounded-lg bg-red-100 dark:bg-red-500/15 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-400">
+                ❌ {actionStatuses['deploy_all']?.message}
+              </div>
+            )}
+          </div>
+        </div>
+      )}
 
       {/* Section 2: MT5 Instances */}
       <div className="card">

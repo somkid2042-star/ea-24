@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown } from 'react-icons/lu';
+import React, { useState, useEffect, useRef, useCallback } from 'react';
+import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown, LuRadar, LuLoader, LuShieldAlert, LuClock, LuPin, LuZap } from 'react-icons/lu';
 
 const allStrategies = ['Auto', 'Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper'];
 const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
@@ -31,6 +31,7 @@ type TradeSetupItem = {
 
 type Mt5Instance = { id: string; broker_name: string; ea_deployed: boolean; };
 type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; desc: string; };
+type EngineSetupStatus = { setup_id: number; status: string; message: string; };
 
 type SetupForm = {
   symbol: string; strategy: string; timeframe: string; lotSize: number; riskPercent: number; mt5Instance: string;
@@ -75,6 +76,7 @@ const TradeSetup = () => {
   const [signals, setSignals] = useState<{setup_id: number; signal: string; symbol: string; strategy: string; reason: string; timestamp: string}[]>([]);
   const [signalLog, setSignalLog] = useState<any[]>([]);
   const [showSignalLog, setShowSignalLog] = useState(false);
+  const [engineStatus, setEngineStatus] = useState<{ status: string; message: string; setups: EngineSetupStatus[] }>({ status: '', message: '', setups: [] });
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWs = useCallback(() => {
@@ -99,8 +101,9 @@ const TradeSetup = () => {
             return [{ setup_id: data.setup_id, signal: data.signal, symbol: data.symbol, strategy: data.strategy, reason: data.reason, timestamp: new Date().toISOString() }, ...filtered];
           });
         }
-        if (data.type === 'strategy_signals') {
-          setSignalLog(data.signals || []);
+        if (data.type === 'strategy_signals') setSignalLog(data.signals || []);
+        if (data.type === 'engine_status') {
+          setEngineStatus({ status: data.status || '', message: data.message || '', setups: data.setups || [] });
         }
       } catch { /* */ }
     };
@@ -108,7 +111,6 @@ const TradeSetup = () => {
   }, []);
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
-
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
 
   const openAddForm = () => {
@@ -149,11 +151,16 @@ const TradeSetup = () => {
   const toggleStatus = (id: number) => send({ action: 'toggle_trade_setup', setup_id: id });
   const getMt5Name = (id: string) => mt5Instances.find(i => i.id === id)?.broker_name || id || '—';
 
+  const getSetupEngineStatus = (setupId: number): EngineSetupStatus | null => {
+    return engineStatus.setups.find(s => s.setup_id === setupId) || null;
+  };
+
   const f = form;
   const setF = (patch: Partial<SetupForm>) => setForm(prev => ({ ...prev, ...patch }));
 
   return (
     <main className="space-y-5">
+
       {/* Header */}
       <div className="flex items-center justify-between">
         <div>
@@ -289,7 +296,10 @@ const TradeSetup = () => {
 
       {/* Setup Cards */}
       <div className="grid gap-4 md:grid-cols-2">
-        {setups.map(s => (
+        {setups.map(s => {
+          const setupStatus = getSetupEngineStatus(s.id);
+
+          return (
           <div key={s.id} className={`card !p-5 transition hover:shadow-md ${editId === s.id ? '!border-primary ring-2 ring-primary/20' : ''}`}>
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
@@ -318,6 +328,108 @@ const TradeSetup = () => {
               <div className="rounded-lg bg-default-50 dark:bg-default-100/50 p-2 text-center"><p className="text-[10px] text-default-400">Timeframe</p><p className="text-xs font-semibold text-default-800">{s.timeframe}</p></div>
               <div className="rounded-lg bg-default-50 dark:bg-default-100/50 p-2 text-center"><p className="text-[10px] text-default-400">Lot / Risk</p><p className="text-xs font-semibold text-default-800">{s.lotSize} / {s.riskPercent}%</p></div>
             </div>
+
+            {/* Engine Status — per-card, detailed */}
+            {s.status === 'active' && (() => {
+              // Global issues first
+              const globalStatus = engineStatus.status;
+              if (globalStatus === 'waiting_ea') {
+                return (
+                  <div className="mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/15">
+                    <LuLoader className="size-4 text-amber-500 animate-spin shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Waiting for EA connection</p>
+                      <p className="text-[10px] text-amber-600/70 dark:text-amber-400/60 mt-0.5">Make sure MT5 is running and EA is attached to a chart</p>
+                    </div>
+                  </div>
+                );
+              }
+              if (globalStatus === 'waiting_account') {
+                return (
+                  <div className="mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 bg-amber-50 dark:bg-amber-500/10 border border-amber-200/60 dark:border-amber-500/15">
+                    <LuLoader className="size-4 text-amber-500 animate-spin shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-amber-700 dark:text-amber-400">Waiting for account data</p>
+                      <p className="text-[10px] text-amber-600/70 dark:text-amber-400/60 mt-0.5">EA connected but account info not yet received</p>
+                    </div>
+                  </div>
+                );
+              }
+              if (globalStatus === 'drawdown_limit') {
+                return (
+                  <div className="mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200/60 dark:border-red-500/15">
+                    <LuShieldAlert className="size-4 text-red-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-red-700 dark:text-red-400">Trading paused — Drawdown limit</p>
+                      <p className="text-[10px] text-red-600/70 dark:text-red-400/60 mt-0.5">{engineStatus.message}</p>
+                    </div>
+                  </div>
+                );
+              }
+              if (globalStatus === 'max_positions') {
+                return (
+                  <div className="mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 bg-red-50 dark:bg-red-500/10 border border-red-200/60 dark:border-red-500/15">
+                    <LuShieldAlert className="size-4 text-red-500 shrink-0" />
+                    <div>
+                      <p className="text-xs font-semibold text-red-700 dark:text-red-400">Max positions reached</p>
+                      <p className="text-[10px] text-red-600/70 dark:text-red-400/60 mt-0.5">{engineStatus.message}</p>
+                    </div>
+                  </div>
+                );
+              }
+              if (!globalStatus || globalStatus === 'no_setups') {
+                return (
+                  <div className="mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 bg-default-50 dark:bg-default-100/30 border border-default-200/50 dark:border-default-100/20">
+                    <LuLoader className="size-4 text-default-400 animate-spin shrink-0" />
+                    <p className="text-xs font-medium text-default-400">Engine initializing...</p>
+                  </div>
+                );
+              }
+              // Per-setup status
+              if (setupStatus) {
+                const icons: Record<string, React.ReactNode> = {
+                  loading_candles: <LuLoader className="size-4 text-amber-500 animate-spin shrink-0" />,
+                  scanning: <LuRadar className="size-4 text-emerald-500 animate-pulse shrink-0" />,
+                  cooldown: <LuClock className="size-4 text-sky-500 shrink-0" />,
+                  has_position: <LuPin className="size-4 text-violet-500 shrink-0" />,
+                  signal_sent: <LuZap className="size-4 text-green-500 shrink-0" />,
+                };
+                const colors: Record<string, { border: string; bg: string; title: string; desc: string }> = {
+                  loading_candles: { border: 'border-amber-200/60 dark:border-amber-500/15', bg: 'bg-amber-50 dark:bg-amber-500/10', title: 'text-amber-700 dark:text-amber-400', desc: 'text-amber-600/70 dark:text-amber-400/60' },
+                  scanning: { border: 'border-emerald-200/60 dark:border-emerald-500/15', bg: 'bg-emerald-50 dark:bg-emerald-500/10', title: 'text-emerald-700 dark:text-emerald-400', desc: 'text-emerald-600/70 dark:text-emerald-400/60' },
+                  cooldown: { border: 'border-sky-200/60 dark:border-sky-500/15', bg: 'bg-sky-50 dark:bg-sky-500/10', title: 'text-sky-700 dark:text-sky-400', desc: 'text-sky-600/70 dark:text-sky-400/60' },
+                  has_position: { border: 'border-violet-200/60 dark:border-violet-500/15', bg: 'bg-violet-50 dark:bg-violet-500/10', title: 'text-violet-700 dark:text-violet-400', desc: 'text-violet-600/70 dark:text-violet-400/60' },
+                  signal_sent: { border: 'border-green-200/60 dark:border-green-500/15', bg: 'bg-green-50 dark:bg-green-500/10', title: 'text-green-700 dark:text-green-400', desc: 'text-green-600/70 dark:text-green-400/60' },
+                };
+                const icon = icons[setupStatus.status] || <LuRadar className="size-4 text-default-400 shrink-0" />;
+                const clr = colors[setupStatus.status] || { border: 'border-default-200/50 dark:border-default-100/20', bg: 'bg-default-50 dark:bg-default-100/30', title: 'text-default-600', desc: 'text-default-400' };
+                const descriptions: Record<string, string> = {
+                  loading_candles: 'Requesting historical data from MT5. Need at least 50 candles to analyze.',
+                  scanning: 'All indicators calculated. Analyzing for entry signals...',
+                  cooldown: 'Recently traded this pair. Waiting before next signal.',
+                  has_position: 'There is already an open position for this setup.',
+                  signal_sent: 'Order command sent to MT5 terminal.',
+                };
+                return (
+                  <div className={`mb-2 rounded-lg px-3 py-2.5 flex items-center gap-2.5 ${clr.bg} border ${clr.border}`}>
+                    {icon}
+                    <div className="flex-1 min-w-0">
+                      <p className={`text-xs font-semibold ${clr.title}`}>{setupStatus.message}</p>
+                      <p className={`text-[10px] mt-0.5 ${clr.desc}`}>{descriptions[setupStatus.status] || ''}</p>
+                    </div>
+                  </div>
+                );
+              }
+              return null;
+            })()}
+
+            {/* Paused setup */}
+            {s.status === 'paused' && (
+              <div className="mb-2 rounded-lg border border-default-200/50 dark:border-default-100/20 px-3 py-2.5 flex items-center gap-2.5 bg-default-50 dark:bg-default-100/30">
+                <LuPause className="size-4 text-default-400 shrink-0" />
+                <p className="text-xs font-medium text-default-400">Engine paused for this setup</p>
+              </div>
+            )}
 
             {/* Last Signal Badge */}
             {(() => {
@@ -370,7 +482,8 @@ const TradeSetup = () => {
               )}
             </div>
           </div>
-        ))}
+          );
+        })}
       </div>
 
       {setups.length === 0 && !showForm && (

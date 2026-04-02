@@ -13,6 +13,7 @@ pub struct ServerState {
     pub total_ram_mb: u64,
     pub net_rx_kb: f32,
     pub net_tx_kb: f32,
+    pub db_pool_size: u32,
 }
 
 impl Default for ServerState {
@@ -28,6 +29,7 @@ impl Default for ServerState {
             total_ram_mb: 0,
             net_rx_kb: 0.0,
             net_tx_kb: 0.0,
+            db_pool_size: 0,
         }
     }
 }
@@ -72,31 +74,52 @@ impl eframe::App for EaServerApp {
             }
             ui.separator();
 
-            ui.heading("System Information");
+            ui.heading("EA-Server Process");
             
+            let progress_color = |p: f32| -> egui::Color32 {
+                if p >= 0.8 { egui::Color32::from_rgb(220, 50, 50) } // Red
+                else if p >= 0.5 { egui::Color32::from_rgb(220, 180, 50) } // Yellow
+                else { egui::Color32::from_rgb(50, 200, 100) } // Green
+            };
+
+            // Database Pool Bar
+            ui.label("Database Pool:");
+            let db_progress = (state.db_pool_size as f32 / 20.0).clamp(0.0, 1.0);
+            ui.add(egui::ProgressBar::new(db_progress)
+                .fill(progress_color(db_progress))
+                .text(format!("{} / 20 Conns", state.db_pool_size)));
+
             // CPU Progress Bar
-            ui.label("CPU Usage:");
+            ui.label("Process CPU:");
             let mut cpu_progress = state.cpu_usage / 100.0;
             if cpu_progress > 1.0 { cpu_progress = 1.0; }
-            ui.add(egui::ProgressBar::new(cpu_progress).text(format!("{:.1}%", state.cpu_usage)));
+            ui.add(egui::ProgressBar::new(cpu_progress)
+                .fill(progress_color(cpu_progress))
+                .text(format!("{:.1}%", state.cpu_usage)));
 
             // RAM Progress Bar
-            ui.label("RAM Usage:");
+            ui.label("Process RAM:");
             let ram_progress = if state.total_ram_mb > 0 {
                 (state.ram_usage_mb as f32 / state.total_ram_mb as f32).clamp(0.0, 1.0)
             } else {
                 0.0
             };
-            ui.add(egui::ProgressBar::new(ram_progress).text(format!("{} MB / {} MB", state.ram_usage_mb, state.total_ram_mb)));
+            ui.add(egui::ProgressBar::new(ram_progress)
+                .fill(progress_color(ram_progress))
+                .text(format!("{} MB / {} MB", state.ram_usage_mb, state.total_ram_mb)));
 
             // Network Traffic Progress Bars
             ui.label("Network Traffic:");
             let max_kbps = 10000.0; // 10 MB/s full scale assumption
             let rx_progress = (state.net_rx_kb / max_kbps).clamp(0.0, 1.0);
-            ui.add(egui::ProgressBar::new(rx_progress).text(format!("RX: {:.1} KB/s", state.net_rx_kb)));
+            ui.add(egui::ProgressBar::new(rx_progress)
+                .fill(progress_color(rx_progress))
+                .text(format!("RX: {:.1} KB/s", state.net_rx_kb)));
             
             let tx_progress = (state.net_tx_kb / max_kbps).clamp(0.0, 1.0);
-            ui.add(egui::ProgressBar::new(tx_progress).text(format!("TX: {:.1} KB/s", state.net_tx_kb)));
+            ui.add(egui::ProgressBar::new(tx_progress)
+                .fill(progress_color(tx_progress))
+                .text(format!("TX: {:.1} KB/s", state.net_tx_kb)));
         });
     }
 }
@@ -119,7 +142,8 @@ pub fn run_gui(state_rx: watch::Receiver<ServerState>) {
     
     let mut viewport = egui::ViewportBuilder::default()
         .with_app_id("ea-server")
-        .with_inner_size([400.0, 300.0])
+        .with_inner_size([400.0, 480.0])
+        .with_resizable(false)
         .with_title(&title);
         
     if let Ok(icon) = load_icon() {

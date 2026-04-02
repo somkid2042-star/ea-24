@@ -1,12 +1,12 @@
 import { useState, useEffect, useRef, useCallback, lazy, Suspense, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createChart, ColorType, AreaSeries } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
   LuLayoutDashboard, LuServer, LuShieldCheck,
   LuWorkflow, LuBriefcase, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
-  LuSun, LuMoon, LuChartCandlestick, LuSettings
+  LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
@@ -27,6 +27,12 @@ type AccountData = { balance: number; equity: number; profit: number; margin: nu
 type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; };
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
 type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
+type OHLCCandle = { time: number; open: number; high: number; low: number; close: number; };
+
+const CHART_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
+const tfToSeconds = (tf: string): number => {
+  switch(tf) { case 'M1': return 60; case 'M5': return 300; case 'M15': return 900; case 'M30': return 1800; case 'H1': return 3600; case 'H4': return 14400; case 'D1': return 86400; default: return 60; }
+};
 
 const WS_URL = getWsUrl();
 
@@ -58,70 +64,146 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   history: TradeHistoryPage,
 };
 
-/* ── Chart Colors (theme-aware) ── */
-const CHART_DARK = { textDim: '#64748b', gridLine: '#1e2230', accent: '#3b82f6' };
-const CHART_LIGHT = { textDim: '#94a3b8', gridLine: '#f1f5f9', accent: '#3b82f6' };
+/* ── Chart Colors (MT5 style) ── */
+const CHART_DARK = { text: '#848e9c', grid: '#1e222d', bg: '#1a1d29', up: '#089981', down: '#f23645', cross: '#555' };
+const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: '#ffffff', up: '#089981', down: '#f23645', cross: '#999' };
 
-const LiveChart = ({ symbol, bid, darkMode }: { symbol: string, bid: number, darkMode: boolean }) => {
-  const chartContainerRef = useRef<HTMLDivElement>(null);
+const CandleChart = ({ symbol, candles, bid, darkMode, chartTf }: {
+  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string;
+}) => {
+  const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
-  const seriesRef = useRef<ISeriesApi<"Area"> | null>(null);
-  const lastTimeRef = useRef<number>(0);
-  const C = darkMode ? CHART_DARK : CHART_LIGHT;
+  const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
+  const lastCandleRef = useRef<OHLCCandle | null>(null);
+  const lastLocalTfIndexRef = useRef<number>(0);
 
   useEffect(() => {
-    if (!chartContainerRef.current) return;
-    const chart = createChart(chartContainerRef.current, {
-      layout: { background: { type: ColorType.Solid, color: 'transparent' }, textColor: C.textDim },
-      grid: { vertLines: { color: C.gridLine }, horzLines: { color: C.gridLine } },
-      rightPriceScale: { borderVisible: false },
-      timeScale: { borderVisible: false, timeVisible: true, secondsVisible: true },
-      crosshair: { mode: 1 },
+    if (!containerRef.current) return;
+    const C = darkMode ? CHART_DARK : CHART_LIGHT;
+    const el = containerRef.current;
+    // Use explicit dimensions — fallback for WebKitGTK where clientWidth/Height can be 0
+    const initW = el.clientWidth || el.offsetWidth || el.parentElement?.clientWidth || 600;
+    const initH = el.clientHeight || el.offsetHeight || el.parentElement?.clientHeight || 400;
+    const chart = createChart(el, {
+      width: initW,
+      height: initH,
+      layout: { attributionLogo: false, background: { type: ColorType.Solid, color: C.bg }, textColor: C.text, fontFamily: "'Inter', sans-serif" },
+      localization: { locale: 'en-US' },
+      grid: { vertLines: { visible: false }, horzLines: { visible: false } },
+      rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
+      timeScale: { barSpacing: 20, borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 5 },
+      crosshair: { mode: 0, horzLine: { color: C.cross, style: 3 }, vertLine: { color: C.cross, style: 3 } },
     });
-    
-    const series = chart.addSeries(AreaSeries, {
-      lineColor: C.accent,
-      topColor: C.accent + '40',
-      bottomColor: C.accent + '00',
-      lineWidth: 2,
+    const series = chart.addSeries(CandlestickSeries, {
+      upColor: C.up, downColor: C.down,
+      borderUpColor: C.up, borderDownColor: C.down,
+      wickUpColor: C.up, wickDownColor: C.down,
     });
-    
     chartRef.current = chart;
     seriesRef.current = series;
-
+    let resizeTimeout: any = null;
     const handleResize = () => {
-      if (chartContainerRef.current) {
-        chart.applyOptions({ width: chartContainerRef.current.clientWidth, height: chartContainerRef.current.clientHeight });
+      if (!containerRef.current) return;
+      const w = Math.floor(containerRef.current.clientWidth || containerRef.current.offsetWidth || 600);
+      const h = Math.floor(containerRef.current.clientHeight || containerRef.current.offsetHeight || 400);
+      const opts = chart.options();
+      if (w > 0 && h > 0 && (Math.abs(opts.width - w) > 2 || Math.abs(opts.height - h) > 2)) {
+        chart.applyOptions({ width: w, height: h });
       }
     };
-    window.addEventListener('resize', handleResize);
+    window.addEventListener('resize', () => {
+      clearTimeout(resizeTimeout);
+      resizeTimeout = setTimeout(handleResize, 100);
+    });
+    // Use ResizeObserver for reliable size detection (critical for Tauri WebKitGTK)
+    let ro: ResizeObserver | null = null;
+    if (typeof ResizeObserver !== 'undefined') {
+      ro = new ResizeObserver(() => {
+        clearTimeout(resizeTimeout);
+        resizeTimeout = setTimeout(handleResize, 50);
+      });
+      ro.observe(el);
+    }
+    // Multiple delayed resizes for WebKitGTK which may report 0 initially
     setTimeout(handleResize, 50);
-    
-    return () => {
-      window.removeEventListener('resize', handleResize);
-      chart.remove();
+    setTimeout(handleResize, 200);
+    setTimeout(handleResize, 500);
+    return () => { 
+      clearTimeout(resizeTimeout);
+      window.removeEventListener('resize', handleResize); 
+      ro?.disconnect(); 
+      chart.remove(); 
     };
+  }, []); // Run only once
+
+  useEffect(() => {
+    if (!chartRef.current || !seriesRef.current) return;
+    const C = darkMode ? CHART_DARK : CHART_LIGHT;
+    chartRef.current.applyOptions({
+      layout: { background: { type: ColorType.Solid, color: C.bg }, textColor: C.text },
+      crosshair: { horzLine: { color: C.cross }, vertLine: { color: C.cross } }
+    });
+    seriesRef.current.applyOptions({
+      upColor: C.up, downColor: C.down,
+      borderUpColor: C.up, borderDownColor: C.down,
+      wickUpColor: C.up, wickDownColor: C.down,
+    });
   }, [darkMode]);
 
   useEffect(() => {
-    if (seriesRef.current) {
-      seriesRef.current.setData([]);
-      lastTimeRef.current = 0;
+    if (!seriesRef.current) return;
+    if (candles.length === 0) { seriesRef.current.setData([]); lastCandleRef.current = null; return; }
+    const sorted = [...candles].sort((a, b) => a.time - b.time);
+    const deduped: OHLCCandle[] = [];
+    for (const c of sorted) { 
+      const t = Math.floor(Number(c.time));
+      if (Number.isNaN(t)) continue;
+      if (deduped.length === 0 || t > deduped[deduped.length - 1].time) {
+        deduped.push({ 
+          time: t, 
+          open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) 
+        });
+      }
     }
-  }, [symbol]);
+    seriesRef.current.setData(deduped.map(c => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })));
+    lastCandleRef.current = deduped[deduped.length - 1];
+    lastLocalTfIndexRef.current = Math.floor(Date.now() / 1000 / tfToSeconds(chartTf));
+    
+    // Automatically scale on first load only if we have data
+    if (deduped.length > 0) {
+      setTimeout(() => chartRef.current?.timeScale().scrollToRealTime(), 100);
+    }
+  }, [candles, chartTf]);
 
   useEffect(() => {
-    if (seriesRef.current && bid > 0) {
-      let time = Math.floor(Date.now() / 1000);
-      if (time <= lastTimeRef.current) {
-         time = lastTimeRef.current + 1;
-      }
-      lastTimeRef.current = time;
-      seriesRef.current.update({ time: time as any, value: bid });
+    if (!seriesRef.current || bid <= 0) return;
+    const last = lastCandleRef.current;
+    if (!last) return;
+    
+    const tfSecs = tfToSeconds(chartTf);
+    const currentLocalIndex = Math.floor(Date.now() / 1000 / tfSecs);
+    let targetTime = last.time;
+    
+    if (currentLocalIndex > lastLocalTfIndexRef.current) {
+      const diffIndex = currentLocalIndex - lastLocalTfIndexRef.current;
+      targetTime = last.time + (diffIndex * tfSecs);
     }
-  }, [bid]);
+    
+    if (targetTime === last.time) {
+      const u = { time: targetTime as any, open: last.open, high: Math.max(last.high, bid), low: Math.min(last.low, bid), close: bid };
+      seriesRef.current.update(u);
+      lastCandleRef.current = u;
+    } else {
+      const u = { time: targetTime as any, open: bid, high: bid, low: bid, close: bid };
+      seriesRef.current.update(u);
+      lastCandleRef.current = u;
+      lastLocalTfIndexRef.current = currentLocalIndex;
+    }
+  }, [bid, chartTf]);
 
-  return <div ref={chartContainerRef} style={{ width: '100%', height: '100%', flex: 1, minHeight: 0 }} />;
+  useEffect(() => { if (seriesRef.current) { seriesRef.current.setData([]); lastCandleRef.current = null; } }, [symbol]);
+
+  return <div ref={containerRef} style={{ width: '100%', height: '100%', flex: 1, minHeight: 300 }} />;
 };
 
 const TradingDashboard = () => {
@@ -135,6 +217,9 @@ const TradingDashboard = () => {
   const [alert, setAlert] = useState<AlertMsg | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
   const [darkMode, setDarkMode] = useState(true);
+  const [chartTf, setChartTf] = useState('M5');
+  const [candles, setCandles] = useState<OHLCCandle[]>([]);
+  const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   /* ── Sync data-theme attribute with darkMode state ── */
@@ -142,14 +227,43 @@ const TradingDashboard = () => {
     document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
   }, [darkMode]);
 
-  /* ── WebSocket ── */
+   /* ── WebSocket ── */
+  const chartTfRef = useRef(chartTf);
+  chartTfRef.current = chartTf;
+  const activeSymbolRef = useRef(activeSymbol);
+  activeSymbolRef.current = activeSymbol;
+
+  const fetchHistoryState = useRef<string>('');
+  
+  const requestHistory = useCallback((ws?: WebSocket | null) => {
+    const target = ws || wsRef.current;
+    if (target?.readyState === 1) {
+      setIsLoadingHistory(true);
+      const stateKey = `${activeSymbolRef.current}_${chartTfRef.current}`;
+      fetchHistoryState.current = stateKey;
+      target.send(JSON.stringify({ action: 'get_history', symbol: activeSymbolRef.current, timeframe: chartTfRef.current, limit: 500 }));
+      target.send(JSON.stringify({ action: 'request_candles', symbol: activeSymbolRef.current, timeframe: chartTfRef.current }));
+    }
+  }, []);
+
   const connectWs = useCallback(() => {
     const ws = new WebSocket(WS_URL);
+    ws.onopen = () => {
+      // Request history as soon as WS connects
+      setTimeout(() => requestHistory(ws), 500);
+    };
     ws.onclose = () => { setEaConnected(false); setTimeout(connectWs, 3000); };
     ws.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
-        if (data.type === 'welcome' || data.type === 'ea_info') setEaConnected(data.ea_connected ?? true);
+        if (data.type === 'welcome' || data.type === 'ea_info') {
+          const wasConnected = data.ea_connected ?? true;
+          setEaConnected(wasConnected);
+          // Only re-request if we haven't fetched for the current config yet
+          if (wasConnected && fetchHistoryState.current !== `${activeSymbolRef.current}_${chartTfRef.current}`) {
+            setTimeout(() => requestHistory(), 1000);
+          }
+        }
         if (data.type === 'account_data') { setAccount(data as AccountData); setEaConnected(true); }
         if (data.type === 'market_watch') {
           setMarketWatch(data.symbols || []);
@@ -157,13 +271,24 @@ const TradingDashboard = () => {
         }
         if (data.type === 'trade_result') { setToast(data as TradeResult); setTimeout(() => setToast(null), 5000); }
         if (data.type === 'alert') { setAlert(data as AlertMsg); setTimeout(() => setAlert(null), 8000); }
+        if (data.type === 'history') {
+          if (data.candles) setCandles(data.candles);
+          setIsLoadingHistory(false);
+        }
+        // Handle candle_data from EA (historical backfill) (removed redundant refresh loop)
       } catch { /* */ }
     };
     wsRef.current = ws;
-  }, [activeSymbol]);
+  }, [activeSymbol, requestHistory]);
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
+
+  // Request candle history on symbol/timeframe change
+  useEffect(() => {
+    const t = setTimeout(() => requestHistory(), 300);
+    return () => clearTimeout(t);
+  }, [activeSymbol, chartTf, requestHistory]);
   const handleCloseTrade = () => { send({ action: 'close_trade', ticket: closeModal.ticket }); setCloseModal({ show: false, ticket: 0, symbol: '' }); };
 
   /* ── Computed ── */
@@ -201,17 +326,33 @@ const TradingDashboard = () => {
 
           {/* Chart & Open Positions Split */}
           <div className="flex-1 flex flex-col gap-4 min-h-0">
-            <div className="card flex-1 !rounded-2xl !p-5 flex flex-col" style={{ minHeight: 250 }}>
-              <div className="text-sm font-bold text-default-900 mb-4 flex justify-between items-center">
-                <span>{activeSymbol} Live Data</span>
-                <span className={`text-[11px] font-medium flex items-center gap-1.5 ${eaConnected ? 'text-success' : 'text-danger'}`}>
-                  <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-success animate-pulse' : 'bg-danger'}`} />
-                  {eaConnected ? 'Live' : 'Offline'}
-                </span>
+            <div className="card flex-1 !rounded-2xl !p-5 flex flex-col" style={{ minHeight: 300 }}>
+              <div className="text-sm font-bold text-default-900 mb-3 flex justify-between items-center">
+                <span>{activeSymbol}</span>
+                <div className="flex items-center gap-2">
+                  <div className="flex bg-default-100 dark:bg-default-200/20 rounded-lg p-0.5">
+                    {CHART_TIMEFRAMES.map(tf => (
+                      <button key={tf} onClick={() => setChartTf(tf)}
+                        className={`px-2 py-0.5 rounded-md text-[10px] font-semibold transition-all ${chartTf === tf ? 'bg-primary text-white shadow-sm' : 'text-default-500 hover:text-default-800 dark:hover:text-white'}`}
+                      >{tf}</button>
+                    ))}
+                  </div>
+                  <span className={`text-[11px] font-medium flex items-center gap-1.5 ${eaConnected ? 'text-success' : 'text-danger'}`}>
+                    <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-success animate-pulse' : 'bg-danger'}`} />
+                    {eaConnected ? 'Live' : 'Offline'}
+                  </span>
+                  <span className="text-[10px] text-default-400 font-mono">({candles.length})</span>
+                </div>
               </div>
-              <div className="flex-1 relative">
-                <div className="absolute inset-0">
-                  <LiveChart symbol={activeSymbol} bid={bid} darkMode={darkMode} />
+              <div className="flex-1 relative" style={{ minHeight: 300 }}>
+                <div style={{ position: 'absolute', top: 0, left: 0, right: 0, bottom: 0 }}>
+                  {isLoadingHistory && (
+                    <div className="absolute inset-0 z-50 flex flex-col items-center justify-center bg-card/60 backdrop-blur-sm rounded-lg" style={{ pointerEvents: 'none' }}>
+                      <LuRefreshCw className="size-8 text-primary animate-spin mb-2" />
+                      <span className="text-sm font-medium text-default-700">Loading Chart...</span>
+                    </div>
+                  )}
+                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf} />
                 </div>
               </div>
             </div>
@@ -368,8 +509,8 @@ const TradingDashboard = () => {
                 <div className="card-header">
                   <h6 className="card-title text-sm">Watchlist</h6>
                   <div className="flex gap-1">
-                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
-                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
+                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20 dark:hover:text-white" style={{ width: 28, height: 28 }}><LuPlus size={12} /></button>
+                    <button className="btn btn-icon rounded-full bg-default-100 dark:bg-default-200/10 text-default-500 hover:bg-default-200 hover:text-default-800 dark:hover:bg-default-300/20 dark:hover:text-white" style={{ width: 28, height: 28 }}><LuSettings size={12} /></button>
                   </div>
                 </div>
                 <div className="card-body overflow-x-auto" style={{ padding: '8px 16px' }}>
@@ -482,7 +623,7 @@ const TradingDashboard = () => {
                 className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
                   active 
                     ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
-                    : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-default-100 hover:bg-default-300 dark:hover:bg-default-200/60'
+                    : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
                 }`}
                 style={{ width: 40, height: 40 }}
               >
@@ -503,7 +644,7 @@ const TradingDashboard = () => {
                   className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
                     active 
                       ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
-                      : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-default-100 hover:bg-default-300 dark:hover:bg-default-200/60'
+                      : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
                   }`}
                   style={{ width: 40, height: 40 }}
                 >
@@ -514,10 +655,10 @@ const TradingDashboard = () => {
             <button
               onClick={() => setDarkMode(!darkMode)}
               data-tip={darkMode ? 'Light Mode' : 'Dark Mode'}
-              className="mac-tooltip btn btn-icon shrink-0 bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-default-100 transition-all border-none"
-              style={{ width: 36, height: 36, borderRadius: 12 }}
+              className="mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-white"
+              style={{ width: 40, height: 40 }}
             >
-              {darkMode ? <LuSun size={16} /> : <LuMoon size={16} />}
+              {darkMode ? <LuSun size={20} /> : <LuMoon size={20} />}
             </button>
             {/* Connection */}
             <div className="flex flex-col items-center gap-1 shrink-0">
@@ -556,7 +697,7 @@ const TradingDashboard = () => {
             <h3 className="text-center text-base font-bold text-default-900 mb-2">Close Position?</h3>
             <p className="text-center text-sm text-default-400 mb-6">Close <span className="text-primary font-semibold">{closeModal.symbol}</span> #{closeModal.ticket} at market?</p>
             <div className="flex gap-3">
-              <button onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })} className="btn rounded-full flex-1 bg-default-100 dark:bg-default-200/10 text-default-800 dark:text-default-700 hover:bg-default-200 dark:hover:bg-default-300/20 py-2.5 text-sm font-medium border-none">Cancel</button>
+              <button onClick={() => setCloseModal({ show: false, ticket: 0, symbol: '' })} className="btn rounded-full flex-1 bg-default-100 dark:bg-default-200/10 text-default-800 dark:text-default-700 hover:bg-default-200 dark:hover:bg-default-300/20 dark:hover:text-white py-2.5 text-sm font-medium border-none">Cancel</button>
               <button onClick={handleCloseTrade} className="btn rounded-full flex-1 bg-danger text-white hover:bg-danger/90 py-2.5 text-sm font-medium border-none">Close Trade</button>
             </div>
           </div>
