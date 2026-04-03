@@ -9,7 +9,7 @@
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.08"
+#define EA_VERSION "2.09"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -243,8 +243,8 @@ void OnTimer()
       lastAccountSend = TimeCurrent();
      }
    
-   // Send market watch every 10 seconds
-   if(TimeCurrent() - lastMarketWatchSend >= 10)
+   // Send market watch every 1 second for real-time Watchlist prices
+   if(TimeCurrent() - lastMarketWatchSend >= 1)
      {
       SendMarketWatch();
       lastMarketWatchSend = TimeCurrent();

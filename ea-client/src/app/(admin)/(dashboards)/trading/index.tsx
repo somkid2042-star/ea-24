@@ -489,8 +489,10 @@ const TradingDashboard = () => {
         if (data.type === 'gap_fill_status') {
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: data.status }));
           if (data.status === 'loaded' && data.symbol === activeSymbolRef.current) {
-             // Backend has loaded data, re-request history to update the chart
-             setTimeout(() => requestHistory(), 500);
+             // We do NOT re-request history here because the server already forwarded 
+             // the MT5 direct payload as a 'history' message! If we request again,
+             // we will hit the database which might not have aggregated the ticks yet.
+             // setTimeout(() => requestHistory(), 500); 
           }
         }
         if (data.type === 'history') {
