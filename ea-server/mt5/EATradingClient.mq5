@@ -208,7 +208,7 @@ void OnTick()
    double ask = SymbolInfoDouble(_Symbol, SYMBOL_ASK);
    double spread = (ask - bid) * MathPow(10, _Digits);
    
-   string json = "{\"type\":\"tick\",\"symbol\":\"" + _Symbol + "\",\"bid\":" + DoubleToString(bid, _Digits) + ",\"ask\":" + DoubleToString(ask, _Digits) + ",\"spread\":" + DoubleToString(spread, 0) + "}\n";
+   string json = "{\"type\":\"tick\",\"symbol\":\"" + _Symbol + "\",\"bid\":" + DoubleToString(bid, _Digits) + ",\"ask\":" + DoubleToString(ask, _Digits) + ",\"spread\":" + DoubleToString(spread, 0) + ",\"server_time\":" + IntegerToString((long)TimeCurrent()) + "}\n";
    
    uchar data[];
    StringToCharArray(json, data);

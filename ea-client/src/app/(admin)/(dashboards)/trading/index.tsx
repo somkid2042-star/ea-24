@@ -32,7 +32,7 @@ const OpenClawPage = lazy(() => import('@/app/(admin)/(dashboards)/openclaw/inde
 /* ── Types ── */
 type Position = { ticket: number; symbol: string; type: string; volume: number; open_price: number; current_price: number; pnl: number; swap: number; sl: number; tp: number; magic: number; open_time: string; comment: string; };
 type AccountData = { balance: number; equity: number; profit: number; margin: number; free_margin: number; currency: string; positions: Position[]; positions_count: number; trading_enabled: boolean; };
-type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; };
+type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; serverTime?: number; };
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
 type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
 type OHLCCandle = { time: number; open: number; high: number; low: number; close: number; };
@@ -47,26 +47,47 @@ const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
 type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'openclaw';
-type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean } | { key: string; divider: true };
+type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
-const TOP_NAV: NavItem[] = [
-  { key: 'chart', icon: <LuLayoutDashboard size={20} />, label: 'Home' },
-  { key: 'strategies', icon: <LuWorkflow size={20} />, label: 'Strategies' },
-  { key: 'trades', icon: <LuBriefcase size={20} />, label: 'Trades' },
-  { key: 'setup', icon: <LuSlidersHorizontal size={20} />, label: 'Setup' },
-  { key: 'history', icon: <LuHistory size={20} />, label: 'History' },
-  { key: 'report', icon: <LuChartNoAxesCombined size={20} />, label: 'P&L' },
-  { key: 'journal', icon: <LuBookOpen size={20} />, label: 'Journal' },
-  { key: 'multichart', icon: <LuGrid2X2 size={20} />, label: 'Multi' },
+/* ── Grouped Navigation ── */
+type NavGroup = { id: string; label: string; items: NavItem[] };
+
+const NAV_GROUPS: NavGroup[] = [
+  {
+    id: 'main',
+    label: 'หลัก',
+    items: [
+      { key: 'chart', icon: <LuLayoutDashboard size={18} />, label: 'หน้าหลัก' },
+      { key: 'multichart', icon: <LuGrid2X2 size={18} />, label: 'Multi-Chart' },
+    ],
+  },
+  {
+    id: 'trading',
+    label: 'การเทรด',
+    items: [
+      { key: 'strategies', icon: <LuWorkflow size={18} />, label: 'กลยุทธ์' },
+      { key: 'trades', icon: <LuBriefcase size={18} />, label: 'ออเดอร์' },
+      { key: 'setup', icon: <LuSlidersHorizontal size={18} />, label: 'ตั้งค่าเทรด' },
+      { key: 'history', icon: <LuHistory size={18} />, label: 'ประวัติ' },
+      { key: 'report', icon: <LuChartNoAxesCombined size={18} />, label: 'P&L Report' },
+      { key: 'journal', icon: <LuBookOpen size={18} />, label: 'บันทึก' },
+    ],
+  },
+  {
+    id: 'ai',
+    label: 'AI & เครื่องมือ',
+    items: [
+      { key: 'openclaw', icon: <LuBot size={18} />, label: 'OpenClaw AI' },
+    ],
+  },
 ];
 
-const BOTTOM_NAV: NavItem[] = [
-  { key: 'openclaw', icon: <LuBot size={20} />, label: 'OpenClaw AI' },
-  { key: 'risk', icon: <LuShieldAlert size={20} />, label: 'Risk' },
-  { key: 'notify', icon: <LuBell size={20} />, label: 'Notify' },
-  { key: 'security', icon: <LuShieldCheck size={20} />, label: 'Security' },
-  { key: 'mt5', icon: <LuChartCandlestick size={20} />, label: 'MT5' },
-  { key: 'server', icon: <LuServer size={20} />, label: 'Server' },
+const SETTINGS_ITEMS: NavItem[] = [
+  { key: 'mt5', icon: <LuChartCandlestick size={18} />, label: 'MT5 Connection' },
+  { key: 'server', icon: <LuServer size={18} />, label: 'Server' },
+  { key: 'security', icon: <LuShieldCheck size={18} />, label: 'Security & License' },
+  { key: 'risk', icon: <LuShieldAlert size={18} />, label: 'Risk Management' },
+  { key: 'notify', icon: <LuBell size={18} />, label: 'Notifications' },
 ];
 
 const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticComponent<React.ComponentType>> = {
@@ -91,8 +112,8 @@ const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: '#ffffff', up: '#089
 
 type ChartPriceLine = { price: number; color: string; text: string; };
 
-const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLines }: {
-  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string; markers?: ChartMarker[]; priceLines?: ChartPriceLine[];
+const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLines, serverTime }: {
+  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string; markers?: ChartMarker[]; priceLines?: ChartPriceLine[]; serverTime?: number;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -208,12 +229,14 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     if (!last) return;
     
     const tfSecs = tfToSeconds(chartTf);
-    const currentLocalIndex = Math.floor(Date.now() / 1000 / tfSecs);
+    // Use MT5 server time when available, fallback to local time
+    const nowSecs = serverTime && serverTime > 0 ? serverTime : Math.floor(Date.now() / 1000);
+    const currentIndex = Math.floor(nowSecs / tfSecs);
     let targetTime = last.time;
     
-    if (currentLocalIndex > lastLocalTfIndexRef.current) {
-      const diffIndex = currentLocalIndex - lastLocalTfIndexRef.current;
-      targetTime = last.time + (diffIndex * tfSecs);
+    if (currentIndex > lastLocalTfIndexRef.current) {
+      // Snap to MT5 server time boundary for accurate candle alignment
+      targetTime = currentIndex * tfSecs;
     }
     
     if (targetTime === last.time) {
@@ -224,9 +247,9 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
       const u = { time: targetTime as any, open: bid, high: bid, low: bid, close: bid };
       seriesRef.current.update(u);
       lastCandleRef.current = u;
-      lastLocalTfIndexRef.current = currentLocalIndex;
+      lastLocalTfIndexRef.current = currentIndex;
     }
-  }, [bid, chartTf]);
+  }, [bid, chartTf, serverTime]);
 
   useEffect(() => { if (seriesRef.current) { seriesRef.current.setData([]); lastCandleRef.current = null; hasFitContentRef.current = false; } }, [symbol]);
 
@@ -285,6 +308,8 @@ const TradingDashboard = () => {
   const [toast, setToast] = useState<TradeResult | null>(null);
   const [alert, setAlert] = useState<AlertMsg | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
+  const [settingsOpen, setSettingsOpen] = useState(false);
+  const settingsRef = useRef<HTMLDivElement>(null);
   const { theme, updateSettings } = useLayoutContext();
   const darkMode = theme === 'dark';
   const [chartTf, setChartTf] = useState('M5');
@@ -294,6 +319,17 @@ const TradingDashboard = () => {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [lastPriceUpdateTime, setLastPriceUpdateTime] = useState<Record<string, number>>({});
   const [, setTickFlip] = useState(0);
+
+  // Close settings flyout when clicking outside
+  useEffect(() => {
+    const handleClickOutside = (e: MouseEvent) => {
+      if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
+        setSettingsOpen(false);
+      }
+    };
+    if (settingsOpen) document.addEventListener('mousedown', handleClickOutside);
+    return () => document.removeEventListener('mousedown', handleClickOutside);
+  }, [settingsOpen]);
   const wsRef = useRef<WebSocket | null>(null);
 
   useEffect(() => { const int = setInterval(() => setTickFlip(f => f+1), 5000); return () => clearInterval(int); }, []);
@@ -432,11 +468,11 @@ const TradingDashboard = () => {
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 'loaded' }));
           if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
         }
-        // Live tick update — update marketWatch bid/ask in real-time for live candle
+        // Live tick update — update marketWatch bid/ask + server_time in real-time for live candle
         if (data.type === 'tick' && data.symbol && data.bid) {
           setMarketWatch(prev => prev.map(m => 
             m.symbol === data.symbol 
-              ? { ...m, bid: data.bid, ask: data.ask ?? m.ask, spread: data.spread ?? m.spread }
+              ? { ...m, bid: data.bid, ask: data.ask ?? m.ask, spread: data.spread ?? m.spread, serverTime: data.server_time ?? m.serverTime }
               : m
           ));
         }
@@ -518,7 +554,7 @@ const TradingDashboard = () => {
                     </div>
                   )}
                   <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
-                    markers={chartMarkers} priceLines={chartPriceLines}
+                    markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
                   />
                 </div>
               </div>
@@ -786,57 +822,121 @@ const TradingDashboard = () => {
           @media (max-width: 1023px) {
             .mac-tooltip::before, .mac-tooltip::after { display: none; }
           }
+          /* Settings flyout animation */
+          .settings-flyout {
+            transform: translateX(10px);
+            opacity: 0;
+            pointer-events: none;
+            transition: transform 0.2s cubic-bezier(0.4, 0, 0.2, 1), opacity 0.2s ease;
+          }
+          .settings-flyout.open {
+            transform: translateX(0);
+            opacity: 1;
+            pointer-events: auto;
+          }
+          /* Group separator */
+          .nav-group-label {
+            font-size: 8px;
+            font-weight: 700;
+            letter-spacing: 0.08em;
+            text-transform: uppercase;
+            color: var(--color-default-400);
+            padding: 0 0 4px 0;
+            margin-top: 2px;
+            text-align: center;
+            user-select: none;
+          }
         `}</style>
-        <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-2 lg:gap-3 overflow-x-auto lg:overflow-visible bg-card/80 dark:bg-card/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent lg:backdrop-blur-none border-t border-default-200/60 dark:border-default-300/10 lg:border-none z-50">
-          {TOP_NAV.map(item => {
-            if ('divider' in item) return null;
-            const active = activePanel === item.key;
-            return (
-              <button
-                key={item.key}
-                onClick={() => setActivePanel(item.key)}
-                data-tip={item.label}
-                className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
-                  active 
-                    ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
-                    : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
-                }`}
-                style={{ width: 40, height: 40 }}
-              >
-                {item.icon}
-              </button>
-            );
-          })}
-          {/* Theme Toggle & Connection */}
-          <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-3 lg:gap-3 px-4 lg:px-0">
-            {BOTTOM_NAV.map(item => {
-              if ('divider' in item) return null;
-              const active = activePanel === item.key;
-              return (
-                <button
-                  key={item.key}
-                  onClick={() => setActivePanel(item.key)}
-                  data-tip={item.label}
-                  className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
-                    active 
-                      ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10' 
-                      : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
-                  }`}
-                  style={{ width: 40, height: 40 }}
-                >
-                  {item.icon}
-                </button>
-              );
-            })}
+        <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-1 lg:gap-1 overflow-x-auto lg:overflow-visible bg-card/80 dark:bg-card/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent lg:backdrop-blur-none border-t border-default-200/60 dark:border-default-300/10 lg:border-none z-50">
+
+          {/* Grouped Navigation */}
+          {NAV_GROUPS.map((group, gi) => (
+            <div key={group.id} className="flex flex-row lg:flex-col items-center gap-1 lg:gap-1.5">
+              {/* Group label — desktop only */}
+              <div className="nav-group-label hidden lg:block w-full">{group.label}</div>
+              {group.items.map(item => {
+                const active = activePanel === item.key;
+                return (
+                  <button
+                    key={item.key}
+                    onClick={() => { setActivePanel(item.key); setSettingsOpen(false); }}
+                    data-tip={item.label}
+                    className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
+                      active
+                        ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                        : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
+                    }`}
+                    style={{ width: 38, height: 38 }}
+                  >
+                    {item.icon}
+                  </button>
+                );
+              })}
+              {/* Separator between groups — desktop only */}
+              {gi < NAV_GROUPS.length - 1 && (
+                <div className="hidden lg:block w-8 h-px bg-default-200 dark:bg-default-300/15 my-1" />
+              )}
+            </div>
+          ))}
+
+          {/* Bottom section: Settings, Theme, Connection */}
+          <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-1.5 lg:gap-1.5 px-2 lg:px-0 relative" ref={settingsRef}>
+            <div className="hidden lg:block w-8 h-px bg-default-200 dark:bg-default-300/15 my-1" />
+
+            {/* ── Settings button ── */}
+            <button
+              onClick={() => setSettingsOpen(!settingsOpen)}
+              data-tip="ตั้งค่า"
+              className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
+                settingsOpen || SETTINGS_ITEMS.some(s => s.key === activePanel)
+                  ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                  : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
+              }`}
+              style={{ width: 38, height: 38 }}
+            >
+              <LuSettings size={18} className={`transition-transform duration-300 ${settingsOpen ? 'rotate-90' : ''}`} />
+            </button>
+
+            {/* ── Settings Flyout Panel ── */}
+            <div className={`settings-flyout ${settingsOpen ? 'open' : ''} absolute lg:bottom-0 lg:right-[calc(100%+12px)] bottom-[calc(100%+12px)] left-0 lg:left-auto`}>
+              <div className="bg-card dark:bg-[#1e2130] rounded-2xl shadow-2xl dark:shadow-black/40 border border-default-200/60 dark:border-default-300/10 p-2 min-w-[200px]">
+                <div className="px-3 pt-2 pb-1.5">
+                  <div className="text-[11px] font-bold text-default-500 uppercase tracking-wider">⚙ ตั้งค่า</div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {SETTINGS_ITEMS.map(item => {
+                    const active = activePanel === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => { setActivePanel(item.key); setSettingsOpen(false); }}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all border-none cursor-pointer ${
+                          active
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-default-600 dark:text-default-400 hover:bg-default-100 dark:hover:bg-default-200/10 hover:text-default-900 dark:hover:text-white'
+                        }`}
+                      >
+                        <span className={`shrink-0 ${active ? 'text-primary' : 'text-default-400 dark:text-default-500'}`}>{item.icon}</span>
+                        <span className="text-[13px] font-medium">{item.label}</span>
+                        {active && <span className="ml-auto size-1.5 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+
+            {/* Theme Toggle */}
             <button
               onClick={() => updateSettings({ theme: darkMode ? 'light' : 'dark' })}
               data-tip={darkMode ? 'Light Mode' : 'Dark Mode'}
               className="mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-white"
-              style={{ width: 40, height: 40 }}
+              style={{ width: 38, height: 38 }}
             >
-              {darkMode ? <LuSun size={20} /> : <LuMoon size={20} />}
+              {darkMode ? <LuSun size={18} /> : <LuMoon size={18} />}
             </button>
-            {/* Connection */}
+
+            {/* Connection Status */}
             <div className="flex flex-col items-center gap-1 shrink-0">
               <div className={`size-2 rounded-full ${eaConnected ? 'bg-success' : 'bg-danger'}`} />
               <span className="text-[7px] text-default-400 hidden lg:block">{eaConnected ? 'ON' : 'OFF'}</span>

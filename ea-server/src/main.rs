@@ -475,8 +475,37 @@ async fn handle_mt5_connection(
                                     } else if msg_type == Some("candle_data") {
                                         if let Some(candles) = val.get("candles") {
                                             let sym = val["symbol"].as_str().unwrap_or("");
+                                            let tf_min = val["timeframe"].as_i64().unwrap_or(5);
+                                            let tf_label = match tf_min {
+                                                1 => "M1", 5 => "M5", 15 => "M15", 30 => "M30",
+                                                60 => "H1", 240 => "H4", 1440 => "D1", _ => "M5",
+                                            };
                                             db.insert_candles_as_ticks(sym, candles).await;
-                                            // Notify clients that backend data gap-fill is done for this symbol
+                                            
+                                            // Convert candle_data format {t,o,h,l,c} → history format {time,open,high,low,close}
+                                            if let Some(arr) = candles.as_array() {
+                                                let converted: Vec<serde_json::Value> = arr.iter().map(|c| {
+                                                    serde_json::json!({
+                                                        "time": c["t"].as_i64().unwrap_or(0),
+                                                        "open": c["o"].as_f64().unwrap_or(0.0),
+                                                        "high": c["h"].as_f64().unwrap_or(0.0),
+                                                        "low": c["l"].as_f64().unwrap_or(0.0),
+                                                        "close": c["c"].as_f64().unwrap_or(0.0),
+                                                    })
+                                                }).collect();
+                                                // Send as 'history' so chart renders MT5 candles directly
+                                                let history_msg = serde_json::json!({
+                                                    "type": "history",
+                                                    "symbol": sym,
+                                                    "timeframe": tf_label,
+                                                    "candles": converted,
+                                                    "source": "mt5_direct"
+                                                }).to_string();
+                                                let _ = tx.send(history_msg);
+                                                info!("📊 [MT5] Forwarded {} direct candles for {} {}", converted.len(), sym, tf_label);
+                                            }
+
+                                            // Notify clients that backend data gap-fill is done
                                             ea_state.write().await.gap_status.insert(sym.to_string(), "loaded".to_string());
                                             let status_msg = serde_json::json!({
                                                 "type": "gap_fill_status",
