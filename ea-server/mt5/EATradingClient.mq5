@@ -5,7 +5,6 @@
 //+------------------------------------------------------------------+
 #property copyright "EA Trading"
 #property link      "https://ea-trading.local"
-#property version   "2.07"
 
 #include <Trade\Trade.mqh>
 
