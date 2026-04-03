@@ -215,10 +215,9 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     lastCandleRef.current = deduped[deduped.length - 1];
     lastLocalTfIndexRef.current = Math.floor(Date.now() / 1000 / tfToSeconds(chartTf));
     
-    // Fit content shrinks candles. Better to maintain zoom and just scroll to the latest candle.
+    // Fit content safely after data is loaded
     if (deduped.length > 0 && !hasFitContentRef.current) {
-      const total = deduped.length;
-      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, total - 50), to: total });
+      setTimeout(() => { chartRef.current?.timeScale().fitContent(); }, 50);
       hasFitContentRef.current = true;
     }
   }, [candles, chartTf]);
