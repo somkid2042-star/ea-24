@@ -3,7 +3,7 @@ name: Build EA-Server (Ubuntu)
 on:
   push:
     branches: [main]
-    tags: ['sv-v*']
+    tags: ['v*']
   workflow_dispatch:
 
 permissions:
