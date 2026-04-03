@@ -675,24 +675,14 @@ void HandleRequestCandles(const string msg)
       // Fetch exactly from the requested time gap up to now
       datetime start_time = (datetime)from_time;
       datetime stop_time = TimeCurrent() + 3600; // a bit into future to ensure we get latest
-         // Try to copy rates up to 3 times to allow MT5 background download
-         int retries = 0;
-         while(copied <= 0 && retries < 3) {
-            copied = CopyRates(sym, tf, start_time, stop_time, rates);
-            if(copied > 5000) copied = 5000;
-            if(copied <= 0) { Sleep(1500); retries++; }
-         }
+      copied = CopyRates(sym, tf, start_time, stop_time, rates);
+      if(copied > 5000) copied = 5000; // Max safety limit
      }
    else
      {
       if(count <= 0) count = 200;
       if(count > 1500) count = 1500;
-         // Try to copy rates up to 3 times to allow MT5 background download
-         int retries = 0;
-         while(copied <= 0 && retries < 3) {
-            copied = CopyRates(sym, tf, 0, (int)count, rates);
-            if(copied <= 0) { Sleep(1500); retries++; }
-         }
+      copied = CopyRates(sym, tf, 0, (int)count, rates);
      }
    
    if(copied <= 0)

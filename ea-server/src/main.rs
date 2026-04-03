@@ -850,14 +850,21 @@ async fn handle_ws_connection(
                                             }).to_string();
                                             let _ = tx.send(status_msg);
 
-                                            let cmd = serde_json::json!({
-                                                "action": "request_candles",
-                                                "symbol": sym,
-                                                "timeframe": tf_minutes,
-                                                "count": limit,
-                                                "from_time": 0
-                                            }).to_string();
-                                            let _ = tx.send(cmd);
+                                            let sym_clone = sym.to_string();
+                                            let tx_clone = tx.clone();
+                                            tokio::spawn(async move {
+                                                for _ in 0..3 {
+                                                    let cmd = serde_json::json!({
+                                                        "action": "request_candles",
+                                                        "symbol": sym_clone,
+                                                        "timeframe": tf_minutes,
+                                                        "count": limit,
+                                                        "from_time": 0
+                                                    }).to_string();
+                                                    let _ = tx_clone.send(cmd);
+                                                    tokio::time::sleep(tokio::time::Duration::from_millis(1500)).await;
+                                                }
+                                            });
                                         }
                                     }
                                     "get_db_stats" => {
