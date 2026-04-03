@@ -5,10 +5,9 @@
 //+------------------------------------------------------------------+
 #property copyright "EA Trading"
 #property link      "https://ea-trading.local"
-
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.10"
+#define EA_VERSION "2.11"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -694,18 +693,23 @@ bool HandleRequestCandles(const string msg, bool isQueueProcess = false)
       copied = CopyRates(sym, tf, 0, (int)count, rates);
      }
    
-   if(copied <= 0)
+   bool isComplete = (copied > 0 && copied >= MathMin(count / 2, 100)); // Consider it complete if we got at least half or 100 candles
+   
+   if(!isComplete)
      {
-      // If we failed and we are not a queue process, enqueue it!
+      // If we failed or got very little data, and we are not a queue process, enqueue it!
       if(!isQueueProcess)
         {
          int size = ArraySize(candleQueue);
          ArrayResize(candleQueue, size+1);
          candleQueue[size].msg = msg;
          candleQueue[size].request_time = TimeCurrent();
-         Print("CopyRates failed for ", sym, ". Enqueued for background terminal fetch.");
+         Print("CopyRates incomplete for ", sym, " (", copied, "). Enqueued for background terminal fetch.");
         }
-      
+     }
+     
+   if(copied <= 0)
+     {
       // We also send the empty response so the UI knows loading is happening
       SendResponse("{\"type\":\"candle_data\",\"symbol\":\"" + sym + "\",\"candles\":[],\"count\":0}");
       return false;
@@ -734,7 +738,7 @@ bool HandleRequestCandles(const string msg, bool isQueueProcess = false)
    
    SendResponse(json);
    Print("Sent ", copied, " candles for ", sym, " TF=M", tf_minutes);
-   return true;
+   return isComplete;
   }
   
 void ProcessQueue()

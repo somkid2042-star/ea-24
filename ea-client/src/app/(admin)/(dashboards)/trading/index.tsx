@@ -496,6 +496,10 @@ const TradingDashboard = () => {
           }
         }
         if (data.type === 'history') {
+          // Prevent rendering stale data if user rapidly switched symbols or timeframes
+          if (data.symbol && data.symbol !== activeSymbolRef.current) return;
+          if (data.timeframe && data.timeframe !== chartTfRef.current) return;
+          
           if (data.candles) setCandles(data.candles);
           setIsLoadingHistory(false);
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 'loaded' }));
