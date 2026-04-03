@@ -9,7 +9,7 @@
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.09"
+#define EA_VERSION "2.10"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -22,6 +22,12 @@ datetime lastReconnectAttempt = 0;
 datetime lastAccountSend = 0;
 datetime lastMarketWatchSend = 0;
 datetime lastHistorySend = 0;
+
+struct QueuedRequest {
+   string msg;
+   datetime request_time;
+};
+QueuedRequest candleQueue[];
 
 //+------------------------------------------------------------------+
 //| Simple JSON value extractor                                      |
@@ -249,6 +255,9 @@ void OnTimer()
       SendMarketWatch();
       lastMarketWatchSend = TimeCurrent();
      }
+     
+   // Process missing chart data queue
+   ProcessQueue();
    
    // Send trade history every 30 seconds
    if(TimeCurrent() - lastHistorySend >= 30)
@@ -558,6 +567,7 @@ void SendMarketWatch()
    symbolsJson += "]";
    
    string json = "{\"type\":\"market_watch\"";
+   json += ",\"server_time\":" + IntegerToString((long)TimeCurrent());
    json += ",\"symbols\":" + symbolsJson;
    json += ",\"count\":" + IntegerToString(count);
    json += "}\n";
@@ -644,7 +654,7 @@ void SendTradeHistory()
 //+------------------------------------------------------------------+
 //| Handle request_candles command - send historical OHLC data        |
 //+------------------------------------------------------------------+
-void HandleRequestCandles(const string msg)
+bool HandleRequestCandles(const string msg, bool isQueueProcess = false)
   {
    string sym = JsonGetString(msg, "symbol");
    long tf_minutes = JsonGetLong(msg, "timeframe");
@@ -687,9 +697,19 @@ void HandleRequestCandles(const string msg)
    
    if(copied <= 0)
      {
-      Print("CopyRates failed for ", sym, " TF=", tf_minutes, " err=", GetLastError());
+      // If we failed and we are not a queue process, enqueue it!
+      if(!isQueueProcess)
+        {
+         int size = ArraySize(candleQueue);
+         ArrayResize(candleQueue, size+1);
+         candleQueue[size].msg = msg;
+         candleQueue[size].request_time = TimeCurrent();
+         Print("CopyRates failed for ", sym, ". Enqueued for background terminal fetch.");
+        }
+      
+      // We also send the empty response so the UI knows loading is happening
       SendResponse("{\"type\":\"candle_data\",\"symbol\":\"" + sym + "\",\"candles\":[],\"count\":0}");
-      return;
+      return false;
      }
    
    int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
@@ -715,5 +735,29 @@ void HandleRequestCandles(const string msg)
    
    SendResponse(json);
    Print("Sent ", copied, " candles for ", sym, " TF=M", tf_minutes);
+   return true;
+  }
+  
+void ProcessQueue()
+  {
+   int total = ArraySize(candleQueue);
+   if(total == 0) return;
+   
+   for(int i = total - 1; i >= 0; i--)
+     {
+      // Drop requests older than 20 seconds to avoid infinite hangs
+      if(TimeCurrent() - candleQueue[i].request_time > 20)
+        {
+         Print("Dropped expired queue request for candle data -> 20s timeout.");
+         ArrayRemove(candleQueue, i, 1);
+         continue;
+        }
+        
+      bool success = HandleRequestCandles(candleQueue[i].msg, true);
+      if(success)
+        {
+         ArrayRemove(candleQueue, i, 1);
+        }
+     }
   }
 //+------------------------------------------------------------------+

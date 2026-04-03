@@ -461,7 +461,7 @@ const TradingDashboard = () => {
         if (data.type === 'market_watch') {
           setMarketWatch(prev => {
              const now = Date.now();
-             const next = data.symbols || [];
+             const next = data.symbols?.map((s: any) => ({ ...s, serverTime: data.server_time })) || [];
              setLastPriceUpdateTime(prevTime => {
                 const newTimes = { ...prevTime };
                 next.forEach((nxt: any) => {
