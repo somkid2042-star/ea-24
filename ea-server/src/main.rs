@@ -828,8 +828,20 @@ async fn handle_ws_connection(
                                         info!("📊 [UI] History requested for {} {} (limit {})", sym, tf, limit);
                                         let candles_raw = db.get_candles_for_strategy(sym, tf_minutes, limit).await;
                                         
-                                        if candles_raw.is_empty() {
-                                            info!("📊 [UI] DB history empty for {}, requesting from EA", sym);
+                                        let candles: Vec<serde_json::Value> = candles_raw.iter().map(|c| {
+                                            serde_json::json!({ "time": c.time, "open": c.open, "high": c.high, "low": c.low, "close": c.close })
+                                        }).collect();
+                                        info!("📊 [UI] Returning {} candles for {} {}", candles.len(), sym, tf);
+                                        let resp = serde_json::json!({
+                                            "type": "history",
+                                            "symbol": sym,
+                                            "timeframe": tf,
+                                            "candles": candles,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+
+                                        if candles_raw.len() < 50 {
+                                            info!("📊 [UI] DB history insufficient for {} ({} candles), requesting from EA", sym, candles_raw.len());
                                             ea_state.write().await.gap_status.insert(sym.to_string(), "loading".to_string());
                                             let status_msg = serde_json::json!({
                                                 "type": "gap_fill_status",
@@ -846,18 +858,6 @@ async fn handle_ws_connection(
                                                 "from_time": 0
                                             }).to_string();
                                             let _ = tx.send(cmd);
-                                        } else {
-                                            let candles: Vec<serde_json::Value> = candles_raw.iter().map(|c| {
-                                                serde_json::json!({ "time": c.time, "open": c.open, "high": c.high, "low": c.low, "close": c.close })
-                                            }).collect();
-                                            info!("📊 [UI] Returning {} candles for {} {}", candles.len(), sym, tf);
-                                            let resp = serde_json::json!({
-                                                "type": "history",
-                                                "symbol": sym,
-                                                "timeframe": tf,
-                                                "candles": candles,
-                                            });
-                                            let _ = write.send(Message::Text(resp.to_string())).await;
                                         }
                                     }
                                     "get_db_stats" => {
