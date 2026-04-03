@@ -2,11 +2,7 @@ name: Build Desktop Client
 
 on:
   push:
-    branches:
-      - main
-    paths:
-      - "ea-client/**"
-      - ".github/workflows/build-client.yml"
+    tags: ['app-v*']
   workflow_dispatch:
 
 permissions:
