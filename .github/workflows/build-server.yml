@@ -1,4 +1,4 @@
-name: Build EA-Server (Windows)
+name: Build EA-Server (Ubuntu)
 
 on:
   push:
@@ -10,14 +10,20 @@ permissions:
   contents: write
 
 jobs:
-  build-windows:
-    runs-on: windows-latest
+  build-ubuntu:
+    runs-on: ubuntu-22.04
 
     steps:
       - name: Checkout code
         uses: actions/checkout@v4
 
-      # ── Step 1: Build React Frontend (required for rust-embed) ──
+      # ── Step 1: Install system dependencies ──
+      - name: Install system dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y build-essential pkg-config libssl-dev
+
+      # ── Step 2: Build React Frontend (required for rust-embed) ──
       - name: Setup Node.js
         uses: actions/setup-node@v4
         with:
@@ -31,7 +37,7 @@ jobs:
         working-directory: ./ea-client
         run: npm run build
 
-      # ── Step 2: Build Rust Server ──
+      # ── Step 3: Build Rust Server ──
       - name: Install Rust toolchain
         uses: dtolnay/rust-toolchain@stable
 
@@ -41,55 +47,20 @@ jobs:
           path: |
             ~/.cargo/registry
             ~/.cargo/git
+            ea-server/target
           key: ${{ runner.os }}-cargo-${{ hashFiles('ea-server/Cargo.lock') }}
           restore-keys: ${{ runner.os }}-cargo-
-
-      - name: Cache vcpkg packages
-        uses: actions/cache@v4
-        with:
-          path: C:\vcpkg\installed
-          key: ${{ runner.os }}-vcpkg-openssl-static-v3
-          restore-keys: ${{ runner.os }}-vcpkg-openssl-static-v3
-
-      - name: Install OpenSSL (static linking for SQLCipher)
-        run: |
-          foreach ($old in @("x64-windows", "x64-windows-static-md")) {
-            if (Test-Path "C:\vcpkg\installed\$old") {
-              Write-Host "Removing old $old triplet..."
-              Remove-Item -Recurse -Force "C:\vcpkg\installed\$old"
-            }
-          }
-          vcpkg install openssl:x64-windows-static
-          $base = "C:\vcpkg\installed\x64-windows-static"
-          echo "OPENSSL_DIR=$base" >> $env:GITHUB_ENV
-          echo "OPENSSL_LIB_DIR=$base\lib" >> $env:GITHUB_ENV
-          echo "OPENSSL_INCLUDE_DIR=$base\include" >> $env:GITHUB_ENV
-          echo "OPENSSL_STATIC=1" >> $env:GITHUB_ENV
-          echo "OPENSSL_NO_VENDOR=1" >> $env:GITHUB_ENV
 
       - name: Build release
         working-directory: ./ea-server
         run: cargo build --release
 
-      # ── Step 3: Build Windows Installer (Inno Setup) ──
-      - name: Build Installer
-        uses: Minionguyjpro/Inno-Setup-Action@v1.2.2
-        with:
-          path: ea-server-installer.iss
-          options: /O+
-
       # ── Step 4: Upload Artifacts ──
-      - name: Upload ea-server.exe
+      - name: Upload ea-server binary
         uses: actions/upload-artifact@v4
         with:
-          name: ea-server-exe
-          path: ea-server/target/x86_64-pc-windows-msvc/release/ea-server.exe
-
-      - name: Upload Installer
-        uses: actions/upload-artifact@v4
-        with:
-          name: EAServerSetup
-          path: Output/EAServerSetup.exe
+          name: ea-server-linux
+          path: ea-server/target/release/ea-server
 
       # ── Step 5: Create GitHub Release (only on tag push) ──
       - name: Create GitHub Release
@@ -97,6 +68,5 @@ jobs:
         uses: softprops/action-gh-release@v2
         with:
           files: |
-            ea-server/target/x86_64-pc-windows-msvc/release/ea-server.exe
-            Output/EAServerSetup.exe
+            ea-server/target/release/ea-server
           generate_release_notes: true
