@@ -1,0 +1,28 @@
+[Unit]
+Description=EA-24 Trading Server
+After=network.target postgresql.service
+Wants=network-online.target
+
+[Service]
+Type=simple
+User=root
+WorkingDirectory=/opt/ea-24
+ExecStart=/opt/ea-24/ea-server
+Restart=on-failure
+RestartSec=5
+Environment=RUST_LOG=info
+Environment=DATABASE_URL=postgresql://localhost/ea24
+
+# Auto-restart when binary is replaced by updater
+WatchdogSec=300
+
+# Resource limits
+LimitNOFILE=65535
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=ea-server
+
+[Install]
+WantedBy=multi-user.target
