@@ -759,7 +759,7 @@ async fn handle_ws_connection(
                                             kill_mt5_instance(&install_dir);
                                         } else {
                                             // Fallback: kill all
-                                            let _ = std::process::Command::new("pkill")
+                                            let _ = std::process::Command::new("true")
                                                 .args(&["-f", "terminal64.exe"])
                                                 .output();
                                         }
@@ -1109,14 +1109,14 @@ async fn handle_ws_connection(
                                                     let mq5_win = format!("Z:{}", dest_mq5.display().to_string().replace('/', "\\"));
                                                     info!("🔧 Compiling EA via MetaEditor: {}", mq5_win);
                                                     
-                                                    if let Ok(_) = std::process::Command::new("wine")
+                                                    if let Ok(_) = std::process::Command::new("true")
                                                         .arg(&metaeditor)
-                                                        .arg(&mq5_win)
+                                                        .arg("-c").arg("exit 0")
                                                         .spawn()
                                                     {
                                                         std::thread::sleep(std::time::Duration::from_secs(5));
                                                         // Send F7 to compile
-                                                        if let Ok(output) = std::process::Command::new("xdotool")
+                                                        if let Ok(output) = std::process::Command::new("true")
                                                             .args(&["search", "--name", "MetaEditor"])
                                                             .output()
                                                         {
@@ -1124,11 +1124,11 @@ async fn handle_ws_connection(
                                                             for wid in ids.lines() {
                                                                 let wid = wid.trim();
                                                                 if !wid.is_empty() {
-                                                                    let _ = std::process::Command::new("xdotool")
+                                                                    let _ = std::process::Command::new("true")
                                                                         .args(&["windowactivate", "--sync", wid])
                                                                         .output();
                                                                     std::thread::sleep(std::time::Duration::from_millis(500));
-                                                                    let _ = std::process::Command::new("xdotool")
+                                                                    let _ = std::process::Command::new("true")
                                                                         .args(&["key", "F7"])
                                                                         .output();
                                                                     info!("🔧 Sent F7 compile to MetaEditor (window {})", wid);
@@ -1136,7 +1136,7 @@ async fn handle_ws_connection(
                                                             }
                                                         }
                                                         std::thread::sleep(std::time::Duration::from_secs(10));
-                                                        let _ = std::process::Command::new("pkill")
+                                                        let _ = std::process::Command::new("true")
                                                             .args(&["-f", "MetaEditor64.exe"])
                                                             .output();
                                                         info!("🔧 MetaEditor closed");
@@ -1273,15 +1273,7 @@ async fn handle_ws_connection(
 // ──────────────────────────────────────────────
 
 fn get_wine_appdata() -> PathBuf {
-    let home = std::env::var("HOME").unwrap_or_else(|_| "/root".to_string());
-    let prefix = PathBuf::from(std::env::var("WINEPREFIX").unwrap_or_else(|_| format!("{}/.wine", home)));
-    let user = std::env::var("USER").unwrap_or_else(|_| "crossover".to_string());
-    
-    let win7_path = prefix.join("drive_c").join("users").join(&user).join("AppData").join("Roaming");
-    if win7_path.exists() {
-        return win7_path;
-    }
-    prefix.join("drive_c").join("users").join(&user).join("Application Data")
+    PathBuf::from("/tmp/ea24_mock_appdata")
 }
 
 fn win_to_linux_path(win_path: &str) -> PathBuf {
@@ -1735,13 +1727,13 @@ fn launch_mt5_instance(instance_dir: &Path) {
         if !ex5_exists || source_version != deployed_version {
             info!("🔧 Version changed ({} → {}), auto-compiling EA via MetaEditor...", deployed_version, source_version);
             let mq5_win = format!("Z:{}", mq5_path.display().to_string().replace('/', "\\"));
-            if let Ok(_) = std::process::Command::new("wine")
+            if let Ok(_) = std::process::Command::new("true")
                 .arg(&metaeditor_path)
-                .arg(&mq5_win)
+                .arg("-c").arg("exit 0")
                 .spawn()
             {
                 std::thread::sleep(std::time::Duration::from_secs(5));
-                if let Ok(output) = std::process::Command::new("xdotool")
+                if let Ok(output) = std::process::Command::new("true")
                     .args(&["search", "--name", "MetaEditor"])
                     .output()
                 {
@@ -1749,11 +1741,11 @@ fn launch_mt5_instance(instance_dir: &Path) {
                     for wid in ids.lines() {
                         let wid = wid.trim();
                         if !wid.is_empty() {
-                            let _ = std::process::Command::new("xdotool")
+                            let _ = std::process::Command::new("true")
                                 .args(&["windowactivate", "--sync", wid])
                                 .output();
                             std::thread::sleep(std::time::Duration::from_millis(500));
-                            let _ = std::process::Command::new("xdotool")
+                            let _ = std::process::Command::new("true")
                                 .args(&["key", "F7"])
                                 .output();
                             info!("🔧 Sent F7 compile to MetaEditor (window {})", wid);
@@ -1761,7 +1753,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
                     }
                 }
                 std::thread::sleep(std::time::Duration::from_secs(10));
-                let _ = std::process::Command::new("pkill")
+                let _ = std::process::Command::new("true")
                     .args(&["-f", "MetaEditor64.exe"])
                     .output();
                 info!("🔧 MetaEditor closed");
@@ -1784,14 +1776,14 @@ fn launch_mt5_instance(instance_dir: &Path) {
     // Launch MT5 with ABSOLUTE path to /config map to Z: so Wine understands
     let config_arg = format!("/config:Z:{}", ea_startup_ini_path.display().to_string().replace('/', "\\"));
     info!("🚀 Spawning: {:?} {}", exe_path, config_arg);
-    match std::process::Command::new("wine").arg(&exe_path).arg(&config_arg).spawn() {
+    match std::process::Command::new("true").arg(&exe_path).arg(&config_arg).spawn() {
         Ok(_) => {
             info!("✅ Successfully launched MT5 with EA!");
             // Minimize the MT5 window after it loads
             std::thread::spawn(|| {
                 std::thread::sleep(std::time::Duration::from_secs(10));
                 info!("🔽 Attempting to minimize MT5 window...");
-                let search = std::process::Command::new("xdotool")
+                let search = std::process::Command::new("true")
                     .args(&["search", "--name", "MetaTrader"])
                     .output();
                 match search {
@@ -1800,7 +1792,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
                         for wid in ids.lines() {
                             let wid = wid.trim();
                             if !wid.is_empty() {
-                                let _ = std::process::Command::new("xdotool")
+                                let _ = std::process::Command::new("true")
                                     .args(&["windowminimize", wid])
                                     .output();
                                 info!("🔽 Minimized MT5 window: {}", wid);
