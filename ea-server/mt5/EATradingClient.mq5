@@ -9,7 +9,7 @@
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.07"
+#define EA_VERSION "2.08"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
