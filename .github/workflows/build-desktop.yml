@@ -2,7 +2,7 @@ name: Build Desktop Client (Tauri Auto-Updater)
 
 on:
   push:
-    tags: ['v*']
+    tags: ['app-v*']
   workflow_dispatch:
 
 permissions:
