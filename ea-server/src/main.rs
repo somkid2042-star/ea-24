@@ -3,7 +3,6 @@
 
 mod db;
 mod updater;
-mod gui;
 mod strategy;
 mod notify;
 
@@ -17,10 +16,9 @@ use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
 use tokio::net::{TcpListener, TcpStream};
-use tokio::sync::{broadcast, watch, RwLock};
+use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 
-use crate::gui::ServerState as TrayState;
 
 
 
@@ -99,7 +97,8 @@ struct EaState {
 //  Main
 // ──────────────────────────────────────────────
 
-fn main() {
+#[tokio::main]
+async fn main() {
     // ---------------------------------------------------------
     // Single Instance Lock
     // ---------------------------------------------------------
@@ -120,35 +119,10 @@ fn main() {
     }
     builder.init();
 
-    // Watch channel: server → tray
-    let (tray_tx, tray_rx) = watch::channel(TrayState::default());
-    let tray_tx = Arc::new(tray_tx);
-
-    // Spawn tokio runtime on a background thread
-    let tray_tx_clone = tray_tx.clone();
-    std::thread::spawn(move || {
-        match tokio::runtime::Runtime::new() {
-            Ok(rt) => {
-                rt.block_on(async move {
-                    run_server(tray_tx_clone).await;
-                });
-            }
-            Err(e) => {
-                let _ = tray_tx_clone.send(TrayState {
-                    server_online: false,
-                    last_error: Some(format!("Runtime error: {}", e)),
-                    ..TrayState::default()
-                });
-            }
-        }
-    });
-
-    // Run the native GUI on the main thread
-    info!("🖥️  Starting native GUI...");
-    gui::run_gui(tray_rx);
+    run_server().await;
 }
 
-async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
+async fn run_server() {
     let ws_addr: std::net::SocketAddr = "0.0.0.0:8080".parse().unwrap();
     let mt5_addr: std::net::SocketAddr = "0.0.0.0:8081".parse().unwrap();
     let http_addr: std::net::SocketAddr = "0.0.0.0:4173".parse().unwrap();
@@ -231,7 +205,6 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
     let tx_mt5 = tx.clone();
     let active_eas_mt5 = active_eas.clone();
     let ea_state_mt5 = ea_state.clone();
-    let tray_tx_mt5 = tray_tx.clone();
     let db_mt5 = database.clone();
     tokio::spawn(async move {
         while let Ok((stream, peer_addr)) = mt5_listener.accept().await {
@@ -243,14 +216,12 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
                 rx,
                 active_eas_mt5.clone(),
                 ea_state_mt5.clone(),
-                tray_tx_mt5.clone(),
                 db_mt5.clone(),
             ));
         }
     });
 
     // Spawn sysinfo polling loop — track only THIS process
-    let sys_tx = tray_tx.clone();
     let sys_db = database.clone();
     tokio::spawn(async move {
         let pid = sysinfo::Pid::from_u32(std::process::id());
@@ -281,15 +252,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
 
             let db_pool_size = sys_db.size();
 
-            sys_tx.send_if_modified(|state| {
-                state.cpu_usage = cpu;
-                state.ram_usage_mb = ram;
-                state.total_ram_mb = total;
-                state.net_rx_kb = rx_kb;
-                state.net_tx_kb = tx_kb;
-                state.db_pool_size = db_pool_size;
-                true
-            });
+
         }
     });
 
@@ -329,7 +292,6 @@ async fn handle_mt5_connection(
     mut rx: broadcast::Receiver<String>,
     active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
-    tray_tx: Arc<watch::Sender<TrayState>>,
     db: Arc<db::Database>,
 ) {
     info!("🔗 [MT5] New connection from: {}", peer_addr);
@@ -368,14 +330,7 @@ async fn handle_mt5_connection(
                                     is_real_ea = true;
 
                                     // Update tray icon
-                                    let _ = tray_tx.send(TrayState {
-                                        server_online: true,
-                                        ea_connected: true,
-                                        ea_version: ver.clone(),
-                                        ea_symbol: sym.clone(),
-                                        last_error: None,
-                                        ..TrayState::default()
-                                    });
+
 
                                     // Broadcast ea_info to UI
                                     let info_msg = serde_json::json!({
@@ -642,14 +597,7 @@ async fn handle_mt5_connection(
     active_eas.fetch_sub(1, Ordering::SeqCst);
 
     // Update tray icon
-    let _ = tray_tx.send(TrayState {
-        server_online: true,
-        ea_connected: false,
-        ea_version: "—".to_string(),
-        ea_symbol: "".to_string(),
-        last_error: None,
-        ..TrayState::default()
-    });
+
 }
 
 // ──────────────────────────────────────────────
