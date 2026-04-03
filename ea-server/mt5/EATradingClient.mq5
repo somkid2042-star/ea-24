@@ -7,7 +7,7 @@
 #property link      "https://ea-trading.local"
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.13"
+#define EA_VERSION "2.14"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -20,6 +20,8 @@ datetime lastReconnectAttempt = 0;
 datetime lastAccountSend = 0;
 datetime lastMarketWatchSend = 0;
 datetime lastHistorySend = 0;
+bool historyPushDone = false;
+datetime historyPushStart = 0;
 
 struct QueuedRequest {
    string msg;
@@ -194,6 +196,8 @@ void TryConnect()
      }
      
    isConnected = true;
+   historyPushDone = false;
+   historyPushStart = TimeCurrent() + 3;
    Print("Connected to ea-server at ", ServerIP, ":", ServerPort);
    
    // Send version info
@@ -277,6 +281,13 @@ void OnTimer()
      
    // Process missing chart data queue
    ProcessQueue();
+   
+   // Auto-push history for ALL market watch symbols after connecting
+   if(!historyPushDone && TimeCurrent() >= historyPushStart && historyPushStart > 0)
+     {
+      PushAllMarketWatchHistory();
+      historyPushDone = true;
+     }
    
    // Send trade history every 30 seconds
    if(TimeCurrent() - lastHistorySend >= 30)
@@ -789,5 +800,33 @@ void ProcessQueue()
          ArrayRemove(candleQueue, i, 1);
         }
      }
+  }
+//+------------------------------------------------------------------+
+
+//+------------------------------------------------------------------+
+//| Push 7-day history for ALL Market Watch symbols on connect        |
+//+------------------------------------------------------------------+
+void PushAllMarketWatchHistory()
+  {
+   int total = SymbolsTotal(true); // true = only Market Watch symbols
+   Print("📊 Auto-push: Starting history push for ", total, " Market Watch symbols...");
+   
+   for(int i = 0; i < total; i++)
+     {
+      string sym = SymbolName(i, true);
+      if(StringLen(sym) == 0) continue;
+      
+      // Enqueue M5 history request (7 days) for each symbol
+      string msg = "{\"action\":\"request_candles\",\"symbol\":\"" + sym + "\",\"timeframe\":5,\"count\":2000,\"from_time\":0}";
+      
+      int size = ArraySize(candleQueue);
+      ArrayResize(candleQueue, size + 1);
+      candleQueue[size].msg = msg;
+      candleQueue[size].request_time = TimeCurrent() + 120; // Give 2 minutes timeout (not 20s default)
+      
+      Print("📊 Enqueued history for: ", sym, " (M5, 7 days)");
+     }
+   
+   Print("📊 Auto-push: Enqueued ", total, " symbols. ProcessQueue will handle sending.");
   }
 //+------------------------------------------------------------------+

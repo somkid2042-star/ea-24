@@ -522,7 +522,24 @@ const TradingDashboard = () => {
               : m
           ));
         }
-        // Handle candle_data from EA (historical backfill) (removed redundant refresh loop)
+        // Handle candle_data from EA (historical backfill) — convert {t,o,h,l,c} → chart format
+        if (data.type === 'candle_data' && data.symbol === activeSymbolRef.current && data.candles?.length > 0) {
+          const tfMin = Number(data.timeframe || 5);
+          const tfMap: Record<number, string> = { 1: 'M1', 5: 'M5', 15: 'M15', 30: 'M30', 60: 'H1', 240: 'H4', 1440: 'D1' };
+          const tfLabel = tfMap[tfMin] || 'M5';
+          const converted = data.candles.map((c: any) => ({
+            time: c.t, open: c.o, high: c.h, low: c.l, close: c.c,
+          }));
+          // Set candles directly if timeframe matches, otherwise re-request from DB
+          if (tfLabel === chartTfRef.current) {
+            setCandles(converted);
+            setIsLoadingHistory(false);
+            setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: 'loaded' }));
+          } else {
+            // EA sent different TF — data is now in DB, re-request correct TF
+            setTimeout(() => requestHistory(), 800);
+          }
+        }
       } catch { /* */ }
     };
     wsRef.current = ws;
