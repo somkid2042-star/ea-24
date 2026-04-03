@@ -1,28 +1,10 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
 import {
-  LuChartCandlestick,
-  LuCircleCheck,
-  LuCircleX,
   LuCpu,
-  LuDownload,
-  LuFolderOpen,
   LuLink,
-  LuMonitorSmartphone,
-  LuPlay,
-  LuRefreshCw,
-  LuSquare,
 } from 'react-icons/lu';
 
-type Mt5Instance = {
-  id: string;
-  broker_name: string;
-  install_path: string;
-  terminal_exe: string;
-  ea_deployed: boolean;
-  ea_version: string;
-  has_experts_dir: boolean;
-  mt5_running: boolean;
-};
+
 
 type EaLiveStatus = {
   connected: boolean;
@@ -34,18 +16,13 @@ type EaLiveStatus = {
 
 import { getWsUrl } from '@/utils/config';
 
-type ActionStatus = {
-  type: 'idle' | 'loading' | 'success' | 'error';
-  message: string;
-};
+
 
 const WS_URL = getWsUrl();
 const WS_HOST = WS_URL.replace(/^ws:\/\//, '').split(':')[0] || window.location.hostname;
-const HTTP_URL = `http://${WS_HOST}:4173`;
+
 
 const MT5Settings = () => {
-  const [instances, setInstances] = useState<Mt5Instance[]>([]);
-  const [scanning, setScanning] = useState(false);
   const [wsConnected, setWsConnected] = useState(false);
   const [eaStatus, setEaStatus] = useState<EaLiveStatus>({
     connected: false,
@@ -55,8 +32,6 @@ const MT5Settings = () => {
     updateAvailable: false,
   });
   const [tradingEnabled, setTradingEnabled] = useState(true);
-  const [actionStatuses, setActionStatuses] = useState<Record<string, ActionStatus>>({});
-  const [updatingEa, setUpdatingEa] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
 
   // WebSocket connection
@@ -65,9 +40,7 @@ const MT5Settings = () => {
 
     ws.onopen = () => {
       setWsConnected(true);
-      // Auto-scan on connect
       ws.send(JSON.stringify({ action: 'scan_mt5' }));
-      setScanning(true);
     };
 
     ws.onclose = () => {
@@ -103,8 +76,6 @@ const MT5Settings = () => {
             break;
 
           case 'mt5_instances':
-            setInstances(data.instances || []);
-            setScanning(false);
             // Also update EA status from scan response (real-time polling)
             if (data.ea_connected !== undefined) {
               setEaStatus((prev) => ({
@@ -116,71 +87,6 @@ const MT5Settings = () => {
             }
             break;
 
-          case 'deploy_status':
-            setUpdatingEa(false);
-            setActionStatuses((prev) => ({
-              ...prev,
-              [`deploy_${data.instance_id || 'all'}`]: {
-                type: data.status === 'success' ? 'success' : 'error',
-                message: data.message || (data.status === 'success' ? 'EA updated!' : 'Update failed'),
-              },
-            }));
-            // Auto re-scan after deploy
-            if (wsRef.current?.readyState === 1) {
-              setTimeout(() => {
-                wsRef.current?.send(JSON.stringify({ action: 'scan_mt5' }));
-              }, 2000);
-            }
-            break;
-
-          case 'launch_status':
-            setActionStatuses((prev) => ({
-              ...prev,
-              [`launch_${data.instance_id || ''}`]: {
-                type: data.status === 'success' ? 'success' : 'error',
-                message: data.status === 'success' ? 'MT5 launched!' : 'Launch failed',
-              },
-            }));
-            // Auto re-scan after launch to update running state & EA connection
-            if (data.status === 'success') {
-              setTimeout(() => {
-                wsRef.current?.send(JSON.stringify({ action: 'scan_mt5' }));
-              }, 3000);
-            }
-            break;
-
-          case 'upload_status':
-            setActionStatuses((prev) => ({
-              ...prev,
-              upload_ea: {
-                type: data.status === 'success' ? 'success' : 'error',
-                message: data.status === 'success' ? 'EA Uploaded successfully!' : 'Upload failed',
-              },
-            }));
-            // Provide a small delay before clearing it out or let global timer do it
-            break;
-
-          case 'setup_webrequest_status':
-            setActionStatuses((prev) => ({
-              ...prev,
-              [`webrequest_${data.instance_id || ''}`]: {
-                type: data.status === 'success' ? 'success' : 'error',
-                message: data.status === 'success' ? 'Done' : 'Failed',
-              },
-            }));
-            break;
-
-          case 'close_mt5_status':
-            setActionStatuses((prev) => ({
-              ...prev,
-              [`close_${data.instance_id || ''}`]: {
-                type: data.status === 'success' ? 'success' : 'error',
-                message: data.status === 'success' ? 'MT5 closed' : 'Failed',
-              },
-            }));
-            // Refresh instances to update running state
-            setTimeout(() => sendAction('scan_mt5'), 2000);
-            break;
         }
       } catch {
         // ignore
@@ -207,23 +113,7 @@ const MT5Settings = () => {
     return () => clearInterval(interval);
   }, []);
 
-  // Clear action status after 3 seconds
-  useEffect(() => {
-    const timers: ReturnType<typeof setTimeout>[] = [];
-    for (const key in actionStatuses) {
-      if (actionStatuses[key].type !== 'idle' && actionStatuses[key].type !== 'loading') {
-        timers.push(
-          setTimeout(() => {
-            setActionStatuses((prev) => ({
-              ...prev,
-              [key]: { type: 'idle', message: '' },
-            }));
-          }, 3000)
-        );
-      }
-    }
-    return () => timers.forEach(clearTimeout);
-  }, [actionStatuses]);
+
 
   const sendAction = (action: string, extra?: Record<string, string>) => {
     if (wsRef.current?.readyState === 1) {
@@ -231,39 +121,11 @@ const MT5Settings = () => {
     }
   };
 
-  const handleScan = () => {
-    setScanning(true);
-    sendAction('scan_mt5');
-  };
-
-  const handleLaunch = (instanceId: string) => {
-    setActionStatuses((prev) => ({
-      ...prev,
-      [`launch_${instanceId}`]: { type: 'loading', message: 'Launching...' },
-    }));
-    sendAction('launch_mt5', { instance_id: instanceId });
-  };
-
   const handleToggleTrading = () => {
     const newState = !tradingEnabled;
     setTradingEnabled(newState);
     sendAction(newState ? 'start_trading' : 'stop_trading');
   };
-
-  const handleToggleMt5 = (instanceId: string, isRunning: boolean) => {
-    if (isRunning) {
-      setActionStatuses((prev) => ({
-        ...prev,
-        [`close_${instanceId}`]: { type: 'loading', message: 'Closing...' },
-      }));
-      sendAction('close_mt5', { instance_id: instanceId });
-    } else {
-      handleLaunch(instanceId);
-    }
-  };
-
-  const getActionStatus = (key: string): ActionStatus =>
-    actionStatuses[key] || { type: 'idle', message: '' };
 
   return (
     <main className="space-y-6">
@@ -360,237 +222,9 @@ const MT5Settings = () => {
         </div>
       </div>
 
-      {/* EA Update Available Banner */}
-      {eaStatus.updateAvailable && (
-        <div className="card !p-0 overflow-hidden border-amber-300/50 dark:border-amber-500/20">
-          <div className="bg-gradient-to-r from-amber-50 to-orange-50 dark:from-amber-500/10 dark:to-orange-500/5 p-4">
-            <div className="flex items-center justify-between flex-wrap gap-3">
-              <div className="flex items-center gap-3">
-                <div className="flex items-center justify-center w-10 h-10 rounded-xl bg-amber-500/15 dark:bg-amber-500/20">
-                  <LuDownload className="size-5 text-amber-600 dark:text-amber-400" />
-                </div>
-                <div>
-                  <h5 className="text-sm font-semibold text-amber-800 dark:text-amber-300">EA Update Available</h5>
-                  <p className="text-xs text-amber-600/80 dark:text-amber-400/70 mt-0.5">
-                    v{eaStatus.version} → v{eaStatus.latestVersion} · New features & bug fixes
-                  </p>
-                </div>
-              </div>
-              <button
-                onClick={() => {
-                  setUpdatingEa(true);
-                  sendAction('update_ea');
-                  setTimeout(() => setUpdatingEa(false), 60000);
-                }}
-                disabled={updatingEa || !wsConnected}
-                className="btn bg-amber-500 text-white hover:bg-amber-600 shadow-sm disabled:opacity-50 font-medium px-5"
-              >
-                {updatingEa ? (
-                  <><LuRefreshCw className="size-4 animate-spin" /> Compiling & Deploying...</>
-                ) : (
-                  <><LuDownload className="size-4" /> Update EA Now</>
-                )}
-              </button>
-            </div>
-            {/* Deploy result message */}
-            {actionStatuses['deploy_all']?.type === 'success' && (
-              <div className="mt-3 rounded-lg bg-green-100 dark:bg-green-500/15 px-3 py-2 text-xs font-medium text-green-700 dark:text-green-400">
-                ✅ {actionStatuses['deploy_all']?.message}
-              </div>
-            )}
-            {actionStatuses['deploy_all']?.type === 'error' && (
-              <div className="mt-3 rounded-lg bg-red-100 dark:bg-red-500/15 px-3 py-2 text-xs font-medium text-red-700 dark:text-red-400">
-                ❌ {actionStatuses['deploy_all']?.message}
-              </div>
-            )}
-          </div>
-        </div>
-      )}
 
-      {/* Section 2: MT5 Instances */}
-      <div className="card">
-        <div className="p-5">
-          <div className="mb-4 flex items-center justify-between">
-            <div className="flex items-center gap-2">
-              <LuMonitorSmartphone className="size-5 text-primary" />
-              <h5 className="text-base font-semibold text-default-900">
-                MT5 Instances
-                {instances.length > 0 && (
-                  <span className="ml-2 rounded-full bg-primary/10 px-2 py-0.5 text-xs font-normal text-primary">
-                    {instances.length} found
-                  </span>
-                )}
-              </h5>
-            </div>
-            <button
-              onClick={handleScan}
-              disabled={scanning || !wsConnected}
-              className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40"
-            >
-              <LuRefreshCw className={`size-3.5 ${scanning ? 'animate-spin' : ''}`} />
-              {scanning ? 'Scanning...' : 'Scan Again'}
-            </button>
-          </div>
 
-          {/* Loading state */}
-          {scanning && instances.length === 0 && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <LuRefreshCw className="mx-auto size-8 animate-spin text-primary/50" />
-                <p className="mt-3 text-sm text-default-500">Scanning for MetaTrader 5 installations...</p>
-              </div>
-            </div>
-          )}
 
-          {/* No instances */}
-          {!scanning && instances.length === 0 && (
-            <div className="flex items-center justify-center py-12">
-              <div className="text-center">
-                <LuMonitorSmartphone className="mx-auto size-10 text-default-300" />
-                <p className="mt-3 text-sm font-medium text-default-500">No MT5 instances found</p>
-                <p className="mt-1 text-xs text-default-400">
-                  Make sure MetaTrader 5 is installed on this machine
-                </p>
-              </div>
-            </div>
-          )}
-
-          {/* Instance Cards */}
-          <div className="space-y-3">
-            {instances.map((inst) => {
-              return (
-                <div
-                  key={inst.id}
-                  className="rounded-xl border border-default-200/60 dark:border-default-300/10 bg-gradient-to-r from-default-50/50 to-default-50/10 p-5 transition hover:shadow-md hover:shadow-primary/5 dark:from-default-200/5 dark:to-transparent"
-                >
-                  <div className="flex flex-col gap-4 md:flex-row md:items-center md:justify-between">
-                    {/* Instance Info */}
-                    <div className="flex-1 min-w-0">
-                      <div className="flex items-center gap-3">
-                        <div className="relative flex size-10 shrink-0 items-center justify-center rounded-lg bg-default-800 overflow-hidden">
-                          <img
-                            src={`${HTTP_URL}/icon/${inst.id}`}
-                            alt="MT5 Icon"
-                            className="absolute inset-0 size-full object-contain p-1.5"
-                            onError={(e) => {
-                              // If icon fails to load, hide image and show the fallback icon sibling
-                              e.currentTarget.style.display = 'none';
-                              (e.currentTarget.nextElementSibling as HTMLElement).style.display = 'block';
-                            }}
-                          />
-                          <LuChartCandlestick className="size-5 text-primary fallback-icon" style={{ display: 'none' }} />
-                        </div>
-                        <div className="min-w-0">
-                          <h6 className="truncate text-sm font-semibold text-default-900">
-                            {inst.broker_name || 'MetaTrader 5'}
-                          </h6>
-                          <div className="mt-0.5 flex items-center gap-1.5 text-xs text-default-400">
-                            <LuFolderOpen className="size-3 shrink-0" />
-                            <span className="truncate font-mono">{inst.install_path}</span>
-                          </div>
-                        </div>
-                      </div>
-
-                      {/* EA Status Badge */}
-                      <div className="mt-3 flex flex-wrap items-center gap-2">
-                        <span
-                          className={`inline-flex items-center gap-1 rounded-full px-2.5 py-0.5 text-xs font-medium ${
-                            inst.ea_deployed
-                              ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400'
-                              : 'bg-default-100 text-default-500 dark:bg-default-200/10 dark:text-default-400'
-                          }`}
-                        >
-                          {inst.ea_deployed ? (
-                            <>
-                              <LuCircleCheck className="size-3" /> EA Deployed
-                            </>
-                          ) : (
-                            <>
-                              <LuCircleX className="size-3" /> No EA
-                            </>
-                          )}
-                        </span>
-                        {inst.ea_deployed && inst.ea_version !== '-' && (
-                          <span className="rounded bg-blue-100 px-2 py-0.5 text-[10px] font-medium text-blue-700 dark:bg-blue-500/20 dark:text-blue-400">
-                            v{inst.ea_version}
-                          </span>
-                        )}
-                        <span className="rounded bg-default-100 px-2 py-0.5 text-[10px] font-mono text-default-400 dark:bg-default-200/10">
-                          {inst.id.substring(0, 12)}...
-                        </span>
-                      </div>
-                     {/* Status Indicators */}
-                     <div className="mt-3 flex flex-wrap items-center gap-3">
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                          eaStatus?.connected ? 'text-green-600 dark:text-green-400' : 'text-red-400'
-                        }`}>
-                          <span className={`inline-block size-2 rounded-full ${eaStatus?.connected ? 'bg-green-500' : 'bg-red-400'}`} />
-                          EA Connection
-                        </span>
-                        <span className={`inline-flex items-center gap-1.5 text-xs font-medium ${
-                          tradingEnabled ? 'text-green-600 dark:text-green-400' : 'text-red-400'
-                        }`}>
-                          <span className={`inline-block size-2 rounded-full ${tradingEnabled ? 'bg-green-500' : 'bg-red-400'}`} />
-                          Algo Trading
-                        </span>
-                        {inst.mt5_running && eaStatus.connected && (
-                          <span className="inline-flex items-center gap-1.5 text-xs font-medium text-green-600 dark:text-green-400">
-                            <span className="relative flex size-2">
-                              <span className="absolute inline-flex size-full animate-ping rounded-full bg-green-400 opacity-75" />
-                              <span className="relative inline-flex size-2 rounded-full bg-green-500" />
-                            </span>
-                            EA Active
-                          </span>
-                        )}
-                     </div>
-                    </div>
-
-                    {/* Action Buttons - Simplified 1-Click Flow */}
-                    <div className="flex shrink-0 items-center justify-end min-w-[160px]">
-                      {!inst.mt5_running ? (
-                        <button
-                          onClick={() => handleLaunch(inst.id)}
-                          disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
-                          className="btn flex w-full items-center justify-center gap-2 bg-primary py-2.5 text-white shadow-sm hover:bg-primary-600 disabled:opacity-60 transition-all font-medium"
-                        >
-                          {getActionStatus(`launch_${inst.id}`).type === 'loading' ? (
-                            <><LuRefreshCw className="size-4 animate-spin" /> Starting...</>
-                          ) : (
-                            <><LuPlay className="size-4" /> Start MT5</>
-                          )}
-                        </button>
-                      ) : (
-                        <div className="flex w-full items-center gap-2">
-                          <button
-                            onClick={() => handleLaunch(inst.id)}
-                            disabled={getActionStatus(`launch_${inst.id}`).type === 'loading' || !wsConnected}
-                            className="btn flex-1 items-center justify-center bg-default-100 py-2.5 text-default-700 hover:bg-default-200 dark:bg-default-800 dark:text-default-300 dark:hover:bg-default-700 disabled:opacity-50 transition-all"
-                            title="Restart MT5 & Re-attach EA"
-                          >
-                            <LuRefreshCw className={`size-4 ${getActionStatus(`launch_${inst.id}`).type === 'loading' ? 'animate-spin' : ''}`} />
-                          </button>
-                          
-                          <button
-                            onClick={() => handleToggleMt5(inst.id, true)}
-                            disabled={getActionStatus(`close_${inst.id}`).type === 'loading' || !wsConnected}
-                            className="btn flex-[3] items-center justify-center gap-2 bg-danger/10 py-2.5 text-danger hover:bg-danger hover:text-white disabled:opacity-50 transition-all font-medium z-10"
-                          >
-                            {getActionStatus(`close_${inst.id}`).type === 'loading' ? (
-                              <><LuRefreshCw className="size-4 animate-spin" /> Stopping...</>
-                            ) : (
-                              <><LuSquare className="size-4" /> Stop MT5</>
-                            )}
-                          </button>
-                        </div>
-                      )}
-                    </div>
-                  </div>
-                </div>
-              );
-            })}
-          </div>
-        </div>
-      </div>
 
       {/* Section 3: Connection Info */}
       <div className="card">

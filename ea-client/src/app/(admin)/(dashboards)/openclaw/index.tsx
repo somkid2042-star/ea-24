@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LuBot, LuTerminal, LuWifi, LuWifiOff, LuSettings } from 'react-icons/lu';
+import { LuBot, LuTerminal, LuSettings } from 'react-icons/lu';
 
 type AiLog = { timestamp: number; type: string; message: string; };
 
