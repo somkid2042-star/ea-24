@@ -7,7 +7,7 @@
 #property link      "https://ea-trading.local"
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.12"
+#define EA_VERSION "2.13"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -85,7 +85,28 @@ void SendResponse(const string json)
    string msg = json + "\n";
    uchar data[];
    StringToCharArray(msg, data);
-   SocketSend(socket, data, (uint)(ArraySize(data) - 1));
+   
+   int data_len = ArraySize(data) - 1; // Exclude null terminator
+   int total_sent = 0;
+   
+   while(total_sent < data_len)
+     {
+      int sent = SocketSend(socket, data, (uint)(data_len - total_sent));
+      if(sent <= 0)
+        {
+         Print("SocketSend failed! Error: ", GetLastError());
+         break;
+        }
+      total_sent += sent;
+      
+      // Shift array if we need to send more
+      if(total_sent < data_len)
+        {
+         uchar rem[];
+         ArrayCopy(rem, data, 0, total_sent, data_len - total_sent);
+         ArrayCopy(data, rem);
+        }
+     }
   }
 
 //+------------------------------------------------------------------+
