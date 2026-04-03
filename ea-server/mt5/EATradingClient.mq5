@@ -5,11 +5,11 @@
 //+------------------------------------------------------------------+
 #property copyright "EA Trading"
 #property link      "https://ea-trading.local"
-#property version   "2.05"
+#property version   "2.07"
 
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.05"
+#define EA_VERSION "2.07"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -649,10 +649,9 @@ void HandleRequestCandles(const string msg)
    string sym = JsonGetString(msg, "symbol");
    long tf_minutes = JsonGetLong(msg, "timeframe");
    long count = JsonGetLong(msg, "count");
+   long from_time = JsonGetLong(msg, "from_time");
    
    if(StringLen(sym) == 0) sym = _Symbol;
-   if(count <= 0) count = 200;
-   if(count > 500) count = 500;
    
    // Map minutes to ENUM_TIMEFRAMES
    ENUM_TIMEFRAMES tf = PERIOD_M5;
@@ -669,7 +668,22 @@ void HandleRequestCandles(const string msg)
    
    MqlRates rates[];
    ArraySetAsSeries(rates, false);
-   int copied = CopyRates(sym, tf, 0, (int)count, rates);
+   int copied = 0;
+   
+   if(from_time > 0)
+     {
+      // Fetch exactly from the requested time gap up to now
+      datetime start_time = (datetime)from_time;
+      datetime stop_time = TimeCurrent() + 3600; // a bit into future to ensure we get latest
+      copied = CopyRates(sym, tf, start_time, stop_time, rates);
+      if(copied > 5000) copied = 5000; // Max safety limit
+     }
+   else
+     {
+      if(count <= 0) count = 200;
+      if(count > 1500) count = 1500;
+      copied = CopyRates(sym, tf, 0, (int)count, rates);
+     }
    
    if(copied <= 0)
      {

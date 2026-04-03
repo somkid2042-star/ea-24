@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, lazy, Suspense, type ReactNode } from 'react';
+import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
 import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
@@ -6,9 +6,11 @@ import {
   LuLayoutDashboard, LuServer, LuShieldCheck,
   LuWorkflow, LuBriefcase, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
-  LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw
+  LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
+  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
+import { useLayoutContext } from '@/context/useLayoutContext';
 
 /* ── Lazy-loaded page components ── */
 const MT5Page = lazy(() => import('@/app/(admin)/(config)/mt5/index'));
@@ -20,6 +22,12 @@ const StrategyBuilderPage = lazy(() => import('@/app/(admin)/(config)/strategy-b
 const TradeActivePage = lazy(() => import('@/app/(admin)/(config)/trade-active/index'));
 const TradeSetupPage = lazy(() => import('@/app/(admin)/(config)/trade-setup/index'));
 const TradeHistoryPage = lazy(() => import('@/app/(admin)/(config)/trade-history/index'));
+const PnlReportPage = lazy(() => import('@/app/(admin)/(config)/pnl-report/index'));
+const NotificationsPage = lazy(() => import('@/app/(admin)/(config)/notifications/index'));
+const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-management/index'));
+const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
+const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
+const OpenClawPage = lazy(() => import('@/app/(admin)/(dashboards)/openclaw/index'));
 
 /* ── Types ── */
 type Position = { ticket: number; symbol: string; type: string; volume: number; open_price: number; current_price: number; pnl: number; swap: number; sl: number; tp: number; magic: number; open_time: string; comment: string; };
@@ -28,6 +36,7 @@ type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: num
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
 type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
 type OHLCCandle = { time: number; open: number; high: number; low: number; close: number; };
+type ChartMarker = { time: number; position: 'aboveBar' | 'belowBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string; };
 
 const CHART_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const tfToSeconds = (tf: string): number => {
@@ -37,7 +46,7 @@ const tfToSeconds = (tf: string): number => {
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'openclaw';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean } | { key: string; divider: true };
 
 const TOP_NAV: NavItem[] = [
@@ -46,9 +55,15 @@ const TOP_NAV: NavItem[] = [
   { key: 'trades', icon: <LuBriefcase size={20} />, label: 'Trades' },
   { key: 'setup', icon: <LuSlidersHorizontal size={20} />, label: 'Setup' },
   { key: 'history', icon: <LuHistory size={20} />, label: 'History' },
+  { key: 'report', icon: <LuChartNoAxesCombined size={20} />, label: 'P&L' },
+  { key: 'journal', icon: <LuBookOpen size={20} />, label: 'Journal' },
+  { key: 'multichart', icon: <LuGrid2X2 size={20} />, label: 'Multi' },
 ];
 
 const BOTTOM_NAV: NavItem[] = [
+  { key: 'openclaw', icon: <LuBot size={20} />, label: 'OpenClaw AI' },
+  { key: 'risk', icon: <LuShieldAlert size={20} />, label: 'Risk' },
+  { key: 'notify', icon: <LuBell size={20} />, label: 'Notify' },
   { key: 'security', icon: <LuShieldCheck size={20} />, label: 'Security' },
   { key: 'mt5', icon: <LuChartCandlestick size={20} />, label: 'MT5' },
   { key: 'server', icon: <LuServer size={20} />, label: 'Server' },
@@ -62,20 +77,30 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   trades: TradeActivePage,
   setup: TradeSetupPage,
   history: TradeHistoryPage,
+  report: PnlReportPage,
+  notify: NotificationsPage,
+  risk: RiskManagementPage,
+  journal: JournalPage,
+  multichart: MultiChartPage,
+  openclaw: OpenClawPage,
 };
 
 /* ── Chart Colors (MT5 style) ── */
 const CHART_DARK = { text: '#848e9c', grid: '#1e222d', bg: '#1a1d29', up: '#089981', down: '#f23645', cross: '#555' };
 const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: '#ffffff', up: '#089981', down: '#f23645', cross: '#999' };
 
-const CandleChart = ({ symbol, candles, bid, darkMode, chartTf }: {
-  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string;
+type ChartPriceLine = { price: number; color: string; text: string; };
+
+const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLines }: {
+  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string; markers?: ChartMarker[]; priceLines?: ChartPriceLine[];
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
   const seriesRef = useRef<ISeriesApi<"Candlestick"> | null>(null);
   const lastCandleRef = useRef<OHLCCandle | null>(null);
   const lastLocalTfIndexRef = useRef<number>(0);
+  const hasFitContentRef = useRef(false);
+  const priceLinesRef = useRef<any[]>([]);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -169,9 +194,11 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf }: {
     lastCandleRef.current = deduped[deduped.length - 1];
     lastLocalTfIndexRef.current = Math.floor(Date.now() / 1000 / tfToSeconds(chartTf));
     
-    // Automatically scale on first load only if we have data
-    if (deduped.length > 0) {
-      setTimeout(() => chartRef.current?.timeScale().scrollToRealTime(), 100);
+    // Fit content shrinks candles. Better to maintain zoom and just scroll to the latest candle.
+    if (deduped.length > 0 && !hasFitContentRef.current) {
+      const total = deduped.length;
+      chartRef.current?.timeScale().setVisibleLogicalRange({ from: Math.max(0, total - 50), to: total });
+      hasFitContentRef.current = true;
     }
   }, [candles, chartTf]);
 
@@ -201,7 +228,49 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf }: {
     }
   }, [bid, chartTf]);
 
-  useEffect(() => { if (seriesRef.current) { seriesRef.current.setData([]); lastCandleRef.current = null; } }, [symbol]);
+  useEffect(() => { if (seriesRef.current) { seriesRef.current.setData([]); lastCandleRef.current = null; hasFitContentRef.current = false; } }, [symbol]);
+
+  // Render markers on chart
+  useEffect(() => {
+    if (!seriesRef.current || !chartRef.current) return;
+    try {
+      if (!markers || markers.length === 0) {
+        (seriesRef.current as any).setMarkers?.([]);
+        return;
+      }
+      const sorted = markers
+        .map(m => ({ ...m, time: m.time as any }))
+        .sort((a, b) => (a.time as number) - (b.time as number));
+      (seriesRef.current as any).setMarkers?.(sorted);
+    } catch (e) {
+      console.warn('Markers not supported:', e);
+    }
+  }, [markers]);
+
+  // Render horizontal price lines
+  useEffect(() => {
+    if (!seriesRef.current) return;
+    priceLinesRef.current.forEach(line => {
+      try { seriesRef.current?.removePriceLine(line); } catch (e) {}
+    });
+    priceLinesRef.current = [];
+
+    if (priceLines && priceLines.length > 0) {
+      priceLines.forEach(pl => {
+        try {
+          const line = seriesRef.current?.createPriceLine({
+            price: pl.price,
+            color: pl.color,
+            lineWidth: 2,
+            lineStyle: 2, // Dashed
+            axisLabelVisible: true,
+            title: pl.text,
+          });
+          if (line) priceLinesRef.current.push(line);
+        } catch (e) {}
+      });
+    }
+  }, [priceLines]);
 
   return <div ref={containerRef} style={{ width: '100%', height: '100%', flex: 1, minHeight: 300 }} />;
 };
@@ -216,16 +285,65 @@ const TradingDashboard = () => {
   const [toast, setToast] = useState<TradeResult | null>(null);
   const [alert, setAlert] = useState<AlertMsg | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
-  const [darkMode, setDarkMode] = useState(true);
+  const { theme, updateSettings } = useLayoutContext();
+  const darkMode = theme === 'dark';
   const [chartTf, setChartTf] = useState('M5');
   const [candles, setCandles] = useState<OHLCCandle[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
+  const [symbolDataStatus, setSymbolDataStatus] = useState<Record<string, 'none' | 'loading' | 'loaded'>>({});
+  const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
+  const [lastPriceUpdateTime, setLastPriceUpdateTime] = useState<Record<string, number>>({});
+  const [, setTickFlip] = useState(0);
   const wsRef = useRef<WebSocket | null>(null);
 
-  /* ── Sync data-theme attribute with darkMode state ── */
-  useEffect(() => {
-    document.documentElement.setAttribute('data-theme', darkMode ? 'dark' : 'light');
-  }, [darkMode]);
+  useEffect(() => { const int = setInterval(() => setTickFlip(f => f+1), 5000); return () => clearInterval(int); }, []);
+
+  // Memoize markers to prevent chart from re-rendering/jumping
+  const chartMarkers = useMemo<ChartMarker[]>(() => {
+    if (!selectedPosition) return [];
+    const openTime = Math.floor(new Date(selectedPosition.open_time).getTime() / 1000);
+    const tfSecs = tfToSeconds(chartTf);
+    const snappedTime = Math.floor(openTime / tfSecs) * tfSecs;
+    const isBuy = selectedPosition.type === 'BUY';
+    const comment = selectedPosition.comment || '';
+    const strategyRaw = comment.startsWith('EA24-') ? comment.slice(5) : comment || 'Manual';
+    const strategyMap: Record<string, string> = {
+      'SMC': 'กลยุทธ์ SMC', 'ICT': 'กลยุทธ์ ICT', 'Fibonacci': 'กลยุทธ์ Fibonacci',
+      'Scalping': 'กลยุทธ์ Scalping', 'BreakoutRetest': 'กลยุทธ์ Breakout Retest',
+      'MeanReversion': 'กลยุทธ์ Mean Reversion', 'TrendFollowing': 'กลยุทธ์ Trend Following',
+      'OrderBlock': 'กลยุทธ์ Order Block', 'FairValueGap': 'กลยุทธ์ Fair Value Gap',
+      'LiquiditySweep': 'กลยุทธ์ Liquidity Sweep', 'Manual': 'เปิดเอง', 'EA-Web': 'เปิดเอง',
+    };
+    const strategyThai = strategyMap[strategyRaw] || `กลยุทธ์ ${strategyRaw}`;
+    const dirThai = isBuy ? 'ซื้อ' : 'ขาย';
+    return [{
+      time: snappedTime,
+      position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
+      color: isBuy ? '#089981' : '#f23645',
+      shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
+      text: `${dirThai} | ${strategyThai}`,
+    }];
+  }, [selectedPosition, chartTf]);
+
+  const chartPriceLines = useMemo<ChartPriceLine[]>(() => {
+    if (!selectedPosition) return [];
+    const isBuy = selectedPosition.type === 'BUY';
+    const comment = selectedPosition.comment || '';
+    const strategyRaw = comment.startsWith('EA24-') ? comment.slice(5) : comment || 'Manual';
+    const strategyMap: Record<string, string> = {
+      'SMC': 'กลยุทธ์ SMC', 'ICT': 'กลยุทธ์ ICT', 'Fibonacci': 'กลยุทธ์ Fibonacci',
+      'Scalping': 'กลยุทธ์ Scalping', 'BreakoutRetest': 'กลยุทธ์ Breakout Retest',
+      'MeanReversion': 'กลยุทธ์ Mean Reversion', 'TrendFollowing': 'กลยุทธ์ Trend Following',
+      'OrderBlock': 'กลยุทธ์ Order Block', 'FairValueGap': 'กลยุทธ์ Fair Value Gap',
+      'LiquiditySweep': 'กลยุทธ์ Liquidity Sweep', 'Manual': 'เปิดเอง', 'EA-Web': 'เปิดเอง',
+    };
+    const strategyThai = strategyMap[strategyRaw] || `กลยุทธ์ ${strategyRaw}`;
+    return [{
+      price: selectedPosition.open_price,
+      color: isBuy ? '#089981' : '#f23645',
+      text: `${isBuy ? 'BUY' : 'SELL'} เหตุผล: ${strategyThai}`,
+    }];
+  }, [selectedPosition]);
 
    /* ── WebSocket ── */
   const chartTfRef = useRef(chartTf);
@@ -235,14 +353,19 @@ const TradingDashboard = () => {
 
   const fetchHistoryState = useRef<string>('');
   
+  const loadingTimeoutRef = useRef<any>(null);
+
   const requestHistory = useCallback((ws?: WebSocket | null) => {
     const target = ws || wsRef.current;
     if (target?.readyState === 1) {
       setIsLoadingHistory(true);
+      setSymbolDataStatus(prev => ({ ...prev, [activeSymbolRef.current]: 'loading' }));
+      // Safety timeout: clear loading after 5s even if no response
+      if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+      loadingTimeoutRef.current = setTimeout(() => setIsLoadingHistory(false), 5000);
       const stateKey = `${activeSymbolRef.current}_${chartTfRef.current}`;
       fetchHistoryState.current = stateKey;
       target.send(JSON.stringify({ action: 'get_history', symbol: activeSymbolRef.current, timeframe: chartTfRef.current, limit: 500 }));
-      target.send(JSON.stringify({ action: 'request_candles', symbol: activeSymbolRef.current, timeframe: chartTfRef.current }));
     }
   }, []);
 
@@ -259,6 +382,9 @@ const TradingDashboard = () => {
         if (data.type === 'welcome' || data.type === 'ea_info') {
           const wasConnected = data.ea_connected ?? true;
           setEaConnected(wasConnected);
+          if (data.gap_status) {
+            setSymbolDataStatus(prev => ({ ...prev, ...data.gap_status }));
+          }
           // Only re-request if we haven't fetched for the current config yet
           if (wasConnected && fetchHistoryState.current !== `${activeSymbolRef.current}_${chartTfRef.current}`) {
             setTimeout(() => requestHistory(), 1000);
@@ -266,14 +392,53 @@ const TradingDashboard = () => {
         }
         if (data.type === 'account_data') { setAccount(data as AccountData); setEaConnected(true); }
         if (data.type === 'market_watch') {
-          setMarketWatch(data.symbols || []);
+          setMarketWatch(prev => {
+             const now = Date.now();
+             const next = data.symbols || [];
+             setLastPriceUpdateTime(prevTime => {
+                const newTimes = { ...prevTime };
+                next.forEach((nxt: any) => {
+                   const old = prev.find(p => p.symbol === nxt.symbol);
+                   if (!old || old.bid !== nxt.bid || old.ask !== nxt.ask) {
+                      newTimes[nxt.symbol] = now;
+                   } else if (!newTimes[nxt.symbol]) {
+                      newTimes[nxt.symbol] = now;
+                   }
+                });
+                return newTimes;
+             });
+             return next;
+          });
           if (data.symbols?.length > 0 && activeSymbol === 'XAUUSD' && !data.symbols.find((s: MarketWatchSymbol) => s.symbol === 'XAUUSD')) setActiveSymbol(data.symbols[0].symbol);
         }
-        if (data.type === 'trade_result') { setToast(data as TradeResult); setTimeout(() => setToast(null), 5000); }
+        if (data.type === 'trade_result') { 
+          setToast(data as TradeResult); 
+          setTimeout(() => setToast(null), 5000); 
+          if (data.error && data.error.includes("Market closed")) {
+            setLastPriceUpdateTime(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 0 }));
+          }
+        }
         if (data.type === 'alert') { setAlert(data as AlertMsg); setTimeout(() => setAlert(null), 8000); }
+        if (data.type === 'gap_fill_status') {
+          setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: data.status }));
+          if (data.status === 'loaded' && data.symbol === activeSymbolRef.current) {
+             // Backend has loaded data, re-request history to update the chart
+             setTimeout(() => requestHistory(), 500);
+          }
+        }
         if (data.type === 'history') {
           if (data.candles) setCandles(data.candles);
           setIsLoadingHistory(false);
+          setSymbolDataStatus(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 'loaded' }));
+          if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
+        }
+        // Live tick update — update marketWatch bid/ask in real-time for live candle
+        if (data.type === 'tick' && data.symbol && data.bid) {
+          setMarketWatch(prev => prev.map(m => 
+            m.symbol === data.symbol 
+              ? { ...m, bid: data.bid, ask: data.ask ?? m.ask, spread: data.spread ?? m.spread }
+              : m
+          ));
         }
         // Handle candle_data from EA (historical backfill) (removed redundant refresh loop)
       } catch { /* */ }
@@ -337,9 +502,9 @@ const TradingDashboard = () => {
                       >{tf}</button>
                     ))}
                   </div>
-                  <span className={`text-[11px] font-medium flex items-center gap-1.5 ${eaConnected ? 'text-success' : 'text-danger'}`}>
-                    <span className={`inline-block size-1.5 rounded-full ${eaConnected ? 'bg-success animate-pulse' : 'bg-danger'}`} />
-                    {eaConnected ? 'Live' : 'Offline'}
+                  <span className={`text-[11px] font-medium flex items-center gap-1.5 ${(!eaConnected) ? 'text-danger' : ((Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000 ? 'text-warning' : 'text-success')}`}>
+                    <span className={`inline-block size-1.5 rounded-full ${(!eaConnected || (Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000) ? 'bg-danger' : 'bg-success animate-pulse'}`} />
+                    {!eaConnected ? 'Offline' : ((Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000 ? 'ตลาดปิด' : 'Live')}
                   </span>
                   <span className="text-[10px] text-default-400 font-mono">({candles.length})</span>
                 </div>
@@ -352,7 +517,9 @@ const TradingDashboard = () => {
                       <span className="text-sm font-medium text-default-700">Loading Chart...</span>
                     </div>
                   )}
-                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf} />
+                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
+                    markers={chartMarkers} priceLines={chartPriceLines}
+                  />
                 </div>
               </div>
             </div>
@@ -371,7 +538,13 @@ const TradingDashboard = () => {
                   </thead>
                   <tbody>
                     {positions.map((pos, i) => (
-                      <tr key={pos.ticket} className={`${i % 2 === 0 ? '' : 'bg-default-50/50 dark:bg-default-200/5'} transition-colors`}>
+                      <tr key={pos.ticket}
+                        onClick={() => {
+                          setSelectedPosition(selectedPosition?.ticket === pos.ticket ? null : pos);
+                          if (pos.symbol !== activeSymbol) setActiveSymbol(pos.symbol);
+                        }}
+                        className={`cursor-pointer transition-colors ${selectedPosition?.ticket === pos.ticket ? 'bg-primary/10 dark:bg-primary/20' : i % 2 === 0 ? 'hover:bg-default-50 dark:hover:bg-default-200/10' : 'bg-default-50/50 dark:bg-default-200/5 hover:bg-default-100 dark:hover:bg-default-200/15'}`}
+                      >
                         <td className="text-[13px] font-semibold text-default-900 py-3 px-1">{pos.symbol}</td>
                         <td className={`text-xs font-semibold ${pos.type === 'BUY' ? 'text-success' : 'text-danger'}`}>{pos.type}</td>
                         <td className="text-xs text-default-600">{pos.volume}</td>
@@ -382,7 +555,7 @@ const TradingDashboard = () => {
                         <td className="text-[11px] text-default-400">{pos.tp || '—'}</td>
                         <td className="text-right pr-2">
                           <button
-                            onClick={() => setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol })}
+                            onClick={(e) => { e.stopPropagation(); setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol }); }}
                             className="btn btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white"
                           >Close</button>
                         </td>
@@ -460,7 +633,7 @@ const TradingDashboard = () => {
               <span className="text-[9px] font-black text-white tracking-tight">EA24</span>
             </div>
             <div className="hidden sm:block">
-              <div className="text-[13px] font-bold text-default-900">EA-24</div>
+              <div className="text-[13px] font-bold text-default-900">EA-24 <span className="text-[10px] font-medium text-default-400">v5.9.1</span></div>
               <div className="text-[8px] text-default-400">algorithmic trading</div>
             </div>
           </div>
@@ -526,7 +699,10 @@ const TradingDashboard = () => {
                     <tbody>
                       {wl.map(w => (
                         <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors">
-                          <td className={`text-xs py-1 font-semibold ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>{w.symbol}</td>
+                          <td className={`text-xs py-1 font-semibold flex items-center gap-1.5 ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>
+                            <div className={`size-1.5 rounded-full ${symbolDataStatus[w.symbol] === 'loaded' ? 'bg-success' : symbolDataStatus[w.symbol] === 'loading' ? 'bg-warning' : 'bg-danger'}`} />
+                            {w.symbol}
+                          </td>
                           <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
                           <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
                           <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
@@ -653,7 +829,7 @@ const TradingDashboard = () => {
               );
             })}
             <button
-              onClick={() => setDarkMode(!darkMode)}
+              onClick={() => updateSettings({ theme: darkMode ? 'light' : 'dark' })}
               data-tip={darkMode ? 'Light Mode' : 'Dark Mode'}
               className="mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-white"
               style={{ width: 40, height: 40 }}

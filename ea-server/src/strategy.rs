@@ -732,6 +732,11 @@ pub async fn run_strategy_engine(
         };
 
         let mut setup_statuses = Vec::new();
+        let global_config = db.get_all_config().await;
+        // Helper to grab config synchronously
+        let get_cfg = |k: &str, def: &str| -> String {
+            global_config.get(k).and_then(|v| v.as_str()).unwrap_or(def).to_string()
+        };
 
         for setup in &setups_arr {
             let setup_id = setup["id"].as_i64().unwrap_or(0);
@@ -756,6 +761,67 @@ pub async fn run_strategy_engine(
                     "message": "⏱ Cooldown (60s between trades)",
                 }));
                 continue;
+            }
+
+            // === Risk Management Checks ===
+            let emergency_stop = get_cfg("emergency_stop", "false") == "true";
+            if emergency_stop {
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "risk_stopped",
+                    "message": "🚨 Emergency Stop - หยุดเทรดชั่วคราว",
+                }));
+                continue;
+            }
+
+            let risk_enabled = get_cfg("risk_stop_enabled", "true") == "true";
+            if risk_enabled {
+                // Check max positions
+                let max_pos: usize = get_cfg("max_positions", "5").parse().unwrap_or(5);
+                let current_pos_count = positions.map(|a| a.len()).unwrap_or(0);
+                if current_pos_count >= max_pos {
+                    setup_statuses.push(serde_json::json!({
+                        "setup_id": setup_id,
+                        "status": "risk_limit",
+                        "message": format!("⛔ Max positions ({}/{})", current_pos_count, max_pos),
+                    }));
+                    continue;
+                }
+
+                // Check max total lot
+                let max_lot: f64 = get_cfg("max_total_lot", "1.0").parse().unwrap_or(1.0);
+                let current_lot: f64 = positions.map(|a| {
+                    a.iter().filter_map(|p| p["volume"].as_f64()).sum()
+                }).unwrap_or(0.0);
+                if current_lot + lot > max_lot {
+                    setup_statuses.push(serde_json::json!({
+                        "setup_id": setup_id,
+                        "status": "risk_limit",
+                        "message": format!("⛔ Max lot ({:.2}/{:.2})", current_lot, max_lot),
+                    }));
+                    continue;
+                }
+
+                // Check daily drawdown
+                let max_dd: f64 = get_cfg("max_daily_drawdown", "100").parse().unwrap_or(100.0);
+                let current_pnl: f64 = positions.map(|a| {
+                    a.iter().filter_map(|p| p["pnl"].as_f64()).sum()
+                }).unwrap_or(0.0);
+                if current_pnl < 0.0 && current_pnl.abs() >= max_dd {
+                    // Send risk alert via LINE
+                    let token = get_cfg("line_notify_token", "");
+                    let notify_risk = get_cfg("notify_on_risk", "true") == "true";
+                    if !token.is_empty() && notify_risk {
+                        let msg = crate::notify::format_risk_alert(current_pnl.abs(), max_dd);
+                        tokio::spawn(async move { crate::notify::send_line_notify(&token, &msg).await; });
+                    }
+                    setup_statuses.push(serde_json::json!({
+                        "setup_id": setup_id,
+                        "status": "risk_limit",
+                        "message": format!("🚨 Drawdown limit! ({:.2}/${:.2})", current_pnl.abs(), max_dd),
+                    }));
+                    continue;
+                }
             }
 
             let has_existing = positions.map(|ps| {
@@ -834,6 +900,14 @@ pub async fn run_strategy_engine(
 
             info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5}", direction, symbol, strategy, lot, tp_price, sl_price);
             info!("   Reason: {}", reason);
+
+            // Send LINE notification for trade open
+            let line_token = db.get_config("line_notify_token").await.unwrap_or_default();
+            let notify_open = db.get_config("notify_on_open").await.unwrap_or("true".to_string()) == "true";
+            if !line_token.is_empty() && notify_open {
+                let msg = crate::notify::format_trade_open(symbol, direction, lot, price, strategy);
+                tokio::spawn(async move { crate::notify::send_line_notify(&line_token, &msg).await; });
+            }
 
             setup_statuses.push(serde_json::json!({
                 "setup_id": setup_id,

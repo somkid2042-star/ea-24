@@ -4,6 +4,7 @@ import {
   LuMonitorDot,
   LuBrain,
   LuChartLine,
+  LuBot,
 } from 'react-icons/lu';
 
 export type MenuItemType = {
@@ -25,6 +26,12 @@ export const menuItemsData: MenuItemType[] = [
     label: 'Dashboard',
     icon: LuMonitorDot,
     href: '/',
+  },
+  {
+    key: 'OpenClaw Monitor',
+    label: 'OpenClaw AI',
+    icon: LuBot,
+    href: '/ai/openclaw',
   },
   {
     key: 'Config Server',

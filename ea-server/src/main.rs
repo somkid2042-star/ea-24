@@ -5,6 +5,7 @@ mod db;
 mod updater;
 mod gui;
 mod strategy;
+mod notify;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -24,7 +25,7 @@ use crate::gui::ServerState as TrayState;
 
 
 /// The latest EA version shipped with this server
-const LATEST_EA_VERSION: &str = "2.05";
+const LATEST_EA_VERSION: &str = "2.07";
 
 /// Compare version strings as floating point numbers.
 /// Returns true if `latest` is strictly greater than `current`.
@@ -91,6 +92,7 @@ struct EaState {
     connected: bool,
     version: String,
     symbol: String,
+    gap_status: std::collections::HashMap<String, String>,
 }
 
 // ──────────────────────────────────────────────
@@ -212,6 +214,7 @@ async fn run_server(tray_tx: Arc<watch::Sender<TrayState>>) {
         connected: false,
         version: "unknown".to_string(),
         symbol: "".to_string(),
+        gap_status: std::collections::HashMap::new(),
     }));
 
     let (tx, _rx) = broadcast::channel::<String>(100);
@@ -383,6 +386,65 @@ async fn handle_mt5_connection(
                                         "update_available": is_update_available(&ver, LATEST_EA_VERSION),
                                     }).to_string();
                                     let _ = tx.send(info_msg);
+
+                                    // === Gap-fill: Request ONLY missing data for the period server was offline ===
+                                    let db_gf = db.clone();
+                                    let tx_gf = tx.clone();
+                                    let ea_state_gf = ea_state.clone();
+                                    tokio::spawn(async move {
+                                        tokio::time::sleep(tokio::time::Duration::from_secs(3)).await;
+                                        let symbols = db_gf.get_tracked_symbols().await;
+                                        let now = chrono::Utc::now().timestamp();
+                                        for sym in &symbols {
+                                            let last_tick = db_gf.get_latest_tick_timestamp(sym).await;
+                                            if last_tick == 0 { continue; }
+                                            let gap_secs = now - last_tick;
+                                            let gap_minutes = gap_secs / 60;
+                                            if gap_minutes > 5 && gap_minutes < 1440 {
+                                                // Request exact gap amount only (M1 candles)
+                                                let count = gap_minutes;
+                                                info!("🔄 [Gap-Fill] {} gap={}min, fetching {} M1 candles from ts={}", sym, gap_minutes, count, last_tick);
+                                                
+                                                // Update in state
+                                                ea_state_gf.write().await.gap_status.insert(sym.clone(), "loading".to_string());
+                                                
+                                                // Broadcast 'loading' status
+                                                let status_msg = serde_json::json!({
+                                                    "type": "gap_fill_status",
+                                                    "symbol": sym,
+                                                    "status": "loading"
+                                                }).to_string();
+                                                let _ = tx_gf.send(status_msg);
+
+                                                let cmd = serde_json::json!({
+                                                    "action": "request_candles",
+                                                    "symbol": sym,
+                                                    "timeframe": 1,
+                                                    "count": count,
+                                                    "from_time": last_tick,
+                                                }).to_string();
+                                                let _ = tx_gf.send(cmd);
+                                                tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
+                                            } else {
+                                                if gap_minutes >= 1440 {
+                                                    info!("⏭️ [Gap-Fill] {} gap={}min (>1 day), skip backfill", sym, gap_minutes);
+                                                }
+                                                // Update in state
+                                                ea_state_gf.write().await.gap_status.insert(sym.clone(), "loaded".to_string());
+                                                
+                                                // Broadcast 'loaded' status
+                                                let status_msg = serde_json::json!({
+                                                    "type": "gap_fill_status",
+                                                    "symbol": sym,
+                                                    "status": "loaded"
+                                                }).to_string();
+                                                let _ = tx_gf.send(status_msg);
+                                            }
+                                        }
+                                        if !symbols.is_empty() {
+                                            info!("✅ [Gap-Fill] Done checking {} symbols", symbols.len());
+                                        }
+                                    });
                                 }
                             } else {
                                 // Parse JSON to log specific types to database
@@ -414,6 +476,14 @@ async fn handle_mt5_connection(
                                         if let Some(candles) = val.get("candles") {
                                             let sym = val["symbol"].as_str().unwrap_or("");
                                             db.insert_candles_as_ticks(sym, candles).await;
+                                            // Notify clients that backend data gap-fill is done for this symbol
+                                            ea_state.write().await.gap_status.insert(sym.to_string(), "loaded".to_string());
+                                            let status_msg = serde_json::json!({
+                                                "type": "gap_fill_status",
+                                                "symbol": sym,
+                                                "status": "loaded"
+                                            }).to_string();
+                                            let _ = tx.send(status_msg);
                                         }
                                     } else if msg_type == Some("account_data") {
                                         // Server-side trailing stop
@@ -592,6 +662,7 @@ async fn handle_ws_connection(
         "ea_symbol": state.symbol,
         "update_available": state.connected && is_update_available(&state.version, LATEST_EA_VERSION),
         "server_uptime_secs": server_start.elapsed().as_secs(),
+        "gap_status": state.gap_status,
     });
     drop(state);
     let _ = write.send(Message::Text(welcome.to_string())).await;
@@ -779,17 +850,38 @@ async fn handle_ws_connection(
                                         };
                                         info!("📊 [UI] History requested for {} {} (limit {})", sym, tf, limit);
                                         let candles_raw = db.get_candles_for_strategy(sym, tf_minutes, limit).await;
-                                        let candles: Vec<serde_json::Value> = candles_raw.iter().map(|c| {
-                                            serde_json::json!({ "time": c.time, "open": c.open, "high": c.high, "low": c.low, "close": c.close })
-                                        }).collect();
-                                        info!("📊 [UI] Returning {} candles for {} {}", candles.len(), sym, tf);
-                                        let resp = serde_json::json!({
-                                            "type": "history",
-                                            "symbol": sym,
-                                            "timeframe": tf,
-                                            "candles": candles,
-                                        });
-                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                        
+                                        if candles_raw.is_empty() {
+                                            info!("📊 [UI] DB history empty for {}, requesting from EA", sym);
+                                            ea_state.write().await.gap_status.insert(sym.to_string(), "loading".to_string());
+                                            let status_msg = serde_json::json!({
+                                                "type": "gap_fill_status",
+                                                "symbol": sym,
+                                                "status": "loading"
+                                            }).to_string();
+                                            let _ = tx.send(status_msg);
+
+                                            let cmd = serde_json::json!({
+                                                "action": "request_candles",
+                                                "symbol": sym,
+                                                "timeframe": tf_minutes,
+                                                "count": limit,
+                                                "from_time": 0
+                                            }).to_string();
+                                            let _ = tx.send(cmd);
+                                        } else {
+                                            let candles: Vec<serde_json::Value> = candles_raw.iter().map(|c| {
+                                                serde_json::json!({ "time": c.time, "open": c.open, "high": c.high, "low": c.low, "close": c.close })
+                                            }).collect();
+                                            info!("📊 [UI] Returning {} candles for {} {}", candles.len(), sym, tf);
+                                            let resp = serde_json::json!({
+                                                "type": "history",
+                                                "symbol": sym,
+                                                "timeframe": tf,
+                                                "candles": candles,
+                                            });
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
                                     }
                                     "get_db_stats" => {
                                         info!("📊 [UI] DB stats requested");
@@ -833,6 +925,23 @@ async fn handle_ws_connection(
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     // === Trade Setup Actions ===
+                                    "test_line_notify" => {
+                                        let token = db.get_config("line_notify_token").await.unwrap_or_default();
+                                        let ok = notify::send_line_notify(&token, "\n✅ ทดสอบแจ้งเตือน EA-24\nระบบแจ้งเตือน LINE ทำงานปกติ!").await;
+                                        let resp = serde_json::json!({
+                                            "type": "line_notify_test",
+                                            "success": ok,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "get_risk_config" => {
+                                        let config = db.get_all_config().await;
+                                        let resp = serde_json::json!({
+                                            "type": "risk_config",
+                                            "config": config,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
                                     "get_trade_setups" => {
                                         let setups = db.get_trade_setups().await;
                                         let resp = serde_json::json!({

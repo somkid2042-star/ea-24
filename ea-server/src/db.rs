@@ -2,12 +2,16 @@ use log::{error, info};
 use sqlx::{postgres::PgPoolOptions, PgPool};
 use tokio::sync::mpsc;
 use chrono::{DateTime, Utc};
+use std::collections::{HashMap, BTreeMap};
+use std::sync::Arc;
+use tokio::sync::RwLock;
 
 /// Thread-safe Async database wrapper
 #[derive(Clone)]
 pub struct Database {
-    pool: PgPool,
+    pub pool: PgPool,
     tick_tx: mpsc::Sender<TickRecord>,
+    pub mem_candles: Arc<RwLock<HashMap<String, BTreeMap<i64, crate::strategy::Candle>>>>,
 }
 
 #[derive(Debug)]
@@ -40,6 +44,9 @@ impl Database {
         let (tick_tx, mut tick_rx) = mpsc::channel::<TickRecord>(100_000);
         let batch_pool = pool.clone();
         
+        let mem_candles = Arc::new(RwLock::new(HashMap::new()));
+        let mem_candles_clone = mem_candles.clone();
+
         tokio::spawn(async move {
             let mut batch = Vec::with_capacity(500);
             let mut timer = tokio::time::interval(std::time::Duration::from_secs(1));
@@ -47,6 +54,32 @@ impl Database {
             loop {
                 tokio::select! {
                     Some(tick) = tick_rx.recv() => {
+                        let t_sec = tick.timestamp.timestamp();
+                        let m1_time = (t_sec / 60) * 60;
+                        
+                        {
+                            let mut map = mem_candles_clone.write().await;
+                            let symbol_candles = map.entry(tick.symbol.clone()).or_insert_with(BTreeMap::new);
+                            
+                            let candle = symbol_candles.entry(m1_time).or_insert(crate::strategy::Candle {
+                                time: m1_time,
+                                open: tick.bid,
+                                high: tick.bid,
+                                low: tick.bid,
+                                close: tick.bid,
+                            });
+                            
+                            if tick.bid > candle.high { candle.high = tick.bid; }
+                            if tick.bid < candle.low { candle.low = tick.bid; }
+                            candle.close = tick.bid;
+                            
+                            // Prune memory buffer (keep last 1440 candles = 24h of M1)
+                            if symbol_candles.len() > 1500 {
+                                let key_to_remove = *symbol_candles.keys().next().unwrap();
+                                symbol_candles.remove(&key_to_remove);
+                            }
+                        }
+
                         batch.push(tick);
                         if batch.len() >= 500 {
                             Self::flush_ticks(&batch_pool, &mut batch).await;
@@ -61,14 +94,14 @@ impl Database {
             }
         });
 
-        info!("✅ Database connected and Tick Batcher running");
-        Ok(Database { pool, tick_tx })
+        info!("✅ Database connected, In-Memory Cache enabled, and Tick Batcher running");
+        Ok(Database { pool, tick_tx, mem_candles })
     }
 
     async fn create_tables(pool: &PgPool) -> Result<(), String> {
         let schema = "
             CREATE TABLE IF NOT EXISTS tick_log (
-                id          BIGSERIAL PRIMARY KEY,
+                id          BIGSERIAL,
                 symbol      TEXT NOT NULL,
                 bid         DOUBLE PRECISION NOT NULL,
                 ask         DOUBLE PRECISION NOT NULL,
@@ -154,6 +187,20 @@ impl Database {
                     .map_err(|e| format!("Tables err: {}", e))?;
             }
         }
+
+        // Enable TimescaleDB Extension if available, ignore errors
+        let _ = sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE").execute(pool).await;
+
+        // Convert tables to hypertables
+        let hyper_queries = [
+            "SELECT create_hypertable('tick_log', 'timestamp', if_not_exists => TRUE, migrate_data => TRUE)",
+            "CREATE MATERIALIZED VIEW IF NOT EXISTS candles_m1 WITH (timescaledb.continuous) AS SELECT symbol, time_bucket('1 minute', timestamp) AS time, first(bid, timestamp) as open, max(bid) as high, min(bid) as low, last(bid, timestamp) as close FROM tick_log GROUP BY symbol, time_bucket('1 minute', timestamp)",
+        ];
+        
+        for hq in hyper_queries {
+            let _ = sqlx::query(hq).execute(pool).await;
+        }
+
         Ok(())
     }
 
@@ -268,16 +315,19 @@ impl Database {
 
         let query = "
             INSERT INTO tick_log (symbol, bid, ask, spread, timestamp)
-            SELECT * FROM UNNEST($1::text[], $2::double precision[], $3::double precision[], $4::double precision[], $5::timestamptz[])
+            SELECT s, b, a, sp, ts FROM UNNEST($1::text[], $2::double precision[], $3::double precision[], $4::double precision[], $5::timestamptz[])
+            AS t(s, b, a, sp, ts)
+            WHERE NOT EXISTS (
+                SELECT 1 FROM tick_log tl WHERE tl.symbol = t.s AND tl.timestamp = t.ts
+            )
         ";
 
-        if let Err(e) = sqlx::query(query)
+        match sqlx::query(query)
             .bind(symbols).bind(bids).bind(asks).bind(spreads).bind(timestamps)
             .execute(&self.pool).await 
         {
-            error!("❌ Failed to insert historical candles as ticks: {}", e);
-        } else {
-            info!("✅ Inserted {} historical candles for {}", arr.len(), symbol);
+            Err(e) => error!("❌ Failed to insert gap-fill candles: {}", e),
+            Ok(r) => info!("✅ Gap-fill: inserted {}/{} new ticks for {}", r.rows_affected(), arr.len() * 4, symbol),
         }
     }
 
@@ -334,6 +384,20 @@ impl Database {
             .execute(&self.pool).await;
     }
 
+    /// Get the latest tick timestamp for a symbol (returns Unix timestamp or 0 if none)
+    pub async fn get_latest_tick_timestamp(&self, symbol: &str) -> i64 {
+        let result: Option<DateTime<Utc>> = sqlx::query_scalar(
+            "SELECT timestamp FROM tick_log WHERE symbol = $1 ORDER BY timestamp DESC LIMIT 1"
+        ).bind(symbol).fetch_optional(&self.pool).await.unwrap_or(None);
+        result.map(|t| t.timestamp()).unwrap_or(0)
+    }
+
+    /// Get all unique symbols in tick_log
+    pub async fn get_tracked_symbols(&self) -> Vec<String> {
+        sqlx::query_scalar("SELECT DISTINCT symbol FROM tick_log ORDER BY symbol")
+            .fetch_all(&self.pool).await.unwrap_or_default()
+    }
+
     #[allow(dead_code)]
     pub async fn get_config(&self, key: &str) -> Option<String> {
         sqlx::query_scalar("SELECT value FROM server_config WHERE key = $1")
@@ -354,8 +418,8 @@ impl Database {
     }
 
     pub async fn get_stats(&self) -> serde_json::Value {
-        let total_ticks: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM tick_log").fetch_one(&self.pool).await.unwrap_or(0);
-        let total_trades: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM trade_log").fetch_one(&self.pool).await.unwrap_or(0);
+        let total_ticks: i64 = sqlx::query_scalar("SELECT COALESCE(reltuples::bigint, 0) FROM pg_class WHERE relname = 'tick_log'").fetch_one(&self.pool).await.unwrap_or(0);
+        let total_trades: i64 = sqlx::query_scalar("SELECT COALESCE(reltuples::bigint, 0) FROM pg_class WHERE relname = 'trade_log'").fetch_one(&self.pool).await.unwrap_or(0);
         let latest_tick_time: String = sqlx::query_scalar::<_, DateTime<Utc>>("SELECT timestamp FROM tick_log ORDER BY timestamp DESC LIMIT 1")
             .fetch_one(&self.pool).await.map(|t| t.to_rfc3339()).unwrap_or_else(|_| "—".to_string());
         let latest_trade_time: String = sqlx::query_scalar::<_, DateTime<Utc>>("SELECT timestamp FROM trade_log ORDER BY timestamp DESC LIMIT 1")
@@ -526,47 +590,86 @@ impl Database {
     /// Aggregate recent ticks into OHLC candles for strategy computation
     pub async fn get_candles_for_strategy(&self, symbol: &str, tf_minutes: i64, count: i64) -> Vec<crate::strategy::Candle> {
         let tf_secs = tf_minutes * 60;
-        let tick_limit = count * tf_secs * 5; // buffer
+        let mut final_candles: Vec<crate::strategy::Candle> = Vec::new();
 
-        let reliable_query = format!(
-            "SELECT 
-                time,
-                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
-                MAX(bid) as high,
-                MIN(bid) as low,
-                (array_agg(bid ORDER BY timestamp DESC))[1] as close
-            FROM (
-                SELECT 
-                    (EXTRACT(EPOCH FROM timestamp)::bigint / {tf}) * {tf} as time,
-                    bid,
-                    timestamp
-                FROM tick_log
-                WHERE symbol = $1
-                ORDER BY timestamp DESC
-                LIMIT {tick_limit}
-            ) sub
-            GROUP BY time
-            ORDER BY time ASC
-            LIMIT $2",
-            tf = tf_secs,
-            tick_limit = tick_limit
-        );
-
-        if let Ok(rows) = sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(&reliable_query)
-            .bind(symbol).bind(count)
-            .fetch_all(&self.pool).await
+        // 1. Try serving from Memory Cache first
         {
-            return rows.into_iter().map(|row| {
-                crate::strategy::Candle {
-                    time: row.0,
-                    open: row.1,
-                    high: row.2,
-                    low: row.3,
-                    close: row.4,
+            let map = self.mem_candles.read().await;
+            if let Some(symbol_candles) = map.get(symbol) {
+                let mut current_candle: Option<crate::strategy::Candle> = None;
+                
+                for (_m1_time, c) in symbol_candles.iter().rev() {
+                    let snapped_time = (c.time / tf_secs) * tf_secs;
+                    
+                    if let Some(ref mut cur) = current_candle {
+                        if cur.time == snapped_time {
+                            cur.open = c.open;
+                            if c.high > cur.high { cur.high = c.high; }
+                            if c.low < cur.low { cur.low = c.low; }
+                        } else {
+                            final_candles.push(cur.clone());
+                            if final_candles.len() as i64 >= count { break; }
+                            current_candle = Some(crate::strategy::Candle {
+                                time: snapped_time,
+                                open: c.open,
+                                high: c.high,
+                                low: c.low,
+                                close: c.close,
+                            });
+                        }
+                    } else {
+                        current_candle = Some(crate::strategy::Candle {
+                            time: snapped_time,
+                            open: c.open,
+                            high: c.high,
+                            low: c.low,
+                            close: c.close,
+                        });
+                    }
                 }
-            }).collect();
+                if let Some(cur) = current_candle {
+                    if (final_candles.len() as i64) < count {
+                        final_candles.push(cur);
+                    }
+                }
+            }
         }
-        Vec::new()
+        
+        // 2. If memory didn't have enough data, query TimescaleDB materialized view!
+        if (final_candles.len() as i64) < count {
+            let missing = count - (final_candles.len() as i64);
+            let latest_time = final_candles.last().map(|c| c.time).unwrap_or(Utc::now().timestamp());
+            let latest_dt = DateTime::from_timestamp(latest_time, 0).unwrap_or(Utc::now());
+
+            let query = format!(
+                "SELECT 
+                    EXTRACT(EPOCH FROM time_bucket(INTERVAL '{} minutes', time))::bigint as bucket_time,
+                    first(open, time) as open,
+                    max(high) as high,
+                    min(low) as low,
+                    last(close, time) as close
+                FROM candles_m1
+                WHERE symbol = $1 AND time < $2
+                GROUP BY bucket_time
+                ORDER BY bucket_time DESC
+                LIMIT $3", tf_minutes
+            );
+
+            // Ignore DB query errors silently so UI doesn't crash if timescale isn't ready
+            if let Ok(rows) = sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(&query)
+                .bind(symbol).bind(latest_dt).bind(missing)
+                .fetch_all(&self.pool).await 
+            {
+                for row in rows {
+                    final_candles.push(crate::strategy::Candle {
+                        time: row.0, open: row.1, high: row.2, low: row.3, close: row.4,
+                    });
+                }
+            }
+        }
+
+        final_candles.reverse();
+        final_candles
     }
 
     /// Log a strategy signal

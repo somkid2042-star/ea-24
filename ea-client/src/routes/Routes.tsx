@@ -2,6 +2,7 @@ import { lazy } from 'react';
 import type { RouteProps } from 'react-router-dom';
 
 const TradingDashboard = lazy(() => import('@/app/(admin)/(dashboards)/trading'));
+const OpenClawDashboard = lazy(() => import('@/app/(admin)/(dashboards)/openclaw'));
 const MT5Settings = lazy(() => import('@/app/(admin)/(config)/mt5'));
 const ServerSettings = lazy(() => import('@/app/(admin)/(config)/server'));
 const DatabaseSettings = lazy(() => import('@/app/(admin)/(config)/database'));
@@ -17,6 +18,7 @@ export type RoutesProps = { path: RouteProps['path']; element: RouteProps['eleme
 
 export const layoutsRoutes: RoutesProps[] = [
   { path: '/', element: <TradingDashboard />, name: 'Dashboard' },
+  { path: '/ai/openclaw', element: <OpenClawDashboard />, name: 'OpenClaw Monitor' },
   { path: '/config/mt5', element: <MT5Settings />, name: 'MT5 Settings' },
   { path: '/config/server', element: <ServerSettings />, name: 'Server Settings' },
   { path: '/config/database', element: <DatabaseSettings />, name: 'Database Settings' },
