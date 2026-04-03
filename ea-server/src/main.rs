@@ -583,7 +583,10 @@ async fn handle_mt5_connection(
                             info!("🚀 [MT5] Sent command to EA: {}", msg);
                         }
                     }
-                    Err(_) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!("⚠️ [MT5] Receiver lagged, skipped {} messages", skipped);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
         }
@@ -1260,14 +1263,17 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
-                        if json.contains("\"tick\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") {
+                        if json.contains("\"tick\"") || json.contains("\"history\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;
                             }
                         }
                     }
-                    Err(_) => break,
+                    Err(tokio::sync::broadcast::error::RecvError::Lagged(skipped)) => {
+                        warn!("⚠️ [UI] Receiver lagged, skipped {} messages", skipped);
+                    }
+                    Err(tokio::sync::broadcast::error::RecvError::Closed) => break,
                 }
             }
         }
