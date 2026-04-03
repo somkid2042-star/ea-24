@@ -438,11 +438,14 @@ const TradingDashboard = () => {
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(WS_URL);
+    console.log('[WS] Connecting to:', WS_URL);
     ws.onopen = () => {
+      console.log('[WS] ✅ Connected successfully!');
       // Request history as soon as WS connects
       setTimeout(() => requestHistory(ws), 500);
     };
-    ws.onclose = () => { setEaConnected(false); setTimeout(connectWs, 3000); };
+    ws.onerror = (err) => { console.error('[WS] ❌ Error:', err); };
+    ws.onclose = (evt) => { console.log('[WS] Closed: code=', evt.code, 'reason=', evt.reason); setEaConnected(false); setTimeout(connectWs, 3000); };
     ws.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
@@ -507,7 +510,15 @@ const TradingDashboard = () => {
             if (data.source === 'mt5_direct' && data.timeframe !== chartTfRef.current) {
               setTimeout(() => requestHistory(), 500);
             } else {
-              setCandles(data.candles);
+              // Only update if data actually changed (prevent flickering)
+              setCandles(prev => {
+                if (prev.length === data.candles.length && prev.length > 0) {
+                  const lastOld = prev[prev.length - 1];
+                  const lastNew = data.candles[data.candles.length - 1];
+                  if (lastOld.time === lastNew.time && lastOld.close === lastNew.close) return prev;
+                }
+                return data.candles;
+              });
             }
           }
           setIsLoadingHistory(false);
@@ -522,34 +533,38 @@ const TradingDashboard = () => {
               : m
           ));
         }
-        // Handle candle_data from EA (historical backfill) — convert {t,o,h,l,c} → chart format
+        // Handle candle_data from EA (historical backfill) — only when chart is empty
         if (data.type === 'candle_data' && data.symbol === activeSymbolRef.current && data.candles?.length > 0) {
-          const tfMin = Number(data.timeframe || 5);
-          const tfMap: Record<number, string> = { 1: 'M1', 5: 'M5', 15: 'M15', 30: 'M30', 60: 'H1', 240: 'H4', 1440: 'D1' };
-          const tfLabel = tfMap[tfMin] || 'M5';
-          const converted = data.candles.map((c: any) => ({
-            time: c.t, open: c.o, high: c.h, low: c.l, close: c.c,
-          }));
-          // Set candles directly if timeframe matches, otherwise re-request from DB
-          if (tfLabel === chartTfRef.current) {
-            setCandles(converted);
+          // Only accept if chart currently has no data (avoid flickering from repeated broadcasts)
+          setCandles(prev => {
+            if (prev.length > 0) return prev; // Already have data, skip
+            const tfMin = Number(data.timeframe || 5);
+            const tfMap: Record<number, string> = { 1: 'M1', 5: 'M5', 15: 'M15', 30: 'M30', 60: 'H1', 240: 'H4', 1440: 'D1' };
+            const tfLabel = tfMap[tfMin] || 'M5';
+            if (tfLabel !== chartTfRef.current) {
+              setTimeout(() => requestHistory(), 800);
+              return prev;
+            }
+            const converted = data.candles.map((c: any) => ({
+              time: c.t, open: c.o, high: c.h, low: c.l, close: c.c,
+            }));
             setIsLoadingHistory(false);
-            setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: 'loaded' }));
-          } else {
-            // EA sent different TF — data is now in DB, re-request correct TF
-            setTimeout(() => requestHistory(), 800);
-          }
+            setSymbolDataStatus(p => ({ ...p, [data.symbol]: 'loaded' }));
+            return converted;
+          });
         }
       } catch { /* */ }
     };
     wsRef.current = ws;
-  }, [activeSymbol, requestHistory]);
+  }, []); // No deps — WebSocket stays alive across symbol/TF changes
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
 
   // Request candle history on symbol/timeframe change
   useEffect(() => {
+    setCandles([]); // Clear chart immediately for new symbol/TF
+    fetchHistoryState.current = ''; // Reset so welcome handler won't block
     const t = setTimeout(() => requestHistory(), 300);
     return () => clearTimeout(t);
   }, [activeSymbol, chartTf, requestHistory]);
