@@ -1,6 +1,6 @@
 [package]
 name = "ea-desktop"
-version = "5.9.5"
+version = "5.9.6"
 description = "EA Trading Client Desktop"
 edition = "2021"
 
