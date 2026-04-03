@@ -7,7 +7,7 @@
 #property link      "https://ea-trading.local"
 #include <Trade\Trade.mqh>
 
-#define EA_VERSION "2.11"
+#define EA_VERSION "2.12"
 
 input string   ServerIP   = "127.0.0.1";
 input ushort   ServerPort = 8081;
@@ -684,16 +684,22 @@ bool HandleRequestCandles(const string msg, bool isQueueProcess = false)
       datetime start_time = (datetime)from_time;
       datetime stop_time = TimeCurrent() + 3600; // a bit into future to ensure we get latest
       copied = CopyRates(sym, tf, start_time, stop_time, rates);
-      if(copied > 5000) copied = 5000; // Max safety limit
+      if(copied > 5000) { MqlRates short_rates[]; ArrayCopy(short_rates, rates, 0, copied - 5000, 5000); ArrayCopy(rates, short_rates); copied = 5000; }
      }
    else
      {
-      if(count <= 0) count = 200;
-      if(count > 1500) count = 1500;
-      copied = CopyRates(sym, tf, 0, (int)count, rates);
+      // The user specifically requested 7 days of history for ALL timeframes
+      datetime start_time = TimeCurrent() - 7 * 24 * 60 * 60; // 7 days ago
+      datetime stop_time = TimeCurrent() + 3600;
+      copied = CopyRates(sym, tf, start_time, stop_time, rates);
+      
+      // Safety limit: if M1 generates 10,000 candles, cap it to 5000 so the app doesn't freeze
+      if(copied > 5000) { MqlRates short_rates[]; ArrayCopy(short_rates, rates, 0, copied - 5000, 5000); ArrayCopy(rates, short_rates); copied = 5000; }
      }
    
-   bool isComplete = (copied > 0 && copied >= MathMin(count / 2, 100)); // Consider it complete if we got at least half or 100 candles
+   // For 7-day time-based logic, D1 will only have 7 candles, H1 will have 168.
+   // So we consider it complete if it returned at least 5 candles (enough for D1 7-days minus weekends)
+   bool isComplete = (copied >= 5);
    
    if(!isComplete)
      {
