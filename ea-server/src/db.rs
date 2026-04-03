@@ -333,6 +333,25 @@ impl Database {
 
     /// Fast non-blocking tick logger (sends to Async Batch channel)
     pub fn log_tick(&self, symbol: &str, bid: f64, ask: f64, spread: f64) {
+        let sym_upper = symbol.to_uppercase();
+        let is_crypto = sym_upper.contains("BTC") || sym_upper.contains("ETH") || sym_upper.contains("CRYPTO") || sym_upper.contains("XRP");
+        
+        if !is_crypto {
+            use chrono::{Datelike, Timelike, Weekday};
+            let now = Utc::now();
+            let weekday = now.weekday();
+            let hour = now.hour();
+            
+            // Forex market is closed from Friday 21:00 UTC to Sunday 21:00 UTC
+            let is_closed = (weekday == Weekday::Fri && hour >= 21) 
+                         || (weekday == Weekday::Sat) 
+                         || (weekday == Weekday::Sun && hour < 21);
+                         
+            if is_closed {
+                return; // Do not record ticks during weekend market closure
+            }
+        }
+
         let record = TickRecord {
             symbol: symbol.to_string(),
             bid, ask, spread,

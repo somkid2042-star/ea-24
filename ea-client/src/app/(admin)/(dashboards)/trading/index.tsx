@@ -313,6 +313,42 @@ const TradingDashboard = () => {
   const { theme, updateSettings } = useLayoutContext();
   const darkMode = theme === 'dark';
   const [chartTf, setChartTf] = useState('M5');
+
+  const isMarketClosedDynamic = (sym: string) => {
+    // 1. ตรวจสอบตารางเสาร์-อาทิตย์พื้นฐาน (กรณีเริ่มเปิดระบบมาแล้วไม่มีข้อมูลอะไรเลย)
+    // สำหรับคู่เงินที่ไม่ใช่ Crypto เราสามารถอิงจาก UTC เสาร์อาทิตย์ได้เลย
+    const isCrypto = sym.includes('BTC') || sym.includes('ETH') || sym.includes('CRYPTO');
+    if (!isCrypto) {
+      const now = new Date();
+      const day = now.getUTCDay();
+      const hour = now.getUTCHours();
+      if (day === 5 && hour >= 21) return true; // วันศุกร์หลังตี 4
+      if (day === 6) return true; // วันเสาร์
+      if (day === 0 && hour < 21) return true; // วันอาทิตย์ก่อนตี 4
+    }
+
+    // 2. ตรวจสอบการอัปเดต Tick (หลุดจากโบรกเกอร์หรือตลาดหยุดพิเศษ เทศกาล)
+    // ถ้ารายการนี้เคยมีข้อมูลวิ่งมา แล้วมันหยุดวิ่งเกิน 6 ชั่วโมง แปลว่าตลาดหยุดพัก!
+    if (eaConnected && sym === activeSymbol) {
+       const lastTickTime = lastPriceUpdateTime[sym];
+       if (lastTickTime && (Date.now() - lastTickTime > 21600000)) { // 6 ชั่วโมง
+           return true; 
+       }
+    }
+
+    // 3. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด (เวลาเพิ่งเปิดโปรแกรมมาใหม่ๆ)
+    // ถ้าแท่งเทียนสุดท้ายในระบบ M1/M5 เก่าเกิน 12 ชั่วโมง แปลว่าวันนี้ตลาดปิดแน่นอน
+    if (candles && candles.length > 0 && ['M1', 'M5', 'M15', 'M30', 'H1'].includes(chartTf)) {
+        const lastCandleTime = candles[candles.length - 1].time;
+        const diffSeconds = (Date.now() / 1000) - lastCandleTime;
+        if (diffSeconds > 43200) { // 12 ชั่วโมง
+            return true;
+        }
+    }
+
+    return false;
+  };
+
   const [candles, setCandles] = useState<OHLCCandle[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
   const [symbolDataStatus, setSymbolDataStatus] = useState<Record<string, 'none' | 'loading' | 'loaded'>>({});
@@ -553,9 +589,19 @@ const TradingDashboard = () => {
                       <span className="text-sm font-medium text-default-700">Loading Chart...</span>
                     </div>
                   )}
-                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
-                    markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
-                  />
+                  
+                  {isMarketClosedDynamic(activeSymbol) ? (
+                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card backdrop-blur-md rounded-lg border-2 border-dashed border-default-200">
+                       <LuMoon className="size-12 text-default-400 mb-3" />
+                       <h2 className="text-xl font-bold text-default-900">ตลาดปิด (Market Closed)</h2>
+                       <p className="text-default-500 mt-2">ไม่มีการแสดงกราฟและการซื้อขายเนื่องจากเป็นวันหยุดตามเวลาสากล หรือตลาดหยุดเคลื่อนไหว</p>
+                    </div>
+                  ) : (
+                    <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
+                      markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
+                    />
+                  )}
+
                 </div>
               </div>
             </div>
