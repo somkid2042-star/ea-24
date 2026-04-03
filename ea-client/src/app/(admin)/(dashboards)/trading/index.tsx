@@ -316,7 +316,6 @@ const TradingDashboard = () => {
 
   const isMarketClosedDynamic = (sym: string) => {
     // 1. ตรวจสอบตารางเสาร์-อาทิตย์พื้นฐาน (กรณีเริ่มเปิดระบบมาแล้วไม่มีข้อมูลอะไรเลย)
-    // สำหรับคู่เงินที่ไม่ใช่ Crypto เราสามารถอิงจาก UTC เสาร์อาทิตย์ได้เลย
     const isCrypto = sym.includes('BTC') || sym.includes('ETH') || sym.includes('CRYPTO');
     if (!isCrypto) {
       const now = new Date();
@@ -327,21 +326,18 @@ const TradingDashboard = () => {
       if (day === 0 && hour < 21) return true; // วันอาทิตย์ก่อนตี 4
     }
 
-    // 2. ตรวจสอบการอัปเดต Tick (หลุดจากโบรกเกอร์หรือตลาดหยุดพิเศษ เทศกาล)
-    // ถ้ารายการนี้เคยมีข้อมูลวิ่งมา แล้วมันหยุดวิ่งเกิน 6 ชั่วโมง แปลว่าตลาดหยุดพัก!
-    if (eaConnected && sym === activeSymbol) {
-       const lastTickTime = lastPriceUpdateTime[sym];
-       if (lastTickTime && (Date.now() - lastTickTime > 21600000)) { // 6 ชั่วโมง
-           return true; 
-       }
+    // 2. ตรวจสอบการอัปเดต Tick
+    // ปรับให้เหมือนกับจุดแดงด้านบน ถ้าหยุดวิ่งเกิน 2 นาที แปลว่าตลาดปิด / Server หยุดส่งกราฟ
+    const lastTickTime = lastPriceUpdateTime[sym];
+    if (lastTickTime && (Date.now() - lastTickTime > 120000)) { // 2 นาที
+        return true; 
     }
 
-    // 3. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด (เวลาเพิ่งเปิดโปรแกรมมาใหม่ๆ)
-    // ถ้าแท่งเทียนสุดท้ายในระบบ M1/M5 เก่าเกิน 12 ชั่วโมง แปลว่าวันนี้ตลาดปิดแน่นอน
+    // 3. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด
     if (candles && candles.length > 0 && ['M1', 'M5', 'M15', 'M30', 'H1'].includes(chartTf)) {
         const lastCandleTime = candles[candles.length - 1].time;
         const diffSeconds = (Date.now() / 1000) - lastCandleTime;
-        if (diffSeconds > 43200) { // 12 ชั่วโมง
+        if (diffSeconds > 14400) { // 4 ชั่วโมง (ปรับลดจาก 12 ชม. เพื่อให้ไวขึ้น)
             return true;
         }
     }
@@ -591,10 +587,10 @@ const TradingDashboard = () => {
                   )}
                   
                   {isMarketClosedDynamic(activeSymbol) ? (
-                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card backdrop-blur-md rounded-lg border-2 border-dashed border-default-200">
-                       <LuMoon className="size-12 text-default-400 mb-3" />
+                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card/60 backdrop-blur-md rounded-lg border-2 border-dashed border-default-200">
+                       <div className="text-7xl font-black text-default-200 tracking-tighter mb-2">{activeSymbol}</div>
                        <h2 className="text-xl font-bold text-default-900">ตลาดปิด (Market Closed)</h2>
-                       <p className="text-default-500 mt-2">ไม่มีการแสดงกราฟและการซื้อขายเนื่องจากเป็นวันหยุดตามเวลาสากล หรือตลาดหยุดเคลื่อนไหว</p>
+                       <p className="text-default-500 mt-2 text-center max-w-md">ไม่มีการแสดงกราฟและการซื้อขายเนื่องจากเป็นวันหยุดตามเวลาสากล หรือตลาดหยุดเคลื่อนไหว</p>
                     </div>
                   ) : (
                     <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
@@ -779,17 +775,24 @@ const TradingDashboard = () => {
                       </tr>
                     </thead>
                     <tbody>
-                      {wl.map(w => (
-                        <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className="cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors">
-                          <td className={`text-xs py-1 font-semibold flex items-center gap-1.5 ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>
-                            <div className={`size-1.5 rounded-full ${symbolDataStatus[w.symbol] === 'loaded' ? 'bg-success' : symbolDataStatus[w.symbol] === 'loading' ? 'bg-warning' : 'bg-danger'}`} />
-                            {w.symbol}
-                          </td>
-                          <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
-                          <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
-                          <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
-                        </tr>
-                      ))}
+                      {wl.map(w => {
+                        const isClosed = isMarketClosedDynamic(w.symbol);
+                        return (
+                          <tr key={w.symbol} onClick={() => setActiveSymbol(w.symbol)} className={`cursor-pointer hover:bg-default-50 dark:hover:bg-default-200/10 transition-colors ${isClosed ? 'opacity-50' : ''}`}>
+                            <td className={`text-xs py-1 font-semibold flex items-center gap-1.5 ${activeSymbol === w.symbol ? 'text-primary' : 'text-default-700'}`}>
+                              {isClosed ? (
+                                <LuMoon size={10} className="text-default-500" />
+                              ) : (
+                                <div className={`size-1.5 rounded-full ${symbolDataStatus[w.symbol] === 'loaded' ? 'bg-success' : symbolDataStatus[w.symbol] === 'loading' ? 'bg-warning' : 'bg-danger'}`} />
+                              )}
+                              {w.symbol}
+                            </td>
+                            <td className="text-xs py-1 text-right font-mono text-default-600">{w.last.toFixed(w.last > 100 ? 2 : 4)}</td>
+                            <td className={`text-xs py-1 text-right font-mono ${w.change >= 0 ? 'text-success' : 'text-danger'}`}>{w.change >= 0 ? '+' : ''}{w.change.toFixed(2)}</td>
+                            <td className={`text-xs py-1 text-right font-mono ${w.pct >= 0 ? 'text-success' : 'text-danger'}`}>{w.pct >= 0 ? '+' : ''}{w.pct.toFixed(2)}%</td>
+                          </tr>
+                        );
+                      })}
                     </tbody>
                   </table>
                 </div>

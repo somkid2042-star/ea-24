@@ -341,14 +341,20 @@ impl Database {
             let now = Utc::now();
             let weekday = now.weekday();
             let hour = now.hour();
+            let month = now.month();
+            let day = now.day();
             
-            // Forex market is closed from Friday 21:00 UTC to Sunday 21:00 UTC
-            let is_closed = (weekday == Weekday::Fri && hour >= 21) 
+            // Major Global Forex Holidays: Christmas & New Year
+            let is_holiday = (month == 12 && day == 25) || (month == 1 && day == 1);
+
+            // Forex market is closed from Friday 21:00 UTC to Sunday 21:00 UTC + Global Holidays
+            let is_closed = is_holiday
+                         || (weekday == Weekday::Fri && hour >= 21) 
                          || (weekday == Weekday::Sat) 
                          || (weekday == Weekday::Sun && hour < 21);
                          
             if is_closed {
-                return; // Do not record ticks during weekend market closure
+                return; // Do not record ticks during weekend or holiday market closure
             }
         }
 
