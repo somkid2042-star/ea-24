@@ -452,8 +452,8 @@ const TradingDashboard = () => {
           if (data.gap_status) {
             setSymbolDataStatus(prev => ({ ...prev, ...data.gap_status }));
           }
-          // Only re-request if we haven't fetched for the current config yet
-          if (wasConnected && fetchHistoryState.current !== `${activeSymbolRef.current}_${chartTfRef.current}`) {
+          // Always request history — server has DB history even if EA is offline
+          if (fetchHistoryState.current !== `${activeSymbolRef.current}_${chartTfRef.current}`) {
             setTimeout(() => requestHistory(), 1000);
           }
         }
@@ -489,18 +489,27 @@ const TradingDashboard = () => {
         if (data.type === 'gap_fill_status') {
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: data.status }));
           if (data.status === 'loaded' && data.symbol === activeSymbolRef.current) {
-             // We do NOT re-request history here because the server already forwarded 
-             // the MT5 direct payload as a 'history' message! If we request again,
-             // we will hit the database which might not have aggregated the ticks yet.
-             // setTimeout(() => requestHistory(), 500); 
+             // EA finished loading candles — re-request from server DB which now has the data
+             setTimeout(() => requestHistory(), 800);
           }
         }
         if (data.type === 'history') {
-          // Prevent rendering stale data if user rapidly switched symbols or timeframes
+          // Prevent rendering stale data if user rapidly switched symbols
           if (data.symbol && data.symbol !== activeSymbolRef.current) return;
-          if (data.timeframe && data.timeframe !== chartTfRef.current) return;
+          // Accept data from mt5_direct regardless of timeframe mismatch 
+          // (server might have sent M1 candles while user is on M5)
+          // But only update chart if timeframe matches OR if we currently have no data
+          if (data.timeframe && data.timeframe !== chartTfRef.current && data.source !== 'mt5_direct') return;
           
-          if (data.candles) setCandles(data.candles);
+          if (data.candles && data.candles.length > 0) {
+            // If source is mt5_direct but timeframe doesn't match,
+            // don't set candles directly — instead trigger a re-request from DB
+            if (data.source === 'mt5_direct' && data.timeframe !== chartTfRef.current) {
+              setTimeout(() => requestHistory(), 500);
+            } else {
+              setCandles(data.candles);
+            }
+          }
           setIsLoadingHistory(false);
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 'loaded' }));
           if (loadingTimeoutRef.current) clearTimeout(loadingTimeoutRef.current);
@@ -591,17 +600,15 @@ const TradingDashboard = () => {
                     </div>
                   )}
                   
-                  {isMarketClosedDynamic(activeSymbol) ? (
-                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card/60 backdrop-blur-md rounded-lg border-2 border-dashed border-default-200">
-                       <div className="text-7xl font-black text-default-200 tracking-tighter mb-2">{activeSymbol}</div>
-                       <h2 className="text-xl font-bold text-default-900">ตลาดปิด (Market Closed)</h2>
-                       <p className="text-default-500 mt-2 text-center max-w-md">ไม่มีการแสดงกราฟและการซื้อขายเนื่องจากเป็นวันหยุดตามเวลาสากล หรือตลาดหยุดเคลื่อนไหว</p>
+                  {isMarketClosedDynamic(activeSymbol) && candles.length > 0 && (
+                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card/40 backdrop-blur-[2px] rounded-lg">
+                       <h2 className="text-lg font-bold text-default-700">ตลาดปิด (Market Closed)</h2>
+                       <p className="text-default-500 mt-1 text-center text-xs max-w-md">กราฟแสดงข้อมูลย้อนหลัง — ราคาจะกลับมาเคลื่อนไหวเมื่อตลาดเปิด</p>
                     </div>
-                  ) : (
-                    <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
-                      markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
-                    />
                   )}
+                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
+                    markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
+                  />
 
                 </div>
               </div>

@@ -23,7 +23,7 @@ use tokio_tungstenite::tungstenite::Message;
 
 
 /// The latest EA version shipped with this server
-const LATEST_EA_VERSION: &str = "2.07";
+const LATEST_EA_VERSION: &str = "2.13";
 
 /// Compare version strings as floating point numbers.
 /// Returns true if `latest` is strictly greater than `current`.
