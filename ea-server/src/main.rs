@@ -1374,7 +1374,7 @@ async fn handle_ws_connection(
                                                         "type": "ai_test_result",
                                                         "success": true,
                                                         "message": reply,
-                                                        "model": if model.is_empty() { "gemini-1.5-pro" } else { &model },
+                                                        "model": if model.is_empty() { "gemini-2.5-pro" } else { &model },
                                                     });
                                                     let _ = tx_ai.send(resp.to_string());
                                                 }
