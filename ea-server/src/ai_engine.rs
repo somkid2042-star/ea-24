@@ -9,7 +9,7 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL: &str = "gemini-2.5-pro";
+const DEFAULT_MODEL: &str = "gemini-2.5-flash";
 const TAVILY_API_URL: &str = "https://api.tavily.com/search";
 const FOREX_CALENDAR_URL: &str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 
@@ -868,8 +868,8 @@ pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String
 
 pub fn available_models() -> Vec<(&'static str, &'static str)> {
     vec![
-        ("gemini-2.5-pro", "Gemini 2.5 Pro (แนะนำ — ฉลาดสุด)"),
-        ("gemini-2.5-flash", "Gemini 2.5 Flash (เร็ว)"),
-        ("gemini-2.0-flash", "Gemini 2.0 Flash (เสถียร)"),
+        ("gemini-2.5-flash", "Gemini 2.5 Flash (แนะนำ — ฟรี)"),
+        ("gemini-2.5-pro", "Gemini 2.5 Pro (ฉลาดสุด — ต้องเปิด Billing)"),
+        ("gemini-2.0-flash", "Gemini 2.0 Flash (ต้องเปิด Billing)"),
     ]
 }
