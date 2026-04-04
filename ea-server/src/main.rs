@@ -5,6 +5,7 @@ mod db;
 mod updater;
 mod strategy;
 mod notify;
+mod ai_engine;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -59,6 +60,13 @@ struct ClientMessage {
     sl_value: Option<f64>,
     trailing_stop_enabled: Option<bool>,
     trailing_stop_points: Option<f64>,
+    // Multi-Agent fields
+    balance: Option<f64>,
+    equity: Option<f64>,
+    open_positions: Option<usize>,
+    max_positions: Option<usize>,
+    max_drawdown_pct: Option<f64>,
+    emergency_stop: Option<bool>,
     // Trading command fields
     direction: Option<String>,
     ticket: Option<i64>,
@@ -70,6 +78,8 @@ struct ClientMessage {
     // Upload fields
     file_name: Option<String>,
     content_base64: Option<String>,
+    // AI fields
+    question: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -911,12 +921,12 @@ async fn handle_ws_connection(
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
-                                    // === Trade Setup Actions ===
-                                    "test_line_notify" => {
-                                        let token = db.get_config("line_notify_token").await.unwrap_or_default();
-                                        let ok = notify::send_line_notify(&token, "\n✅ ทดสอบแจ้งเตือน EA-24\nระบบแจ้งเตือน LINE ทำงานปกติ!").await;
+                                    "test_telegram_notify" => {
+                                        let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
+                                        let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
+                                        let ok = notify::send_telegram_notify(&bot_token, &chat_id, "✅ ทดสอบแจ้งเตือน EA-24\nระบบแจ้งเตือนผ่าน Telegram ทำงานปกติ!").await;
                                         let resp = serde_json::json!({
-                                            "type": "line_notify_test",
+                                            "type": "telegram_notify_test",
                                             "success": ok,
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
@@ -1245,6 +1255,147 @@ async fn handle_ws_connection(
                                             let _ = write.send(Message::Text(resp.to_string())).await;
                                         }
                                     }
+                                    "test_ai" => {
+                                        info!("🤖 [UI] AI connection test requested");
+                                        let api_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                        let model = db.get_config("gemini_model").await.unwrap_or_default();
+                                        match ai_engine::test_connection(&api_key, &model).await {
+                                            Ok(reply) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_test_result",
+                                                    "success": true,
+                                                    "message": reply,
+                                                    "model": if model.is_empty() { "gemini-2.5-pro-preview-05-06" } else { &model },
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                            Err(e) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_test_result",
+                                                    "success": false,
+                                                    "message": e,
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                        }
+                                    }
+                                    "ask_ai" => {
+                                        let question = client_msg.question.as_deref().unwrap_or("สวัสดี");
+                                        info!("🤖 [UI] AI question: {}", question);
+                                        let api_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                        let model = db.get_config("gemini_model").await.unwrap_or_default();
+                                        match ai_engine::ask_ai(&api_key, &model, question).await {
+                                            Ok(reply) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_response",
+                                                    "success": true,
+                                                    "question": question,
+                                                    "answer": reply,
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                            Err(e) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_response",
+                                                    "success": false,
+                                                    "question": question,
+                                                    "answer": format!("❌ {}", e),
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                        }
+                                    }
+                                    "get_ai_models" => {
+                                        let models = ai_engine::available_models();
+                                        let models_json: Vec<serde_json::Value> = models.iter().map(|(id, name)| {
+                                            serde_json::json!({ "id": id, "name": name })
+                                        }).collect();
+                                        let resp = serde_json::json!({
+                                            "type": "ai_models",
+                                            "models": models_json,
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "analyze_market" => {
+                                        let sym = client_msg.symbol.as_deref().unwrap_or("XAUUSD");
+                                        let tf = client_msg.timeframe.as_deref().unwrap_or("M5");
+                                        let strat = client_msg.strategy.as_deref().unwrap_or("Auto");
+                                        info!("🤖 [UI] AI market analysis for {} {} ({})", sym, tf, strat);
+                                        let api_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                        let model = db.get_config("gemini_model").await.unwrap_or_default();
+                                        let tf_min: i64 = match tf {
+                                            "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
+                                            "H1" => 60, "H4" => 240, "D1" => 1440, _ => 5,
+                                        };
+                                        let candles = db.get_candles_for_strategy(sym, tf_min, 100).await;
+                                        let price = candles.last().map(|c| c.close).unwrap_or(0.0);
+                                        match ai_engine::analyze_market(&api_key, &model, sym, tf, &candles, price, strat).await {
+                                            Ok(analysis) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_analysis",
+                                                    "success": true,
+                                                    "symbol": sym,
+                                                    "timeframe": tf,
+                                                    "recommendation": analysis.recommendation,
+                                                    "confidence": analysis.confidence,
+                                                    "reasoning": analysis.reasoning,
+                                                    "full_analysis": analysis.full_analysis,
+                                                    "model": analysis.model,
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                            Err(e) => {
+                                                let resp = serde_json::json!({
+                                                    "type": "ai_analysis",
+                                                    "success": false,
+                                                    "symbol": sym,
+                                                    "message": e,
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                        }
+                                    }
+                                    "run_agents" => {
+                                        let sym = client_msg.symbol.unwrap_or_else(|| "XAUUSD".to_string());
+                                        let tf = client_msg.timeframe.unwrap_or_else(|| "M15".to_string());
+                                        let balance = client_msg.balance.unwrap_or(10000.0);
+                                        let equity = client_msg.equity.unwrap_or(10000.0);
+                                        let open_pos = client_msg.open_positions.unwrap_or(0);
+                                        let max_pos = client_msg.max_positions.unwrap_or(5);
+                                        let max_dd = client_msg.max_drawdown_pct.unwrap_or(10.0);
+                                        let estop = client_msg.emergency_stop.unwrap_or(false);
+                                        
+                                        info!("🤖 [UI] Run Multi-Agents requested for {} {}", sym, tf);
+                                        
+                                        let gemini_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                        let gemini_model = db.get_config("gemini_model").await.unwrap_or_default();
+                                        let tavily_key = db.get_config("tavily_api_key").await.unwrap_or_default();
+                                        
+                                        let tf_min: i64 = match tf.as_str() {
+                                            "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
+                                            "H1" => 60, "H4" => 240, "D1" => 1440, _ => 15,
+                                        };
+                                        let candles = db.get_candles_for_strategy(&sym, tf_min, 100).await;
+                                        let tx_agents = tx.clone();
+                                        
+                                        tokio::spawn(async move {
+                                            let result = ai_engine::run_all_agents(
+                                                &gemini_key, &gemini_model, &tavily_key,
+                                                &sym, &tf, &candles,
+                                                balance, equity, open_pos, max_pos, max_dd, estop,
+                                                &tx_agents
+                                            ).await;
+                                            
+                                            let resp = serde_json::json!({
+                                                "type": "multi_agent_result",
+                                                "result": result
+                                            });
+                                            let _ = tx_agents.send(resp.to_string());
+                                        });
+
+                                        let resp = serde_json::json!({ "type": "agents_started", "symbol": sym });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
                                     _ => {}
                                 }
                             }
@@ -1263,7 +1414,7 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
-                        if json.contains("\"tick\"") || json.contains("\"history\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") {
+                        if json.contains("\"tick\"") || json.contains("\"history\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") || json.contains("\"ai_response\"") || json.contains("\"ai_analysis\"") || json.contains("\"agent_log\"") || json.contains("\"multi_agent_result\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;

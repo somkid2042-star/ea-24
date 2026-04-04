@@ -808,12 +808,13 @@ pub async fn run_strategy_engine(
                     a.iter().filter_map(|p| p["pnl"].as_f64()).sum()
                 }).unwrap_or(0.0);
                 if current_pnl < 0.0 && current_pnl.abs() >= max_dd {
-                    // Send risk alert via LINE
-                    let token = get_cfg("line_notify_token", "");
+                    // Send risk alert via Telegram
+                    let bot_token = get_cfg("telegram_bot_token", "");
+                    let chat_id = get_cfg("telegram_chat_id", "");
                     let notify_risk = get_cfg("notify_on_risk", "true") == "true";
-                    if !token.is_empty() && notify_risk {
+                    if !bot_token.is_empty() && !chat_id.is_empty() && notify_risk {
                         let msg = crate::notify::format_risk_alert(current_pnl.abs(), max_dd);
-                        tokio::spawn(async move { crate::notify::send_line_notify(&token, &msg).await; });
+                        tokio::spawn(async move { crate::notify::send_telegram_notify(&bot_token, &chat_id, &msg).await; });
                     }
                     setup_statuses.push(serde_json::json!({
                         "setup_id": setup_id,
@@ -901,12 +902,13 @@ pub async fn run_strategy_engine(
             info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5}", direction, symbol, strategy, lot, tp_price, sl_price);
             info!("   Reason: {}", reason);
 
-            // Send LINE notification for trade open
-            let line_token = db.get_config("line_notify_token").await.unwrap_or_default();
+            // Send Telegram notification for trade open
+            let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
+            let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
             let notify_open = db.get_config("notify_on_open").await.unwrap_or("true".to_string()) == "true";
-            if !line_token.is_empty() && notify_open {
+            if !bot_token.is_empty() && !chat_id.is_empty() && notify_open {
                 let msg = crate::notify::format_trade_open(symbol, direction, lot, price, strategy);
-                tokio::spawn(async move { crate::notify::send_line_notify(&line_token, &msg).await; });
+                tokio::spawn(async move { crate::notify::send_telegram_notify(&bot_token, &chat_id, &msg).await; });
             }
 
             setup_statuses.push(serde_json::json!({

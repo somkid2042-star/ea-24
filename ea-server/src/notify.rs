@@ -1,27 +1,27 @@
 use log::info;
 
-/// Send a LINE Notify message
-pub async fn send_line_notify(token: &str, message: &str) -> bool {
-    if token.is_empty() {
+/// Send a Telegram message
+pub async fn send_telegram_notify(bot_token: &str, chat_id: &str, message: &str) -> bool {
+    if bot_token.is_empty() || chat_id.is_empty() {
         return false;
     }
     let client = reqwest::Client::new();
-    match client
-        .post("https://notify-api.line.me/api/notify")
-        .header("Authorization", format!("Bearer {}", token))
-        .form(&[("message", message)])
-        .send()
-        .await
-    {
+    let url = format!("https://api.telegram.org/bot{}/sendMessage", bot_token);
+    let payload = serde_json::json!({
+        "chat_id": chat_id,
+        "text": message,
+    });
+    
+    match client.post(&url).json(&payload).send().await {
         Ok(resp) => {
             let ok = resp.status().is_success();
             if !ok {
-                info!("⚠️ LINE Notify failed: status {}", resp.status());
+                info!("⚠️ Telegram Notify failed: status {}", resp.status());
             }
             ok
         }
         Err(e) => {
-            info!("⚠️ LINE Notify error: {}", e);
+            info!("⚠️ Telegram Notify error: {}", e);
             false
         }
     }

@@ -1,13 +1,14 @@
 import { useState, useEffect, useRef, useCallback, useMemo, lazy, Suspense, type ReactNode } from 'react';
 import { useNavigate } from 'react-router-dom';
-import { createChart, ColorType, CandlestickSeries } from 'lightweight-charts';
+import { createChart, ColorType, CandlestickSeries, createSeriesMarkers } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
   LuLayoutDashboard, LuServer, LuShieldCheck,
   LuWorkflow, LuBriefcase, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
-  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot
+  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuBrain,
+  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -28,6 +29,7 @@ const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-manage
 const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
 const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
 const OpenClawPage = lazy(() => import('@/app/(admin)/(dashboards)/openclaw/index'));
+const AiSettingsPage = lazy(() => import('@/app/(admin)/(config)/ai-settings/index'));
 
 /* ── Types ── */
 type Position = { ticket: number; symbol: string; type: string; volume: number; open_price: number; current_price: number; pnl: number; swap: number; sl: number; tp: number; magic: number; open_time: string; comment: string; };
@@ -37,6 +39,15 @@ type TradeResult = { action: string; success: boolean; symbol?: string; directio
 type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
 type OHLCCandle = { time: number; open: number; high: number; low: number; close: number; };
 type ChartMarker = { time: number; position: 'aboveBar' | 'belowBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string; };
+type StrategySignalEntry = { setup_id: number; signal: string; symbol: string; strategy: string; reason: string; timestamp: string; price?: number; };
+
+// Color map for 10 strategies + Auto
+const STRATEGY_COLORS: Record<string, string> = {
+  'Scalper Pro': '#e6194b', 'Trend Rider': '#3cb44b', 'Grid Master': '#ffe119',
+  'Breakout Hunter': '#4363d8', 'Mean Revert': '#f58231', 'SMC': '#911eb4',
+  'ICT': '#42d4f4', 'Fibonacci': '#f032e6', 'Momentum Surge': '#bfef45',
+  'Session Sniper': '#fabed4', 'Auto': '#ffffff',
+};
 
 const CHART_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const tfToSeconds = (tf: string): number => {
@@ -46,7 +57,7 @@ const tfToSeconds = (tf: string): number => {
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'openclaw';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'openclaw' | 'ai';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
 /* ── Grouped Navigation ── */
@@ -77,6 +88,7 @@ const NAV_GROUPS: NavGroup[] = [
     id: 'ai',
     label: 'AI & เครื่องมือ',
     items: [
+      { key: 'ai', icon: <LuBrain size={18} />, label: '🤖 AI Engine' },
       { key: 'openclaw', icon: <LuBot size={18} />, label: 'OpenClaw AI' },
     ],
   },
@@ -104,6 +116,7 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   journal: JournalPage,
   multichart: MultiChartPage,
   openclaw: OpenClawPage,
+  ai: AiSettingsPage,
 };
 
 /* ── Chart Colors (MT5 style) ── */
@@ -112,8 +125,8 @@ const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: '#ffffff', up: '#089
 
 type ChartPriceLine = { price: number; color: string; text: string; };
 
-const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLines, serverTime }: {
-  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string; markers?: ChartMarker[]; priceLines?: ChartPriceLine[]; serverTime?: number;
+const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLines, serverTime, barSpacing = 10 }: {
+  symbol: string; candles: OHLCCandle[]; bid: number; darkMode: boolean; chartTf: string; markers?: ChartMarker[]; priceLines?: ChartPriceLine[]; serverTime?: number; barSpacing?: number;
 }) => {
   const containerRef = useRef<HTMLDivElement>(null);
   const chartRef = useRef<IChartApi | null>(null);
@@ -122,6 +135,7 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
   const lastLocalTfIndexRef = useRef<number>(0);
   const hasFitContentRef = useRef(false);
   const priceLinesRef = useRef<any[]>([]);
+  const markersPluginRef = useRef<any>(null);
 
   useEffect(() => {
     if (!containerRef.current) return;
@@ -137,7 +151,7 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
       localization: { locale: 'en-US' },
       grid: { vertLines: { visible: false }, horzLines: { visible: false } },
       rightPriceScale: { borderVisible: false, scaleMargins: { top: 0.08, bottom: 0.08 } },
-      timeScale: { barSpacing: 20, borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 5 },
+      timeScale: { barSpacing: 10, borderVisible: false, timeVisible: true, secondsVisible: false, rightOffset: 5 },
       crosshair: { mode: 0, horzLine: { color: C.cross, style: 3 }, vertLine: { color: C.cross, style: 3 } },
     });
     const series = chart.addSeries(CandlestickSeries, {
@@ -147,6 +161,7 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     });
     chartRef.current = chart;
     seriesRef.current = series;
+    markersPluginRef.current = createSeriesMarkers(series, []);
     let resizeTimeout: any = null;
     const handleResize = () => {
       if (!containerRef.current) return;
@@ -196,9 +211,20 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     });
   }, [darkMode]);
 
+  // Apply barSpacing changes dynamically without recreating chart
+  useEffect(() => {
+    if (!chartRef.current) return;
+    chartRef.current.applyOptions({ timeScale: { barSpacing } });
+  }, [barSpacing]);
+
   useEffect(() => {
     if (!seriesRef.current) return;
-    if (candles.length === 0) { seriesRef.current.setData([]); lastCandleRef.current = null; return; }
+    if (candles.length === 0) { 
+      seriesRef.current.setData([]); 
+      lastCandleRef.current = null; 
+      hasFitContentRef.current = false; // Reset so fitContent runs on next data
+      return; 
+    }
     const sorted = [...candles].sort((a, b) => a.time - b.time);
     const deduped: OHLCCandle[] = [];
     for (const c of sorted) { 
@@ -215,9 +241,17 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     lastCandleRef.current = deduped[deduped.length - 1];
     lastLocalTfIndexRef.current = Math.floor(Date.now() / 1000 / tfToSeconds(chartTf));
     
-    // Fit content safely after data is loaded
+    // Show last ~80 candles so each candle is big, then scroll to latest
     if (deduped.length > 0 && !hasFitContentRef.current) {
-      setTimeout(() => { chartRef.current?.timeScale().fitContent(); }, 50);
+      setTimeout(() => {
+        const ts = chartRef.current?.timeScale();
+        if (ts) {
+          const totalBars = deduped.length;
+          const visibleBars = 150;
+          const from = Math.max(0, totalBars - visibleBars);
+          ts.setVisibleLogicalRange({ from, to: totalBars + 5 });
+        }
+      }, 50);
       hasFitContentRef.current = true;
     }
   }, [candles, chartTf]);
@@ -250,22 +284,23 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     }
   }, [bid, chartTf, serverTime]);
 
+  // Reset chart on symbol change only (timeframe reset handled in candle data effect above)
   useEffect(() => { if (seriesRef.current) { seriesRef.current.setData([]); lastCandleRef.current = null; hasFitContentRef.current = false; } }, [symbol]);
 
-  // Render markers on chart
+  // Render markers on chart using v5 createSeriesMarkers plugin
   useEffect(() => {
-    if (!seriesRef.current || !chartRef.current) return;
+    if (!markersPluginRef.current) return;
     try {
       if (!markers || markers.length === 0) {
-        (seriesRef.current as any).setMarkers?.([]);
+        markersPluginRef.current.setMarkers([]);
         return;
       }
       const sorted = markers
         .map(m => ({ ...m, time: m.time as any }))
         .sort((a, b) => (a.time as number) - (b.time as number));
-      (seriesRef.current as any).setMarkers?.(sorted);
+      markersPluginRef.current.setMarkers(sorted);
     } catch (e) {
-      console.warn('Markers not supported:', e);
+      console.warn('Markers error:', e);
     }
   }, [markers]);
 
@@ -312,37 +347,18 @@ const TradingDashboard = () => {
   const { theme, updateSettings } = useLayoutContext();
   const darkMode = theme === 'dark';
   const [chartTf, setChartTf] = useState('M5');
+  const [chartBarSpacing, setChartBarSpacing] = useState(10);
+  const [chartFullscreen, setChartFullscreen] = useState(false);
 
-  const isMarketClosedDynamic = (sym: string) => {
-    // 1. ตรวจสอบตารางเสาร์-อาทิตย์พื้นฐาน (กรณีเริ่มเปิดระบบมาแล้วไม่มีข้อมูลอะไรเลย)
-    const isCrypto = sym.includes('BTC') || sym.includes('ETH') || sym.includes('CRYPTO');
-    if (!isCrypto) {
-      const now = new Date();
-      const day = now.getUTCDay();
-      const hour = now.getUTCHours();
-      if (day === 5 && hour >= 21) return true; // วันศุกร์หลังตี 4
-      if (day === 6) return true; // วันเสาร์
-      if (day === 0 && hour < 21) return true; // วันอาทิตย์ก่อนตี 4
-    }
+  // ESC key to exit fullscreen
+  useEffect(() => {
+    if (!chartFullscreen) return;
+    const handleEsc = (e: KeyboardEvent) => { if (e.key === 'Escape') setChartFullscreen(false); };
+    window.addEventListener('keydown', handleEsc);
+    return () => window.removeEventListener('keydown', handleEsc);
+  }, [chartFullscreen]);
 
-    // 2. ตรวจสอบการอัปเดต Tick
-    // ปรับให้เหมือนกับจุดแดงด้านบน ถ้าหยุดวิ่งเกิน 2 นาที แปลว่าตลาดปิด / Server หยุดส่งกราฟ
-    const lastTickTime = lastPriceUpdateTime[sym];
-    if (lastTickTime && (Date.now() - lastTickTime > 120000)) { // 2 นาที
-        return true; 
-    }
-
-    // 3. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด
-    if (candles && candles.length > 0 && ['M1', 'M5', 'M15', 'M30', 'H1'].includes(chartTf)) {
-        const lastCandleTime = candles[candles.length - 1].time;
-        const diffSeconds = (Date.now() / 1000) - lastCandleTime;
-        if (diffSeconds > 14400) { // 4 ชั่วโมง (ปรับลดจาก 12 ชม. เพื่อให้ไวขึ้น)
-            return true;
-        }
-    }
-
-    return false;
-  };
+  // isMarketClosedDynamic is defined below after state declarations
 
   const [candles, setCandles] = useState<OHLCCandle[]>([]);
   const [isLoadingHistory, setIsLoadingHistory] = useState(false);
@@ -350,6 +366,46 @@ const TradingDashboard = () => {
   const [selectedPosition, setSelectedPosition] = useState<Position | null>(null);
   const [lastPriceUpdateTime, setLastPriceUpdateTime] = useState<Record<string, number>>({});
   const [, setTickFlip] = useState(0);
+  const [strategySignals, setStrategySignals] = useState<StrategySignalEntry[]>([]);
+
+  // ── Market close detection ──
+  // Crypto symbols: ตลาดเปิด 24/7 ไม่มีวันปิด
+  const CRYPTO_KEYWORDS = ['BTC', 'ETH', 'LTC', 'XRP', 'SOL', 'DOGE', 'ADA', 'DOT', 'MATIC', 'AVAX', 'LINK', 'UNI', 'SHIB', 'PEPE', 'BNB', 'TRX', 'NEAR', 'APT', 'ARB', 'OP', 'ATOM', 'FIL', 'EOS', 'BCH', 'ETC', 'CRYPTO'];
+  const isCryptoSymbol = (sym: string): boolean => {
+    const upper = sym.toUpperCase();
+    return CRYPTO_KEYWORDS.some(k => upper.includes(k));
+  };
+
+  const isMarketClosedDynamic = useCallback((sym: string) => {
+    // ขณะกำลังโหลดข้อมูล ห้ามแสดง "ตลาดปิด"
+    if (isLoadingHistory) return false;
+
+    // 1. Crypto = ตลาดเปิด 24/7
+    if (isCryptoSymbol(sym)) return false;
+
+    // 2. ตรวจสอบตารางเสาร์-อาทิตย์ (Forex/Gold/Indices)
+    const now = new Date();
+    const day = now.getUTCDay();
+    const hour = now.getUTCHours();
+    if (day === 5 && hour >= 21) return true; // วันศุกร์หลัง 21:00 UTC
+    if (day === 6) return true; // วันเสาร์
+    if (day === 0 && hour < 21) return true; // วันอาทิตย์ก่อน 21:00 UTC
+
+    // 3. ตรวจสอบการอัปเดต Tick — ถ้าหยุดวิ่งเกิน 2 นาที
+    const lastTickTime = lastPriceUpdateTime[sym];
+    if (lastTickTime && (Date.now() - lastTickTime > 120000)) {
+      return true;
+    }
+
+    // 4. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด
+    if (candles && candles.length > 0 && ['M1', 'M5', 'M15', 'M30', 'H1'].includes(chartTf)) {
+      const lastCandleTime = candles[candles.length - 1].time;
+      const diffSeconds = (Date.now() / 1000) - lastCandleTime;
+      if (diffSeconds > 14400) return true; // 4 ชั่วโมง
+    }
+
+    return false;
+  }, [isLoadingHistory, lastPriceUpdateTime, candles, chartTf]);
 
   // Close settings flyout when clicking outside
   useEffect(() => {
@@ -365,32 +421,62 @@ const TradingDashboard = () => {
 
   useEffect(() => { const int = setInterval(() => setTickFlip(f => f+1), 5000); return () => clearInterval(int); }, []);
 
-  // Memoize markers to prevent chart from re-rendering/jumping
+  // Memoize markers: combine position markers + strategy signal markers
   const chartMarkers = useMemo<ChartMarker[]>(() => {
-    if (!selectedPosition) return [];
-    const openTime = Math.floor(new Date(selectedPosition.open_time).getTime() / 1000);
+    const markers: ChartMarker[] = [];
     const tfSecs = tfToSeconds(chartTf);
-    const snappedTime = Math.floor(openTime / tfSecs) * tfSecs;
-    const isBuy = selectedPosition.type === 'BUY';
-    const comment = selectedPosition.comment || '';
-    const strategyRaw = comment.startsWith('EA24-') ? comment.slice(5) : comment || 'Manual';
-    const strategyMap: Record<string, string> = {
-      'SMC': 'กลยุทธ์ SMC', 'ICT': 'กลยุทธ์ ICT', 'Fibonacci': 'กลยุทธ์ Fibonacci',
-      'Scalping': 'กลยุทธ์ Scalping', 'BreakoutRetest': 'กลยุทธ์ Breakout Retest',
-      'MeanReversion': 'กลยุทธ์ Mean Reversion', 'TrendFollowing': 'กลยุทธ์ Trend Following',
-      'OrderBlock': 'กลยุทธ์ Order Block', 'FairValueGap': 'กลยุทธ์ Fair Value Gap',
-      'LiquiditySweep': 'กลยุทธ์ Liquidity Sweep', 'Manual': 'เปิดเอง', 'EA-Web': 'เปิดเอง',
-    };
-    const strategyThai = strategyMap[strategyRaw] || `กลยุทธ์ ${strategyRaw}`;
-    const dirThai = isBuy ? 'ซื้อ' : 'ขาย';
-    return [{
-      time: snappedTime,
-      position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
-      color: isBuy ? '#089981' : '#f23645',
-      shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
-      text: `${dirThai} | ${strategyThai}`,
-    }];
-  }, [selectedPosition, chartTf]);
+
+    // 1. Strategy signal markers (all 10 strategies)
+    const symbolSignals = strategySignals.filter(s => s.symbol === activeSymbol);
+    for (const sig of symbolSignals) {
+      const sigTime = Math.floor(new Date(sig.timestamp).getTime() / 1000);
+      if (isNaN(sigTime) || sigTime <= 0) continue;
+      const snappedTime = Math.floor(sigTime / tfSecs) * tfSecs;
+      const isBuy = sig.signal === 'BUY';
+      const color = STRATEGY_COLORS[sig.strategy] || '#aaa';
+      markers.push({
+        time: snappedTime,
+        position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
+        color,
+        shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
+        text: `${sig.signal} ${sig.strategy}`,
+      });
+    }
+
+    // 2. ALL open positions for the active symbol — always show entry points
+    const allPositions = account?.positions ?? [];
+    const symbolPositions = allPositions.filter(p => p.symbol === activeSymbol);
+    for (const pos of symbolPositions) {
+      // MT5 sends time as "YYYY.MM.DD HH:MM" — convert dots to dashes for JS parsing
+      const timeStr = (pos.open_time || '').replace(/\./g, '-');
+      const openTime = Math.floor(new Date(timeStr).getTime() / 1000);
+      if (isNaN(openTime) || openTime <= 0) continue;
+      const snappedTime = Math.floor(openTime / tfSecs) * tfSecs;
+      const isBuy = pos.type === 'BUY';
+      const comment = pos.comment || '';
+      const strategyRaw = comment.startsWith('EA24-') ? comment.slice(5) : comment || 'Manual';
+      const strategyMap: Record<string, string> = {
+        'SMC': 'กลยุทธ์ SMC', 'ICT': 'กลยุทธ์ ICT', 'Fibonacci': 'กลยุทธ์ Fibonacci',
+        'ScalperPro': 'Scalper Pro', 'TrendRider': 'Trend Rider', 'BreakoutHunter': 'Breakout Hunter',
+        'MeanRevert': 'Mean Revert', 'GridMaster': 'Grid Master', 'MomentumSurge': 'Momentum Surge',
+        'SessionSniper': 'Session Sniper', 'Manual': 'เปิดเอง', 'EA-Web': 'เปิดเอง',
+      };
+      const strategyThai = strategyMap[strategyRaw] || strategyRaw;
+      const dirThai = isBuy ? 'ซื้อ' : 'ขาย';
+      const isSelected = selectedPosition?.ticket === pos.ticket;
+      markers.push({
+        time: snappedTime,
+        position: isBuy ? 'belowBar' as const : 'aboveBar' as const,
+        color: isSelected ? (isBuy ? '#00ff88' : '#ff4466') : (isBuy ? '#089981' : '#f23645'),
+        shape: isBuy ? 'arrowUp' as const : 'arrowDown' as const,
+        text: `${dirThai} ${pos.volume} | ${strategyThai}`,
+      });
+    }
+
+    // Sort by time (required by lightweight-charts)
+    markers.sort((a, b) => a.time - b.time);
+    return markers;
+  }, [selectedPosition, chartTf, strategySignals, activeSymbol, account]);
 
   const chartPriceLines = useMemo<ChartPriceLine[]>(() => {
     if (!selectedPosition) return [];
@@ -421,6 +507,7 @@ const TradingDashboard = () => {
   const fetchHistoryState = useRef<string>('');
   
   const loadingTimeoutRef = useRef<any>(null);
+  const candleCacheRef = useRef<Record<string, OHLCCandle[]>>({});
 
   const requestHistory = useCallback((ws?: WebSocket | null) => {
     const target = ws || wsRef.current;
@@ -432,7 +519,7 @@ const TradingDashboard = () => {
       loadingTimeoutRef.current = setTimeout(() => setIsLoadingHistory(false), 5000);
       const stateKey = `${activeSymbolRef.current}_${chartTfRef.current}`;
       fetchHistoryState.current = stateKey;
-      target.send(JSON.stringify({ action: 'get_history', symbol: activeSymbolRef.current, timeframe: chartTfRef.current, limit: 500 }));
+      target.send(JSON.stringify({ action: 'get_history', symbol: activeSymbolRef.current, timeframe: chartTfRef.current, limit: 200 }));
     }
   }, []);
 
@@ -443,6 +530,8 @@ const TradingDashboard = () => {
       console.log('[WS] ✅ Connected successfully!');
       // Request history as soon as WS connects
       setTimeout(() => requestHistory(ws), 500);
+      // Request strategy signals history
+      setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ action: 'get_signals', limit: 50 })); }, 800);
     };
     ws.onerror = (err) => { console.error('[WS] ❌ Error:', err); };
     ws.onclose = (evt) => { console.log('[WS] Closed: code=', evt.code, 'reason=', evt.reason); setEaConnected(false); setTimeout(connectWs, 3000); };
@@ -517,6 +606,9 @@ const TradingDashboard = () => {
                   const lastNew = data.candles[data.candles.length - 1];
                   if (lastOld.time === lastNew.time && lastOld.close === lastNew.close) return prev;
                 }
+                // Cache candles for fast symbol switching
+                const cacheKey = `${data.symbol || activeSymbolRef.current}_${data.timeframe || chartTfRef.current}`;
+                candleCacheRef.current[cacheKey] = data.candles;
                 return data.candles;
               });
             }
@@ -553,6 +645,29 @@ const TradingDashboard = () => {
             return converted;
           });
         }
+        // Handle strategy_signal from engine (real-time)
+        if (data.type === 'strategy_signal') {
+          if (data.symbol && data.signal) {
+            setStrategySignals(prev => {
+              const entry: StrategySignalEntry = {
+                setup_id: data.setup_id, signal: data.signal, symbol: data.symbol,
+                strategy: data.strategy, reason: data.reason,
+                timestamp: new Date().toISOString(),
+              };
+              return [entry, ...prev].slice(0, 100);
+            });
+          }
+        }
+        // Handle strategy_signals history (bulk from get_signals)
+        if (data.type === 'strategy_signals') {
+          if (data.signals) {
+            setStrategySignals(data.signals.map((s: any) => ({
+              setup_id: s.setup_id, signal: s.signal_type, symbol: s.symbol || '',
+              strategy: s.strategy || '', reason: s.reason || '',
+              timestamp: s.timestamp,
+            })));
+          }
+        }
       } catch { /* */ }
     };
     wsRef.current = ws;
@@ -563,10 +678,19 @@ const TradingDashboard = () => {
 
   // Request candle history on symbol/timeframe change
   useEffect(() => {
-    setCandles([]); // Clear chart immediately for new symbol/TF
+    // Check cache first for instant switching
+    const cacheKey = `${activeSymbol}_${chartTf}`;
+    const cached = candleCacheRef.current[cacheKey];
+    if (cached && cached.length > 0) {
+      setCandles(cached);
+      setIsLoadingHistory(false);
+    } else {
+      setCandles([]); // Clear chart immediately for new symbol/TF
+      setIsLoadingHistory(true); // Show loading spinner immediately
+    }
     fetchHistoryState.current = ''; // Reset so welcome handler won't block
-    const t = setTimeout(() => requestHistory(), 300);
-    return () => clearTimeout(t);
+    // Request fresh data immediately (no delay)
+    requestHistory();
   }, [activeSymbol, chartTf, requestHistory]);
   const handleCloseTrade = () => { send({ action: 'close_trade', ticket: closeModal.ticket }); setCloseModal({ show: false, ticket: 0, symbol: '' }); };
 
@@ -589,6 +713,7 @@ const TradingDashboard = () => {
       return (
         <div className="flex-1 flex flex-col overflow-auto p-4 gap-4">
           {/* Account Overview */}
+          {!chartFullscreen && (
           <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 w-full">
             {[
               { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: 'text-default-900' },
@@ -602,10 +727,11 @@ const TradingDashboard = () => {
               </div>
             ))}
           </div>
+          )}
 
           {/* Chart & Open Positions Split */}
-          <div className="flex-1 flex flex-col gap-4 min-h-0">
-            <div className="card flex-1 !rounded-2xl !p-5 flex flex-col" style={{ minHeight: 300 }}>
+          <div className={`flex-1 flex flex-col gap-4 min-h-0 ${chartFullscreen ? 'fixed inset-0 z-[9998] bg-body-bg p-2' : ''}`}>
+            <div className={`card flex-1 !rounded-2xl !p-5 flex flex-col ${chartFullscreen ? '!rounded-none' : ''}`} style={{ minHeight: chartFullscreen ? undefined : 300 }}>
               <div className="text-sm font-bold text-default-900 mb-3 flex justify-between items-center">
                 <span>{activeSymbol}</span>
                 <div className="flex items-center gap-2">
@@ -616,11 +742,32 @@ const TradingDashboard = () => {
                       >{tf}</button>
                     ))}
                   </div>
-                  <span className={`text-[11px] font-medium flex items-center gap-1.5 ${(!eaConnected) ? 'text-danger' : ((Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000 ? 'text-warning' : 'text-success')}`}>
-                    <span className={`inline-block size-1.5 rounded-full ${(!eaConnected || (Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000) ? 'bg-danger' : 'bg-success animate-pulse'}`} />
-                    {!eaConnected ? 'Offline' : ((Date.now() - (lastPriceUpdateTime[activeSymbol] || Date.now())) > 120000 ? 'ตลาดปิด' : 'Live')}
-                  </span>
-                  <span className="text-[10px] text-default-400 font-mono">({candles.length})</span>
+                  {/* Zoom controls */}
+                  <div className="flex items-center bg-default-100 dark:bg-default-200/20 rounded-lg p-0.5 gap-0.5">
+                    <button
+                      onClick={() => setChartBarSpacing(prev => Math.max(3, prev - 2))}
+                      className="p-1 rounded-md text-default-500 hover:text-default-800 dark:hover:text-white hover:bg-default-200 dark:hover:bg-default-300/20 transition-all"
+                      title="ย่อแท่งเทียน"
+                    >
+                      <LuZoomOut size={13} />
+                    </button>
+                    <span className="text-[9px] text-default-400 font-mono w-5 text-center select-none">{chartBarSpacing}</span>
+                    <button
+                      onClick={() => setChartBarSpacing(prev => Math.min(40, prev + 2))}
+                      className="p-1 rounded-md text-default-500 hover:text-default-800 dark:hover:text-white hover:bg-default-200 dark:hover:bg-default-300/20 transition-all"
+                      title="ขยายแท่งเทียน"
+                    >
+                      <LuZoomIn size={13} />
+                    </button>
+                  </div>
+                  {/* Fullscreen toggle */}
+                  <button
+                    onClick={() => setChartFullscreen(f => !f)}
+                    className="p-1.5 rounded-lg bg-default-100 dark:bg-default-200/20 text-default-500 hover:text-default-800 dark:hover:text-white hover:bg-default-200 dark:hover:bg-default-300/20 transition-all"
+                    title={chartFullscreen ? 'ย่อกราฟ (Esc)' : 'ขยายกราฟเต็มจอ'}
+                  >
+                    {chartFullscreen ? <LuMinimize2 size={13} /> : <LuMaximize2 size={13} />}
+                  </button>
                 </div>
               </div>
               <div className="flex-1 relative" style={{ minHeight: 300 }}>
@@ -631,22 +778,29 @@ const TradingDashboard = () => {
                       <span className="text-sm font-medium text-default-700">Loading Chart...</span>
                     </div>
                   )}
-                  
-                  {isMarketClosedDynamic(activeSymbol) && candles.length > 0 && (
-                    <div className="absolute inset-0 z-40 flex flex-col items-center justify-center bg-card/40 backdrop-blur-[2px] rounded-lg">
-                       <h2 className="text-lg font-bold text-default-700">ตลาดปิด (Market Closed)</h2>
-                       <p className="text-default-500 mt-1 text-center text-xs max-w-md">กราฟแสดงข้อมูลย้อนหลัง — ราคาจะกลับมาเคลื่อนไหวเมื่อตลาดเปิด</p>
+
+                  {/* Market Closed Overlay — displayed on chart */}
+                  {isMarketClosedDynamic(activeSymbol) && (
+                    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-[2px] rounded-lg pointer-events-none transition-all duration-300">
+                      <div className="text-center bg-card/80 dark:bg-card/60 backdrop-blur-md px-12 py-8 rounded-3xl border border-danger/30 shadow-2xl transform scale-100">
+                        <div className="text-4xl md:text-5xl font-black text-danger drop-shadow-lg tracking-wide flex items-center justify-center gap-3 uppercase">
+                          <LuShieldAlert className="size-10 md:size-12 text-danger" />
+                          Market Closed
+                        </div>
+                      </div>
                     </div>
                   )}
+                  
                   <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
                     markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
+                    barSpacing={chartBarSpacing}
                   />
 
                 </div>
               </div>
             </div>
 
-            <div className="card !rounded-2xl !p-5 flex-shrink-0" style={{ maxHeight: 220, overflow: 'auto' }}>
+            {!chartFullscreen && <div className="card !rounded-2xl !p-5 flex-shrink-0" style={{ maxHeight: 220, overflow: 'auto' }}>
               <div className="text-[13px] font-bold text-default-900 mb-4">Open Positions ({positions.length})</div>
               {positions.length > 0 ? (
                 <div className="w-full overflow-x-auto whitespace-nowrap">
@@ -691,7 +845,7 @@ const TradingDashboard = () => {
                 {eaConnected ? 'No open positions' : 'Waiting for MT5 connection...'}
               </div>
             )}
-            </div>
+            </div>}
           </div>
 
         </div>

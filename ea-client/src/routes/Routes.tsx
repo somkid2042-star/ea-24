@@ -7,6 +7,7 @@ const MT5Settings = lazy(() => import('@/app/(admin)/(config)/mt5'));
 const ServerSettings = lazy(() => import('@/app/(admin)/(config)/server'));
 const DatabaseSettings = lazy(() => import('@/app/(admin)/(config)/database'));
 const SecuritySettings = lazy(() => import('@/app/(admin)/(config)/security'));
+const AiSettings = lazy(() => import('@/app/(admin)/(config)/ai-settings'));
 
 const StrategyBuilder = lazy(() => import('@/app/(admin)/(config)/strategy-builder'));
 const StrategyBacktest = lazy(() => import('@/app/(admin)/(config)/strategy-backtest'));
@@ -23,6 +24,7 @@ export const layoutsRoutes: RoutesProps[] = [
   { path: '/config/server', element: <ServerSettings />, name: 'Server Settings' },
   { path: '/config/database', element: <DatabaseSettings />, name: 'Database Settings' },
   { path: '/config/security', element: <SecuritySettings />, name: 'Security & License' },
+  { path: '/config/ai', element: <AiSettings />, name: 'AI Settings' },
 
   { path: '/strategy/builder', element: <StrategyBuilder />, name: 'Strategy Builder' },
   { path: '/strategy/backtest', element: <StrategyBacktest />, name: 'Backtest' },
