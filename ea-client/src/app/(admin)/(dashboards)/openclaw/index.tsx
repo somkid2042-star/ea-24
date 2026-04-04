@@ -122,7 +122,7 @@ const OpenClawDashboard = () => {
 
   const rejectProposal = () => setTradeProposal(null);
 
-  const getAgentColor = (key: string, status: AgentStatus) => {
+  const getAgentColor = (_key: string, status: AgentStatus) => {
      if (status === 'running') return 'text-primary animate-pulse';
      if (status === 'error') return 'text-danger';
      if (status === 'done') return 'text-success';
