@@ -144,39 +144,38 @@ async fn main() {
 /// This ensures only ONE instance runs at a time after updates.
 fn kill_old_instances() {
     let my_pid = std::process::id();
+    let mut killed = 0;
 
-    // Use pkill to kill all ea-server processes except ourselves
     #[cfg(unix)]
     {
-        // Method 1: Use /proc to find and kill ea-server processes (Linux)
+        // Scan /proc to find ea-server processes — skip our own PID
         if let Ok(entries) = std::fs::read_dir("/proc") {
             for entry in entries.flatten() {
                 let pid_str = entry.file_name().to_string_lossy().to_string();
                 if let Ok(pid) = pid_str.parse::<u32>() {
                     if pid == my_pid {
-                        continue; // Don't kill ourselves
+                        continue; // Don't kill ourselves!
                     }
-                    // Check if this process is ea-server
                     let cmdline_path = format!("/proc/{}/cmdline", pid);
                     if let Ok(cmdline) = std::fs::read_to_string(&cmdline_path) {
                         if cmdline.contains("ea-server") {
                             eprintln!("🔪 Killing old ea-server process (PID: {})", pid);
-                            unsafe {
-                                libc_kill(pid as i32, 9); // SIGKILL
-                            }
+                            unsafe { libc_kill(pid as i32, 9); }
+                            killed += 1;
                         }
                     }
                 }
             }
         }
-
-        // Method 2: Fallback — use pkill command
-        let _ = std::process::Command::new("bash")
-            .args(["-c", &format!("pkill -9 -f ea-server && sleep 1 || true")])
-            .output();
     }
 
-    eprintln!("✅ Old instances cleared. Starting fresh (PID: {})...", my_pid);
+    if killed > 0 {
+        eprintln!("✅ Killed {} old instance(s). Starting fresh (PID: {})...", killed, my_pid);
+        // Give OS time to release ports
+        std::thread::sleep(std::time::Duration::from_secs(2));
+    } else {
+        eprintln!("✅ No old instances found. Starting fresh (PID: {})...", my_pid);
+    }
 }
 
 #[cfg(unix)]
