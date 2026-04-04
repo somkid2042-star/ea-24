@@ -113,6 +113,11 @@ struct EaState {
 #[tokio::main]
 async fn main() {
     // ---------------------------------------------------------
+    // Kill any old ea-server processes before starting
+    // ---------------------------------------------------------
+    kill_old_instances();
+
+    // ---------------------------------------------------------
     // Single Instance Lock
     // ---------------------------------------------------------
     let lock_addr = std::net::SocketAddr::from(([127, 0, 0, 1], 4174));
@@ -133,6 +138,55 @@ async fn main() {
     builder.init();
 
     run_server().await;
+}
+
+/// Kill all other ea-server processes except the current one.
+/// This ensures only ONE instance runs at a time after updates.
+fn kill_old_instances() {
+    let my_pid = std::process::id();
+
+    // Use pkill to kill all ea-server processes except ourselves
+    #[cfg(unix)]
+    {
+        // Method 1: Use /proc to find and kill ea-server processes (Linux)
+        if let Ok(entries) = std::fs::read_dir("/proc") {
+            for entry in entries.flatten() {
+                let pid_str = entry.file_name().to_string_lossy().to_string();
+                if let Ok(pid) = pid_str.parse::<u32>() {
+                    if pid == my_pid {
+                        continue; // Don't kill ourselves
+                    }
+                    // Check if this process is ea-server
+                    let cmdline_path = format!("/proc/{}/cmdline", pid);
+                    if let Ok(cmdline) = std::fs::read_to_string(&cmdline_path) {
+                        if cmdline.contains("ea-server") {
+                            eprintln!("🔪 Killing old ea-server process (PID: {})", pid);
+                            unsafe {
+                                libc_kill(pid as i32, 9); // SIGKILL
+                            }
+                        }
+                    }
+                }
+            }
+        }
+
+        // Method 2: Fallback — use pkill command
+        let _ = std::process::Command::new("bash")
+            .args(["-c", &format!("pkill -9 -f ea-server && sleep 1 || true")])
+            .output();
+    }
+
+    eprintln!("✅ Old instances cleared. Starting fresh (PID: {})...", my_pid);
+}
+
+#[cfg(unix)]
+extern "C" {
+    fn kill(pid: i32, sig: i32) -> i32;
+}
+
+#[cfg(unix)]
+unsafe fn libc_kill(pid: i32, sig: i32) {
+    kill(pid, sig);
 }
 
 async fn run_server() {

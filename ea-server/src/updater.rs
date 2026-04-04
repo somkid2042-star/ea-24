@@ -178,9 +178,15 @@ async fn download_and_install(url: &str, client: reqwest::Client, token: Option<
 }
 
 /// Restart the server process.
-/// On Linux with systemd: uses `systemctl restart ea-server` for graceful restart.
-/// Fallback: re-exec the current binary.
+/// Kills all old ea-server processes first, then restarts via systemd.
 fn restart_server() {
+    info!("🔪 Killing all old ea-server processes before restart...");
+    
+    // Kill ALL ea-server processes (including this one — systemd will restart us)
+    let _ = std::process::Command::new("bash")
+        .args(["-c", "pkill -9 -f ea-server || true"])
+        .output();
+
     // Check if running under systemd
     if std::env::var("INVOCATION_ID").is_ok() || is_systemd_service() {
         info!("🔄 Detected systemd — using systemctl restart...");
