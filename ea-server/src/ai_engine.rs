@@ -177,9 +177,13 @@ pub struct AiAnalysis {
 //  Helper: Call Gemini API
 // ──────────────────────────────────────────────
 
-async fn call_gemini(api_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32) -> Result<String, String> {
+async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32) -> Result<String, String> {
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
-    let url = format!("{}/{}:generateContent?key={}", GEMINI_API_BASE, model_name, api_key);
+    let keys: Vec<&str> = api_keys_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    
+    if keys.is_empty() {
+        return Err("API Key is empty".to_string());
+    }
 
     let request = GeminiRequest {
         contents: vec![Content { parts: vec![Part { text: prompt.to_string() }] }],
@@ -190,28 +194,69 @@ async fn call_gemini(api_key: &str, model: &str, prompt: &str, temp: f64, max_to
         .timeout(std::time::Duration::from_secs(45))
         .build().map_err(|e| format!("HTTP client error: {}", e))?;
 
-    let resp = client.post(&url).json(&request).send().await
-        .map_err(|e| format!("API request failed: {}", e))?;
+    let mut last_error = "Unknown error".to_string();
 
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("API error: {}", body));
+    for (i, key) in keys.iter().enumerate() {
+        let url = format!("{}/{}:generateContent?key={}", GEMINI_API_BASE, model_name, key);
+        
+        let resp = match client.post(&url).json(&request).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("API request failed: {}", e);
+                // If it's a network error, maybe the next key works, maybe not, but we continue.
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            last_error = format!("API error ({}): {}", status, body);
+            
+            // Loop continuing on Rate Limit (429), Quota/Forbidden (403), or Server Error (500+)
+            if status.as_u16() == 429 || status.as_u16() == 403 || status.is_server_error() {
+                if i < keys.len() - 1 {
+                    warn!("⚠️ Gemini API Key {} hit limit/error ({}), trying next key...", i+1, status);
+                    continue;
+                }
+            } else if status.as_u16() == 400 {
+                // Bad request (likely prompt issue), don't retry on other keys
+                return Err(last_error);
+            }
+            if i < keys.len() - 1 { continue; } else { return Err(last_error); }
+        }
+
+        let gemini_resp: GeminiResponse = match resp.json().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("Parse error: {}", e);
+                if i < keys.len() - 1 { continue; } else { return Err(last_error); }
+            }
+        };
+
+        if let Some(err) = gemini_resp.error {
+            last_error = format!("Gemini error: {}", err.message);
+            // Check if error is quota related based on message
+            if err.message.to_lowercase().contains("quota") || err.message.contains("429") {
+                 if i < keys.len() - 1 {
+                     warn!("⚠️ Gemini API Key {} hit quota, trying next...", i+1);
+                     continue;
+                 }
+            }
+            return Err(last_error);
+        }
+
+        return gemini_resp.candidates
+            .and_then(|c| c.into_iter().next())
+            .and_then(|c| c.content)
+            .and_then(|c| c.parts)
+            .and_then(|p| p.into_iter().next())
+            .and_then(|p| p.text)
+            .ok_or_else(|| "Empty response".to_string());
     }
 
-    let gemini_resp: GeminiResponse = resp.json().await
-        .map_err(|e| format!("Parse error: {}", e))?;
-
-    if let Some(err) = gemini_resp.error {
-        return Err(format!("Gemini error: {}", err.message));
-    }
-
-    gemini_resp.candidates
-        .and_then(|c| c.into_iter().next())
-        .and_then(|c| c.content)
-        .and_then(|c| c.parts)
-        .and_then(|p| p.into_iter().next())
-        .and_then(|p| p.text)
-        .ok_or_else(|| "Empty response".to_string())
+    // If we exhausted all keys
+    Err(format!("โควต้า API Key เต็มหมดแล้ว (ลองไป {} คีย์) | Error เดี่ยวชี้: {}", keys.len(), last_error))
 }
 
 // ──────────────────────────────────────────────

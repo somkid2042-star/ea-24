@@ -167,7 +167,7 @@ const AiSettings = () => {
             type="password"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
-            placeholder="API Key (เช่น AIzaSy...) 🔑"
+            placeholder="ใส่ 1 คีย์ หรือหลายคีย์คั่นด้วยลูกน้ำ (คีย์1,คีย์2,คีย์3...) 🔑"
             className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
           />
         </div>
