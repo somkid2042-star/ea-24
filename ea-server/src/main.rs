@@ -1483,6 +1483,7 @@ async fn handle_ws_connection(
                                         let candles = db.get_candles_for_strategy(&sym, tf_min, 100).await;
                                         let tx_agents = tx.clone();
                                         
+                                        let sym_resp = sym.clone();
                                         tokio::spawn(async move {
                                             let result = ai_engine::run_all_agents(
                                                 &gemini_key, &gemini_model, &tavily_key,
@@ -1498,7 +1499,7 @@ async fn handle_ws_connection(
                                             let _ = tx_agents.send(resp.to_string());
                                         });
 
-                                        let resp = serde_json::json!({ "type": "agents_started", "symbol": sym });
+                                        let resp = serde_json::json!({ "type": "agents_started", "symbol": sym_resp });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     _ => {}
@@ -1995,7 +1996,7 @@ fn launch_mt5_instance(instance_dir: &Path) {
 
         if !ex5_exists || source_version != deployed_version {
             info!("🔧 Version changed ({} → {}), auto-compiling EA via MetaEditor...", deployed_version, source_version);
-            let mq5_win = format!("Z:{}", mq5_path.display().to_string().replace('/', "\\"));
+            let _mq5_win = format!("Z:{}", mq5_path.display().to_string().replace('/', "\\"));
             if let Ok(_) = std::process::Command::new("true")
                 .arg(&metaeditor_path)
                 .arg("-c").arg("exit 0")

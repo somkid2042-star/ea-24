@@ -308,7 +308,7 @@ pub async fn run_news_hunter(
     gemini_key: &str, model: &str, tavily_key: &str, symbol: &str,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> NewsResult {
-    let agent = "🔍 News Hunter";
+    let _agent = "🔍 News Hunter";
 
     // Send log: starting
     let _ = log_tx.send(serde_json::json!({
@@ -423,7 +423,7 @@ pub async fn run_chart_analyst(
     candles: &[crate::strategy::Candle],
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> ChartResult {
-    let agent = "📊 Chart Analyst";
+    let _agent = "📊 Chart Analyst";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "agent": "chart_analyst", "status": "running",
         "message": format!("กำลังวิเคราะห์กราฟ {} {} ({} candles)...", symbol, timeframe, candles.len())
@@ -512,7 +512,7 @@ pub async fn run_calendar_watcher(
     symbol: &str,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> CalendarResult {
-    let agent = "📅 Calendar";
+    let _agent = "📅 Calendar";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "agent": "calendar", "status": "running",
         "message": "กำลังตรวจสอบปฏิทินเศรษฐกิจ..."
@@ -593,7 +593,7 @@ pub fn run_risk_manager(
     emergency_stop: bool,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> RiskResult {
-    let agent = "🛡️ Risk Manager";
+    let _agent = "🛡️ Risk Manager";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "agent": "risk_manager", "status": "running",
         "message": format!("ตรวจสอบความเสี่ยง... Balance: ${:.2}, Equity: ${:.2}", balance, equity)
@@ -660,7 +660,7 @@ pub async fn run_decision_maker(
     calendar: &CalendarResult, risk: &RiskResult,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> (String, f64, String) {
-    let agent = "🧠 Decision Maker";
+    let _agent = "🧠 Decision Maker";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "agent": "decision_maker", "status": "running",
         "message": "กำลังรวมข้อมูลจากทุก Agent เพื่อตัดสินใจ..."
