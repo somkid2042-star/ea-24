@@ -83,6 +83,7 @@ const AiSettings = () => {
           setModels(data.models || []);
         }
         if (data.type === 'ai_test_result') {
+          if (testTimeoutRef.current) { clearTimeout(testTimeoutRef.current); testTimeoutRef.current = null; }
           setTesting(false);
           setTestResult({ success: data.success, message: data.message });
           setTimeout(() => setTestResult(null), 5000);
@@ -128,12 +129,23 @@ const AiSettings = () => {
     saveConfig('ai_auto_trade', autoTrade.toString());
   };
 
+  const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const testAi = () => {
     setTesting(true); setTestResult(null);
     // Save key first, then test
     saveConfig('gemini_api_key', apiKey);
     saveConfig('gemini_model', selectedModel);
     setTimeout(() => send({ action: 'test_ai' }), 300);
+    // Timeout 15s — ถ้า server ไม่ตอบกลับให้แสดง error
+    if (testTimeoutRef.current) clearTimeout(testTimeoutRef.current);
+    testTimeoutRef.current = setTimeout(() => {
+      setTesting(prev => {
+        if (prev) {
+          setTestResult({ success: false, message: 'หมดเวลา — Server ไม่ตอบกลับภายใน 15 วินาที (ตรวจสอบว่า ea-server รันอยู่หรือไม่)' });
+        }
+        return false;
+      });
+    }, 15000);
   };
 
   const sendChat = () => {
@@ -182,7 +194,7 @@ const AiSettings = () => {
 
         <div className="flex gap-2">
           <input
-            type="password"
+            type="text"
             value={apiKey}
             onChange={(e) => setApiKey(e.target.value)}
             placeholder="ใส่ 1 คีย์ หรือหลายคีย์คั่นด้วยลูกน้ำ (คีย์1,คีย์2,คีย์3...) 🔑"

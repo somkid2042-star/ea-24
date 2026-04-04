@@ -20,7 +20,7 @@ const SecuritySettings = () => {
           <div className="grid grid-cols-1 gap-4 md:grid-cols-2">
             <div>
               <label className="mb-1.5 block text-sm font-medium text-default-700">API Key</label>
-              <input type="password" defaultValue="ea24-api-key-xxxx" className="form-input" />
+              <input type="text" defaultValue="ea24-api-key-xxxx" className="form-input" />
             </div>
             <div>
               <label className="mb-1.5 block text-sm font-medium text-default-700">JWT Secret</label>
