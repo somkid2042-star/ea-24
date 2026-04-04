@@ -210,7 +210,7 @@ const AiSettings = () => {
               onChange={(e) => setSelectedModel(e.target.value)}
               className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30 appearance-none cursor-pointer"
             >
-              <option value="">เลือกโมเดล (ค่าเริ่มต้น: Gemini 2.5 Pro)</option>
+              <option value="">เลือกโมเดล (ค่าเริ่มต้น: Gemini 1.5 Pro)</option>
               {models.map(m => (
                 <option key={m.id} value={m.id}>{m.name}</option>
               ))}
