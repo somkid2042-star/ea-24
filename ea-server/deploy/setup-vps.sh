@@ -30,6 +30,11 @@ if [ -z "$LATEST_URL" ]; then
     exit 1
 fi
 
+if systemctl is-active --quiet ${SERVICE_NAME}; then
+    echo "🛑 Stopping ${SERVICE_NAME} before update..."
+    systemctl stop ${SERVICE_NAME}
+fi
+
 echo "   URL: ${LATEST_URL}"
 wget -O ${INSTALL_DIR}/ea-server "${LATEST_URL}"
 chmod +x ${INSTALL_DIR}/ea-server
