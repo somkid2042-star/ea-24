@@ -5,7 +5,7 @@
 //  Uses Gemini 2.5 Pro + Tavily Search (Free)
 // ──────────────────────────────────────────────
 
-use log::{info, error, warn};
+use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";

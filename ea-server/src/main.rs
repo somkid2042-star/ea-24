@@ -315,7 +315,9 @@ async fn run_server() {
                             }).to_string();
                             let _ = tx_ai.send(proposal);
                             
-                            notify::send_telegram(&db_ai, &format!("🚨 <b>AI Trade Proposal: {} {}</b>\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning), None).await;
+                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🚨 AI Trade Proposal: {} {}\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning)).await;
                         }
                     }
                 }
