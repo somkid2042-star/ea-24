@@ -101,6 +101,9 @@ struct EaState {
     version: String,
     symbol: String,
     gap_status: std::collections::HashMap<String, String>,
+    balance: f64,
+    equity: f64,
+    open_positions: usize,
 }
 
 // ──────────────────────────────────────────────
@@ -199,6 +202,9 @@ async fn run_server() {
         version: "unknown".to_string(),
         symbol: "".to_string(),
         gap_status: std::collections::HashMap::new(),
+        balance: 0.0,
+        equity: 0.0,
+        open_positions: 0,
     }));
 
     let (tx, _rx) = broadcast::channel::<String>(100);
@@ -228,6 +234,96 @@ async fn run_server() {
                 ea_state_mt5.clone(),
                 db_mt5.clone(),
             ));
+        }
+    });
+
+    // Spawn AI Auto-Pilot loop
+    let db_ai = database.clone();
+    let tx_ai = tx.clone();
+    let ea_state_ai = ea_state.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
+        let mut last_run = std::time::Instant::now();
+        // Set last loop to be 'interval' minus 5 seconds away so it triggers almost instantly on boot
+        // We'll calculate it inside the loop depending on config
+
+        loop {
+            let auto_analyze = db_ai.get_config("ai_auto_analyze").await.unwrap_or_else(|| "false".to_string()) == "true";
+            if auto_analyze {
+                let interval_str = db_ai.get_config("ai_analyze_interval").await.unwrap_or_else(|| "5".to_string());
+                let interval_min: u64 = interval_str.parse().unwrap_or(5);
+                
+                if last_run.elapsed().as_secs() >= interval_min * 60 {
+                    last_run = std::time::Instant::now();
+                    
+                    let sym = db_ai.get_config("ai_target_symbol").await.unwrap_or_else(|| "XAUUSD".to_string());
+                    let tf = db_ai.get_config("ai_analyze_timeframe").await.unwrap_or_else(|| "M15".to_string());
+                    let auto_trade = db_ai.get_config("ai_auto_trade").await.unwrap_or_else(|| "false".to_string()) == "true";
+                    let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
+                    
+                    info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
+                    
+                    let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
+                    let _ = tx_ai.send(start_msg);
+                    
+                    let gemini_key = db_ai.get_config("gemini_api_key").await.unwrap_or_default();
+                    let gemini_model = db_ai.get_config("gemini_model").await.unwrap_or_default();
+                    let tavily_key = db_ai.get_config("tavily_api_key").await.unwrap_or_default();
+                    
+                    let tf_min: i64 = match tf.as_str() { "M1"=>1, "M5"=>5, "M15"=>15, "M30"=>30, "H1"=>60, "H4"=>240, "D1"=>1440, _=>15 };
+                    let candles = db_ai.get_candles_for_strategy(&sym, tf_min, 100).await;
+                    
+                    let (bal, eq, open_pos) = {
+                        let state = ea_state_ai.read().await;
+                        (state.balance, state.equity, state.open_positions)
+                    };
+                    
+                    let result = ai_engine::run_all_agents(
+                        &gemini_key, &gemini_model, &tavily_key,
+                        &sym, &tf, &candles,
+                        if bal > 0.0 { bal } else { 10000.0 }, 
+                        if eq > 0.0 { eq } else { 10000.0 }, 
+                        open_pos, 5, 10.0, false, 
+                        &tx_ai
+                    ).await;
+                    
+                    let resp = serde_json::json!({
+                        "type": "multi_agent_result",
+                        "result": result
+                    });
+                    let _ = tx_ai.send(resp.to_string());
+                    
+                    if result.final_decision == "BUY" || result.final_decision == "SELL" {
+                        if auto_trade {
+                            info!("🤖 [Auto-Pilot] Executing {} order automatically on {}", result.final_decision, sym);
+                            let cmd = serde_json::json!({
+                                "action": "open_trade",
+                                "symbol": sym,
+                                "direction": result.final_decision,
+                                "lot_size": auto_lot
+                            }).to_string();
+                            let _ = tx_ai.send(cmd);
+                        } else {
+                            info!("🤖 [Auto-Pilot] Proposing {} order on {}, awaiting user confirmation", result.final_decision, sym);
+                            let proposal = serde_json::json!({
+                                "type": "ai_trade_proposal",
+                                "symbol": sym,
+                                "direction": result.final_decision,
+                                "confidence": result.confidence,
+                                "reasoning": result.reasoning,
+                                "lot_size": auto_lot
+                            }).to_string();
+                            let _ = tx_ai.send(proposal);
+                            
+                            notify::send_telegram(&db_ai, &format!("🚨 <b>AI Trade Proposal: {} {}</b>\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning), None).await;
+                        }
+                    }
+                }
+            } else {
+                 // reset last_run to ensure immediate run when re-enabled
+                 last_run = std::time::Instant::now() - std::time::Duration::from_secs(86400);
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
     });
 
@@ -482,9 +578,18 @@ async fn handle_mt5_connection(
                                     } else if msg_type == Some("account_data") {
                                         // Server-side trailing stop
                                         if let Some(positions) = val.get("positions").and_then(|p| p.as_array()) {
-                                            // 1. Risk Alert Logic
                                             let balance = val["balance"].as_f64().unwrap_or(0.0);
+                                            let equity = val["equity"].as_f64().unwrap_or(balance);
                                             let mut risk_usd = 0.0;
+                                            
+                                            // Update EaState
+                                            {
+                                                let mut st = ea_state.write().await;
+                                                st.balance = balance;
+                                                st.equity = equity;
+                                                st.open_positions = positions.len();
+                                            }
+
                                             for p in positions {
                                                 let pnl = p["pnl"].as_f64().unwrap_or(0.0);
                                                 if pnl < 0.0 { risk_usd += pnl.abs(); }
@@ -1414,7 +1519,7 @@ async fn handle_ws_connection(
                 match tick_result {
                     Ok(json) => {
                         // Forward ticks, ea_info, account_data, market_watch, alerts, and trade commands to UI
-                        if json.contains("\"tick\"") || json.contains("\"history\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") || json.contains("\"ai_response\"") || json.contains("\"ai_analysis\"") || json.contains("\"agent_log\"") || json.contains("\"multi_agent_result\"") {
+                        if json.contains("\"tick\"") || json.contains("\"history\"") || json.contains("\"ea_info\"") || json.contains("\"account_data\"") || json.contains("\"market_watch\"") || json.contains("\"trade_result\"") || json.contains("\"trade_history\"") || json.contains("\"update_status\"") || json.contains("\"alert\"") || json.contains("\"modify_sl\"") || json.contains("\"strategy_signal\"") || json.contains("\"engine_status\"") || json.contains("\"candle_data\"") || json.contains("\"ai_response\"") || json.contains("\"ai_analysis\"") || json.contains("\"agent_log\"") || json.contains("\"multi_agent_result\"") || json.contains("\"ai_trade_proposal\"") || json.contains("\"agents_started\"") {
                             if let Err(e) = write.send(Message::Text(json)).await {
                                 error!("❌ [UI] Send error to {}: {}", peer_addr, e);
                                 break;

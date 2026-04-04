@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LuBot, LuTerminal, LuSettings, LuPlay, LuCheckCircle2, LuXCircle, LuLoader2, LuShield, LuCalendar, LuGlobe, LuLineChart, LuBrainCircuit } from 'react-icons/lu';
+import { LuBot, LuTerminal, LuPlay, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit } from 'react-icons/lu';
 
 type AiLog = { timestamp: number; agent: string; status: string; message: string; };
 
@@ -28,7 +28,9 @@ const OpenClawDashboard = () => {
     decision_maker: 'idle',
     orchestrator: 'idle',
   });
+  const [agentLatestLog, setAgentLatestLog] = useState<Record<string, string>>({});
   const [finalResult, setFinalResult] = useState<any>(null);
+  const [tradeProposal, setTradeProposal] = useState<any>(null);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   
@@ -62,6 +64,7 @@ const OpenClawDashboard = () => {
           
           if (data.agent) {
              setAgentStatus(prev => ({ ...prev, [data.agent]: data.status }));
+             setAgentLatestLog(prev => ({ ...prev, [data.agent]: data.message }));
           }
         }
         
@@ -71,7 +74,7 @@ const OpenClawDashboard = () => {
           setAgentStatus(prev => ({ ...prev, orchestrator: 'done' }));
         }
 
-        if (data.type === 'agents_started') {
+         if (data.type === 'agents_started') {
            setAgentStatus({
              news_hunter: 'idle',
              chart_analyst: 'idle',
@@ -80,7 +83,13 @@ const OpenClawDashboard = () => {
              decision_maker: 'idle',
              orchestrator: 'running',
            });
+           setAgentLatestLog({});
            setFinalResult(null);
+           setTradeProposal(null);
+        }
+
+        if (data.type === 'ai_trade_proposal') {
+           setTradeProposal(data);
         }
 
       } catch (e) {}
@@ -100,6 +109,19 @@ const OpenClawDashboard = () => {
     }));
   };
 
+  const acceptProposal = () => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !tradeProposal) return;
+    wsRef.current.send(JSON.stringify({
+      action: "open_trade",
+      symbol: tradeProposal.symbol,
+      direction: tradeProposal.direction,
+      lot_size: tradeProposal.lot_size || 0.01
+    }));
+    setTradeProposal(null);
+  };
+
+  const rejectProposal = () => setTradeProposal(null);
+
   const getAgentColor = (key: string, status: AgentStatus) => {
      if (status === 'running') return 'text-primary animate-pulse';
      if (status === 'error') return 'text-danger';
@@ -110,7 +132,7 @@ const OpenClawDashboard = () => {
   const getAgentIcon = (key: string) => {
       switch (key) {
          case 'news_hunter': return <LuGlobe size={24} />;
-         case 'chart_analyst': return <LuLineChart size={24} />;
+         case 'chart_analyst': return <LuActivity size={24} />;
          case 'calendar': return <LuCalendar size={24} />;
          case 'risk_manager': return <LuShield size={24} />;
          case 'decision_maker': return <LuBrainCircuit size={24} />;
@@ -177,7 +199,7 @@ const OpenClawDashboard = () => {
            disabled={isAnalyzing || !connected}
            className="btn btn-primary ml-auto flex items-center gap-2 font-bold"
          >
-           {isAnalyzing ? <LuLoader2 className="animate-spin" /> : <LuPlay />}
+           {isAnalyzing ? <LuLoader className="animate-spin" /> : <LuPlay />}
            เริ่มรัน 5 Agents ทันที
          </button>
       </div>
@@ -190,22 +212,46 @@ const OpenClawDashboard = () => {
            <div className="card !rounded-2xl p-5 border-none shadow-xl bg-gradient-to-br from-card to-default-100">
               <h3 className="text-lg font-bold mb-4 flex items-center gap-2"><LuBot className="text-primary" /> Active Agents</h3>
               <div className="flex flex-col gap-3">
-                 {Object.keys(agentNames).map(key => (
-                    <div key={key} className="flex items-center gap-4 p-3 rounded-lg bg-background border border-default-200/50 shadow-sm">
-                       <div className={`p-2 rounded-lg bg-default-100 ${getAgentColor(key, agentStatus[key as keyof AgentStatusMap])}`}>
+                 {Object.keys(agentNames).map(key => {
+                    const status = agentStatus[key as keyof AgentStatusMap];
+                    const isRunning = status === 'running';
+                    const isError = status === 'error';
+                    const isDone = status === 'done';
+                    return (
+                    <div key={key} className={`flex items-center gap-4 p-4 rounded-xl transition-all duration-500 bg-background border shadow-sm ${isRunning ? 'border-primary/50 shadow-primary/10 shadow-lg scale-[1.02] translate-x-1' : isDone ? 'border-success/30' : 'border-default-200/50'}`}>
+                       <div className={`p-3 rounded-xl bg-default-100 transition-colors duration-300 ${getAgentColor(key, status)} ${isRunning ? 'bg-primary/10' : ''}`}>
                           {getAgentIcon(key)}
                        </div>
-                       <div className="flex-1">
-                          <h4 className="font-bold text-sm">{agentNames[key]}</h4>
-                          <p className="text-xs text-default-500 capitalize">{agentStatus[key as keyof AgentStatusMap]}</p>
+                       <div className="flex-1 min-w-0">
+                          <h4 className="font-bold text-sm tracking-wide">{agentNames[key]}</h4>
+                          {isRunning ? (
+                             <div className="mt-1">
+                                <p className="text-xs text-primary font-mono truncate pr-2 animate-pulse">
+                                   &gt; {agentLatestLog[key] || "กำลังทำงาน..."}
+                                </p>
+                                <div className="h-1 w-full bg-primary/20 rounded-full overflow-hidden mt-2 relative">
+                                   <div className="absolute top-0 left-0 h-full bg-primary w-full animate-[pulse_1s_ease-in-out_infinite]" style={{ transformOrigin: "left" }}></div>
+                                </div>
+                             </div>
+                          ) : isDone ? (
+                             <p className="text-xs text-success font-medium mt-1 truncate">
+                                ✅ {agentLatestLog[key] || "เสร็จสมบูรณ์"}
+                             </p>
+                          ) : isError ? (
+                             <p className="text-xs text-danger font-medium mt-1 truncate">
+                                ❌ {agentLatestLog[key] || "เกิดข้อผิดพลาด"}
+                             </p>
+                          ) : (
+                             <p className="text-xs text-default-400 mt-1 capitalize tracking-wide">{status}</p>
+                          )}
                        </div>
                        <div>
-                          {agentStatus[key as keyof AgentStatusMap] === 'running' && <LuLoader2 className="animate-spin text-primary" />}
-                          {agentStatus[key as keyof AgentStatusMap] === 'done' && <LuCheckCircle2 className="text-success" />}
-                          {agentStatus[key as keyof AgentStatusMap] === 'error' && <LuXCircle className="text-danger" />}
+                          {isRunning && <LuLoader className="animate-spin text-primary size-5" />}
+                          {isDone && <LuCheck className="text-success size-5" />}
+                          {isError && <LuX className="text-danger size-5" />}
                        </div>
                     </div>
-                 ))}
+                 )})}
               </div>
            </div>
 
@@ -261,8 +307,60 @@ const OpenClawDashboard = () => {
             <div ref={logsEndRef} />
           </div>
         </div>
-
       </div>
+
+      {/* Trade Proposal Modal */}
+      {tradeProposal && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-background/80 backdrop-blur-sm animate-in fade-in">
+          <div className="card w-full max-w-md p-6 bg-card border border-warning/30 shadow-2xl shadow-warning/10 animate-in slide-in-from-bottom-4">
+            <div className="flex items-center gap-3 mb-4 text-warning">
+              <LuBrainCircuit className="size-8" />
+              <h3 className="text-xl font-bold">รอการยืนยันออเดอร์ (AI)</h3>
+            </div>
+            
+            <p className="text-sm text-default-500 mb-6">
+              AI Agent แบบ Auto-Pilot ได้วิเคราะห์และพบสัญญาณการเข้าประเมินผลสูง ควรรีบตัดสินใจ:
+            </p>
+
+            <div className="bg-default-100 dark:bg-default-200/10 rounded-xl p-4 mb-6 space-y-3">
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span>Symbol:</span>
+                <span className="text-primary">{tradeProposal.symbol}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span>Direction:</span>
+                <span className={tradeProposal.direction === 'BUY' ? 'text-success' : 'text-danger'}>{tradeProposal.direction}</span>
+              </div>
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span>Confidence:</span>
+                <span>{tradeProposal.confidence}%</span>
+              </div>
+              <div className="flex justify-between items-center text-sm font-bold">
+                <span>Lot Size:</span>
+                <span>{tradeProposal.lot_size || 0.01}</span>
+              </div>
+              <div className="pt-2 mt-2 border-t border-default-200 dark:border-default-200/10 text-xs text-default-600">
+                <strong>Reasoning:</strong> {tradeProposal.reasoning}
+              </div>
+            </div>
+
+            <div className="flex gap-3">
+              <button 
+                onClick={rejectProposal}
+                className="btn flex-1 bg-default-200 dark:bg-default-300 text-default-900 border-none font-bold outline-none"
+              >
+                <LuX className="size-4" /> ยกเลิก
+              </button>
+              <button 
+                onClick={acceptProposal}
+                className={`btn flex-1 text-white border-none font-bold outline-none shadow-md ${tradeProposal.direction === 'BUY' ? 'bg-success hover:bg-success/80 shadow-success/30' : 'bg-danger hover:bg-danger/80 shadow-danger/30'}`}
+              >
+                <LuCheck className="size-4" /> อนุมัติการเปิดออเดอร์
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 };

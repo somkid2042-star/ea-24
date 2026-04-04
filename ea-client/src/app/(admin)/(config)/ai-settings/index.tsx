@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown } from 'react-icons/lu';
+import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuBot, LuShield } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -36,6 +36,14 @@ const AiSettings = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [saved, setSaved] = useState(false);
+  
+  // Auto-Pilot Settings
+  const [autoAnalyze, setAutoAnalyze] = useState(false);
+  const [autoAnalyzeInterval, setAutoAnalyzeInterval] = useState('5');
+  const [autoTargetSymbol, setAutoTargetSymbol] = useState('XAUUSD');
+  const [autoAnalyzeTf, setAutoAnalyzeTf] = useState('M15');
+  const [autoTrade, setAutoTrade] = useState(false);
+  
   // Chat
   const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
   const [chatInput, setChatInput] = useState('');
@@ -65,6 +73,11 @@ const AiSettings = () => {
           if (c.gemini_api_key) setApiKey(c.gemini_api_key);
           if (c.gemini_model) setSelectedModel(c.gemini_model);
           if (c.ai_enabled !== undefined) setAiEnabled(c.ai_enabled === 'true');
+          if (c.ai_auto_analyze !== undefined) setAutoAnalyze(c.ai_auto_analyze === 'true');
+          if (c.ai_analyze_interval) setAutoAnalyzeInterval(c.ai_analyze_interval);
+          if (c.ai_target_symbol) setAutoTargetSymbol(c.ai_target_symbol);
+          if (c.ai_analyze_timeframe) setAutoAnalyzeTf(c.ai_analyze_timeframe);
+          if (c.ai_auto_trade !== undefined) setAutoTrade(c.ai_auto_trade === 'true');
         }
         if (data.type === 'ai_models') {
           setModels(data.models || []);
@@ -108,6 +121,11 @@ const AiSettings = () => {
     saveConfig('gemini_api_key', apiKey);
     saveConfig('gemini_model', selectedModel);
     saveConfig('ai_enabled', aiEnabled.toString());
+    saveConfig('ai_auto_analyze', autoAnalyze.toString());
+    saveConfig('ai_analyze_interval', autoAnalyzeInterval);
+    saveConfig('ai_target_symbol', autoTargetSymbol);
+    saveConfig('ai_analyze_timeframe', autoAnalyzeTf);
+    saveConfig('ai_auto_trade', autoTrade.toString());
   };
 
   const testAi = () => {
@@ -214,6 +232,66 @@ const AiSettings = () => {
             <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${aiEnabled ? 'translate-x-5' : ''}`} />
           </button>
         </div>
+      </div>
+
+      {/* Auto-Pilot Configuration */}
+      <div className="card !p-6 space-y-4 border-l-4 border-l-cyan-500">
+        <div>
+          <h5 className="text-sm font-semibold text-default-900 mb-2 flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"><LuBot className="size-4 text-cyan-500" /></div>
+            🤖 AI Auto-Pilot (วิเคราะห์ & ออกออเดอร์อัตโนมัติ)
+          </h5>
+          <p className="text-xs text-default-500 mb-3">
+            ให้ AI รัน Multi-Agent เฝ้ากราฟตลอดเวลาตามที่กำหนด
+          </p>
+        </div>
+
+        <div className="flex items-center justify-between p-3 rounded-xl bg-default-50 dark:bg-default-200/5 mb-2">
+          <div className="flex items-center gap-3">
+            <div>
+              <p className="text-sm font-semibold text-default-900">เปิดระบบ Auto-Pilot</p>
+              <p className="text-xs text-default-500">ให้ระบบหลังบ้านวิเคราะห์ตลอด 24 ชั่วโมง</p>
+            </div>
+          </div>
+          <button
+            onClick={() => setAutoAnalyze(!autoAnalyze)}
+            className={`relative w-11 h-6 rounded-full transition-colors ${autoAnalyze ? 'bg-cyan-500' : 'bg-default-300 dark:bg-default-200/30'}`}>
+            <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${autoAnalyze ? 'translate-x-5' : ''}`} />
+          </button>
+        </div>
+
+        {autoAnalyze && (
+          <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
+            <div className="flex gap-2 items-center text-sm">
+                <span>วิเคราะห์คู่เงิน:</span>
+                <input type="text" value={autoTargetSymbol} onChange={e => setAutoTargetSymbol(e.target.value.toUpperCase())} className="input input-sm w-24 uppercase" />
+                <span>TF:</span>
+                <select value={autoAnalyzeTf} onChange={e => setAutoAnalyzeTf(e.target.value)} className="input input-sm w-20">
+                  {['M1','M5','M15','M30','H1','H4','D1'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
+                </select>
+                <span>ทุกๆ</span>
+                <input type="number" value={autoAnalyzeInterval} onChange={e => setAutoAnalyzeInterval(e.target.value)} className="input input-sm w-20" />
+                <span>นาที</span>
+            </div>
+
+            <div className="flex items-center justify-between p-3 rounded-xl border border-default-200 dark:border-default-200/10">
+              <div className="flex items-center gap-3">
+                <div className={`size-8 rounded-lg flex items-center justify-center ${autoTrade ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
+                   {autoTrade ? <LuZap className="size-4" /> : <LuShield className="size-4" />}
+                </div>
+                <div>
+                  <p className="text-sm font-semibold text-default-900">โหมดการออกออเดอร์</p>
+                  <p className="text-xs text-default-500">{autoTrade ? 'ยิง Signal เข้า MT5 อัตโนมัติทันทีที่ AI ตัดสินใจ (Auto-Trade)' : 'ส่งแจ้งเตือนมายังหน้าจอ & Telegram เพื่อรอคนกดยืนยัน (Manual Confirm)'}</p>
+                </div>
+              </div>
+              <button
+                onClick={() => setAutoTrade(!autoTrade)}
+                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 outline-none ${autoTrade ? 'bg-green-500' : 'bg-orange-500'}`}>
+                <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${autoTrade ? 'translate-x-5' : ''}`} />
+              </button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* Save Button */}
