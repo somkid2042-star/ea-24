@@ -337,11 +337,11 @@ const AiSettings = () => {
         {showEmailSection && (
         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 bg-default-50 dark:bg-default-100/5 p-4 rounded-xl border border-default-200/50">
           {emails.map((acc, i) => (
-            <div key={i} className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-default-200/50 last:border-0 last:pb-0">
-              <div className="space-y-2 flex-1">
-                <label className="text-xs font-semibold text-default-900 flex items-center gap-2">
-                  <LuMail className="size-3.5 text-blue-500" /> Email
-                </label>
+            <div key={i} className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center">
+              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 shrink-0" title="Email">
+                <LuMail className="size-4 text-blue-500" />
+              </div>
+              <div className="flex-1">
                 <input
                   type="text"
                   value={acc.address}
@@ -352,46 +352,42 @@ const AiSettings = () => {
                     setEmails(next);
                   }}
                   onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
-                  placeholder="name@gmail.com"
-                  className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+                  placeholder={`Email #${i + 1}`}
+                  className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
                 />
               </div>
 
-              <div className="space-y-2 flex-1">
-                <label className="text-xs font-semibold text-default-900 flex items-center gap-2">
-                  <LuKey className="size-3.5 text-orange-500" /> Password
-                </label>
-                <div className="relative">
-                  <input
-                    type="text"
-                    value={acc.password}
-                    onChange={(e) => {
-                      resetEmailHideTimer();
-                      const next = [...emails];
-                      next[i].password = e.target.value;
-                      setEmails(next);
-                    }}
-                    onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
-                    placeholder="password1234"
-                    className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
-                  />
-                </div>
+              <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0 ml-1" title="Password">
+                <LuKey className="size-4 text-orange-500" />
+              </div>
+              <div className="flex-1 relative">
+                <input
+                  type="text"
+                  value={acc.password}
+                  onChange={(e) => {
+                    resetEmailHideTimer();
+                    const next = [...emails];
+                    next[i].password = e.target.value;
+                    setEmails(next);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
+                  placeholder={`Password #${i + 1}`}
+                  className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+                />
               </div>
 
-              <div className="flex items-end gap-2">
-                <a
-                  href={`https://accounts.google.com/AccountChooser/signinchooser?Email=${encodeURIComponent(acc.address)}`}
-                  target="_blank"
-                  rel="noopener noreferrer"
-                  className="h-[38px] px-3 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-medium text-xs flex items-center justify-center shrink-0 transition-colors gap-1.5"
+              <div className="flex items-center gap-2 ml-1">
+                <button
+                  onClick={() => window.open(`https://accounts.google.com/AccountChooser/signinchooser?Email=${encodeURIComponent(acc.address)}`, '_blank')}
+                  className="h-10 px-4 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0 transition-colors gap-2"
                   title="ล็อกอินบัญชีนี้ในเบราว์เซอร์"
                 >
-                  <LuExternalLink className="size-3.5" /> Login
-                </a>
+                  <LuExternalLink className="size-4" /> Login
+                </button>
                 {emails.length > 1 && (
                   <button
                     onClick={() => setEmails(emails.filter((_, j) => j !== i))}
-                    className="h-[38px] w-[38px] rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                    className="h-10 w-10 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
                   >
                     <LuTrash2 className="size-4" />
                   </button>
