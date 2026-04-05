@@ -367,14 +367,14 @@ pub async fn run_news_hunter(
 
     // Step 2: Ask Gemini to analyze sentiment
     let prompt = format!(
-r#"คุณเป็นนักวิเคราะห์ข่าวการเงิน วิเคราะห์ข่าวด้านล่างและสรุป sentiment สำหรับ {symbol}
+r#"You are an expert financial news analyst. Analyze the news below and summarize sentiment for {symbol}.
 
-ข่าว:
+News:
 {news_text}
 
-ตอบตามรูปแบบนี้เท่านั้น:
+Respond in this exact format only:
 SENTIMENT: [BULLISH/BEARISH/NEUTRAL]
-SUMMARY: [สรุปสั้นๆ 1-2 ประโยคเป็นภาษาไทย]"#);
+SUMMARY: [1-2 sentence summary in Thai language]"#);
 
     match call_gemini(gemini_key, model, &prompt, 0.2, 300).await {
         Ok(response) => {
@@ -453,17 +453,17 @@ pub async fn run_chart_analyst(
     } else { "UNKNOWN" };
 
     let prompt = format!(
-r#"คุณเป็นนักวิเคราะห์เทคนิคมืออาชีพ วิเคราะห์กราฟด้านล่าง
+r#"You are a professional technical analyst. Analyze the chart data below.
 
 Symbol: {symbol} | Timeframe: {timeframe} | Price: {price:.5} | Trend: {trend}
 
 OHLC ({} candles):
 {candle_str}
 
-วิเคราะห์ price action, candlestick patterns, support/resistance แล้วตอบ:
+Analyze price action, candlestick patterns, support/resistance levels then respond:
 RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [สรุปสั้นๆ 1-2 ประโยคเป็นภาษาไทย]"#, recent.len());
+REASONING: [1-2 sentence summary in Thai language]"#, recent.len());
 
     match call_gemini(gemini_key, model, &prompt, 0.3, 400).await {
         Ok(response) => {
@@ -687,35 +687,35 @@ pub async fn run_decision_maker(
     }
 
     let prompt = format!(
-r#"คุณเป็นผู้จัดการกองทุนมืออาชีพ ตัดสินใจเทรดจากข้อมูลด้านล่าง
+r#"You are a professional fund manager. Make a final trading decision based on the data below.
 
-## ข้อมูลจาก Agent อื่นๆ
+## Agent Reports
 
-### ข่าว (News Hunter):
+### News (News Hunter):
 - Sentiment: {news_sentiment}
-- สรุป: {news_summary}
+- Summary: {news_summary}
 
-### กราฟ (Chart Analyst):
-- แนะนำ: {chart_rec}
-- ความมั่นใจ: {chart_conf:.0}%
-- เหตุผล: {chart_reason}
+### Chart (Chart Analyst):
+- Recommendation: {chart_rec}
+- Confidence: {chart_conf:.0}%
+- Reasoning: {chart_reason}
 
-### ปฏิทิน (Calendar):
+### Calendar:
 - {calendar_warning}
 
-### ความเสี่ยง (Risk Manager):
+### Risk Manager:
 - {risk_reason}
 
-## คำสั่ง
-รวมข้อมูลทั้งหมดแล้วตัดสินใจสุดท้ายสำหรับ {symbol}
-- ถ้าข่าว BULLISH + กราฟ BUY → BUY มั่นใจสูง
-- ถ้าข่าว BEARISH + กราฟ SELL → SELL มั่นใจสูง
-- ถ้าข่าวขัดกับกราฟ → ลด confidence หรือ HOLD
+## Instructions
+Combine all data and make a final decision for {symbol}.
+- If news BULLISH + chart BUY → BUY with high confidence
+- If news BEARISH + chart SELL → SELL with high confidence
+- If news conflicts with chart → reduce confidence or HOLD
 
-ตอบ:
+Respond:
 DECISION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [สรุปสั้นๆ เป็นภาษาไทย]"#,
+REASONING: [concise summary in Thai language]"#,
         news_sentiment = news.sentiment,
         news_summary = news.summary,
         chart_rec = chart.recommendation,
@@ -841,7 +841,7 @@ pub async fn analyze_market(
     let candle_str: String = recent.iter().map(|c| format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)).collect::<Vec<_>>().join("\n");
     let trend = if candles.len() >= 10 { let s=candles[candles.len()-10].close; let e=candles[candles.len()-1].close; if e>s*1.001{"UPTREND"}else if e<s*0.999{"DOWNTREND"}else{"SIDEWAYS"} } else { "UNKNOWN" };
     let pc = if candles.len()>=2 { ((candles[candles.len()-1].close - candles[candles.len()-2].close)/candles[candles.len()-2].close)*100.0 } else { 0.0 };
-    let prompt = format!("คุณเป็นนักวิเคราะห์การเทรดมืออาชีพ ตอบเป็นภาษาไทยเท่านั้น\nSymbol: {symbol} | TF: {timeframe} | ราคา: {current_price:.5} | เปลี่ยนแปลง: {pc:.4}% | แนวโน้ม: {trend} | กลยุทธ์: {strategy}\n\nOHLC:\n{candle_str}\n\nวิเคราะห์ price action, แนวรับ/แนวต้าน, รูปแบบแท่งเทียน แล้วตอบ:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [สรุปเหตุผลสั้นๆ เป็นภาษาไทย]");
+    let prompt = format!("You are an expert trading analyst. Respond REASONING in Thai language only.\nSymbol: {symbol} | TF: {timeframe} | Price: {current_price:.5} | Change: {pc:.4}% | Trend: {trend} | Strategy: {strategy}\n\nOHLC:\n{candle_str}\n\nAnalyze price action, support/resistance, candlestick patterns then respond:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [concise reasoning in Thai language]");
     let text = call_gemini(api_key, model, &prompt, 0.3, 500).await?;
     let mut rec="HOLD".to_string(); let mut conf=50.0; let mut reason=String::new();
     for line in text.lines() { let l=line.trim();
@@ -855,14 +855,14 @@ pub async fn analyze_market(
 
 pub async fn test_connection(api_key: &str, model: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
-    let text = call_gemini(api_key, model, "ตอบสั้นๆ 1 บรรทัด: คุณคือ AI model อะไร?", 0.5, 100).await?;
+    let text = call_gemini(api_key, model, "Answer in 1 line in Thai: What AI model are you?", 0.5, 100).await?;
     info!("🤖 [AI] Test successful: {}", text.trim());
     Ok(text.trim().to_string())
 }
 
 pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
-    let prompt = format!("คุณคือผู้ช่วย AI สำหรับระบบเทรด EA-24 ตอบเป็นภาษาไทยสั้นกระชับ\nคำถาม: {}", question);
+    let prompt = format!("You are an AI assistant for EA-24 trading system. Always respond in Thai language, keep it concise.\nQuestion: {}", question);
     call_gemini(api_key, model, &prompt, 0.7, 800).await
 }
 
