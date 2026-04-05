@@ -221,18 +221,21 @@ const AiSettings = () => {
           {emails.map((acc, i) => (
             <div 
               key={i} 
-              draggable
-              onDragStart={(e) => {
-                emailDragItem.current = i;
-                e.dataTransfer.effectAllowed = 'move';
-                e.dataTransfer.setData('text/plain', i.toString());
-              }}
               onDragEnter={() => { emailDragOverItem.current = i; }}
-              onDragEnd={handleEmailSort}
-              onDragOver={(e) => e.preventDefault()}
-              className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center cursor-move group"
+              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
+              onDrop={(e) => { e.preventDefault(); handleEmailSort(); }}
+              className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center group"
             >
-              <div className="flex shrink-0 cursor-grab active:cursor-grabbing items-center justify-center -ml-2 p-1" title="ลากเพื่อสลับตำแหน่ง">
+              <div 
+                draggable
+                onDragStart={(e) => {
+                  emailDragItem.current = i;
+                  e.dataTransfer.effectAllowed = 'move';
+                  e.dataTransfer.setData('text/plain', i.toString());
+                }}
+                className="flex shrink-0 cursor-grab active:cursor-grabbing items-center justify-center -ml-2 p-1" 
+                title="ลากเพื่อสลับตำแหน่ง"
+              >
                 <LuGripVertical className="size-4 text-default-300 opacity-50 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity" />
               </div>
               <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0" title="Email">
