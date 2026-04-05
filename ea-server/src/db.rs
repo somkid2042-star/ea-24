@@ -95,7 +95,12 @@ impl Database {
         });
 
         info!("✅ Database connected, In-Memory Cache enabled, and Tick Batcher running");
-        Ok(Database { pool, tick_tx, mem_candles })
+        let db = Database { pool, tick_tx, mem_candles };
+        
+        // Pre-load historical candles from DB into memory on startup
+        db.load_candles_from_db().await;
+        
+        Ok(db)
     }
 
     async fn create_tables(pool: &PgPool) -> Result<(), String> {
@@ -727,5 +732,65 @@ impl Database {
         }
         serde_json::Value::Array(Vec::new())
     }
-}
 
+    /// Pre-load historical candles from PostgreSQL into memory on startup
+    /// so AI agents have data immediately without waiting for MT5
+    pub async fn load_candles_from_db(&self) {
+        info!("📊 Loading historical candles from DB into memory...");
+        
+        // Get all tracked symbols
+        let symbols = self.get_tracked_symbols().await;
+        if symbols.is_empty() {
+            info!("📊 No symbols found in DB — memory cache stays empty until MT5 connects");
+            return;
+        }
+
+        let mut total_loaded = 0u64;
+        
+        for symbol in &symbols {
+            let query = "
+                SELECT 
+                    (EXTRACT(EPOCH FROM timestamp)::bigint / 60) * 60 as m1_time,
+                    (array_agg(bid ORDER BY timestamp ASC))[1] as open,
+                    MAX(bid) as high,
+                    MIN(bid) as low,
+                    (array_agg(bid ORDER BY timestamp DESC))[1] as close
+                FROM tick_log
+                WHERE symbol = $1 AND timestamp > NOW() - INTERVAL '24 hours'
+                GROUP BY m1_time
+                ORDER BY m1_time ASC
+            ";
+
+            match sqlx::query_as::<_, (i64, f64, f64, f64, f64)>(query)
+                .bind(symbol)
+                .fetch_all(&self.pool).await 
+            {
+                Ok(rows) => {
+                    if rows.is_empty() { continue; }
+                    let count = rows.len();
+                    
+                    let mut map = self.mem_candles.write().await;
+                    let symbol_candles = map.entry(symbol.clone()).or_insert_with(BTreeMap::new);
+                    
+                    for row in rows {
+                        symbol_candles.insert(row.0, crate::strategy::Candle {
+                            time: row.0,
+                            open: row.1,
+                            high: row.2,
+                            low: row.3,
+                            close: row.4,
+                        });
+                    }
+                    
+                    total_loaded += count as u64;
+                    info!("  ✅ {} — loaded {} M1 candles into memory", symbol, count);
+                }
+                Err(e) => {
+                    error!("  ❌ {} — failed to load candles: {}", symbol, e);
+                }
+            }
+        }
+        
+        info!("📊 Memory cache initialized: {} total candles for {} symbols", total_loaded, symbols.len());
+    }
+}
