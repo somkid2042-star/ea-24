@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuSave, LuExternalLink, LuEye, LuEyeOff } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -19,6 +19,10 @@ const AiSettings = () => {
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [email, setEmail] = useState('');
+  const [appPassword, setAppPassword] = useState('');
+  const [showPassword, setShowPassword] = useState(false);
+  const [emailSaved, setEmailSaved] = useState(false);
 
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
@@ -76,6 +80,8 @@ const AiSettings = () => {
             setActiveIndex(0); // The first key is always the active one based on our save logic
           }
           if (c.gemini_model) setSelectedModel(c.gemini_model);
+          if (c.gmail_address) setEmail(c.gmail_address);
+          if (c.gmail_app_password) setAppPassword(c.gmail_app_password);
         }
         if (data.type === 'ai_models') {
           setModels(data.models || []);
@@ -85,6 +91,10 @@ const AiSettings = () => {
           setTesting(false);
           setTestResult({ success: data.success, message: data.message });
           setTimeout(() => setTestResult(null), 5000);
+        }
+        if (data.type === 'config_saved') {
+          setEmailSaved(true);
+          setTimeout(() => setEmailSaved(false), 2000);
         }
       } catch {}
     };
@@ -97,6 +107,11 @@ const AiSettings = () => {
 
   const saveConfig = (key: string, value: string) => {
     send({ action: 'set_server_config', config_key: key, config_value: value });
+  };
+
+  const saveEmailConfig = () => {
+    saveConfig('gmail_address', email);
+    saveConfig('gmail_app_password', appPassword);
   };
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -273,6 +288,76 @@ const AiSettings = () => {
         )}
       </div>
 
+      {/* Email Setup */}
+      <div className="card !p-6 space-y-6 mt-6">
+        <div>
+          <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
+            การแจ้งเตือนและการเข้าสู่ระบบ (Email)
+          </h5>
+          <p className="text-xs text-default-500">
+            บันทึกข้อมูล Gmail สำหรับส่งการแจ้งเตือนและเข้าสู่ระบบในเบราว์เซอร์
+          </p>
+        </div>
+
+        <div className="grid gap-6 md:grid-cols-2">
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+              <LuMail className="size-4 text-blue-500" /> Gmail Address
+            </label>
+            <input
+              type="email"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              placeholder="example@gmail.com"
+              className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+            />
+          </div>
+
+          <div className="space-y-2">
+            <label className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+              <LuKey className="size-4 text-orange-500" /> App Password
+            </label>
+            <div className="relative">
+              <input
+                type={showPassword ? "text" : "password"}
+                value={appPassword}
+                onChange={(e) => setAppPassword(e.target.value)}
+                placeholder="xxxx xxxx xxxx xxxx"
+                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+              />
+              <button 
+                type="button"
+                onClick={() => setShowPassword(!showPassword)}
+                className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-700"
+              >
+                {showPassword ? <LuEyeOff size={18} /> : <LuEye size={18} />}
+              </button>
+            </div>
+            <p className="text-xs text-default-400 mt-1">รหัสผ่าน 16 หลักจากการตั้งค่า App Passwords ของ Google</p>
+          </div>
+        </div>
+
+        <div className="pt-4 border-t border-default-100 dark:border-default-200/10 flex flex-wrap items-center gap-3">
+          <button
+            onClick={saveEmailConfig}
+            className="px-6 py-2.5 rounded-xl font-bold text-sm text-white shadow-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2"
+          >
+            <LuSave className="size-4" />
+            {emailSaved ? 'บันทึกสำเร็จ ✅' : 'บันทึกข้อมูลบัญชี'}
+          </button>
+          
+          <a
+            href="https://mail.google.com"
+            target="_blank"
+            rel="noopener noreferrer"
+            className="px-6 py-2.5 rounded-xl font-bold text-sm bg-default-100 dark:bg-default-200/10 text-default-700 hover:bg-default-200 active:scale-95 transition-all flex items-center gap-2"
+          >
+            <LuExternalLink className="size-4" />
+            เปิดเบราว์เซอร์เข้าสู่ระบบ
+          </a>
+        </div>
+      </div>
     </main>
   );
 };
