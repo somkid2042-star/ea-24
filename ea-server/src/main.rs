@@ -389,7 +389,8 @@ async fn run_server() {
                                     "action": "open_trade",
                                     "symbol": sym,
                                     "direction": result.final_decision,
-                                    "lot_size": auto_lot
+                                    "lot_size": auto_lot,
+                                    "comment": format!("EA24-{}", job_ai_mode)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
                             } else {
@@ -400,7 +401,8 @@ async fn run_server() {
                                     "direction": result.final_decision,
                                     "confidence": result.confidence,
                                     "reasoning": result.reasoning,
-                                    "lot_size": auto_lot
+                                    "lot_size": auto_lot,
+                                    "comment": format!("EA24-{}", job_ai_mode)
                                 }).to_string();
                                 let _ = tx_ai.send(proposal);
                                 

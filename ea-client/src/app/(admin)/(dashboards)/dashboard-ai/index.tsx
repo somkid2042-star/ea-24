@@ -252,7 +252,8 @@ const DashboardAi = () => {
       action: "open_trade",
       symbol: tradeProposal.symbol,
       direction: tradeProposal.direction,
-      lot_size: tradeProposal.lot_size || 0.01
+      lot_size: tradeProposal.lot_size || 0.01,
+      comment: tradeProposal.comment || "EA24-AI"
     }));
     setTradeProposal(null);
   };
