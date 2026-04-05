@@ -293,10 +293,10 @@ const AiSettings = () => {
         <div>
           <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
             <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
-            การแจ้งเตือนและการเข้าสู่ระบบ (Email)
+            บันทึกบัญชี Email สำหรับเข้าสู่ระบบ
           </h5>
           <p className="text-xs text-default-500">
-            บันทึกข้อมูล Gmail สำหรับส่งการแจ้งเตือนและเข้าสู่ระบบในเบราว์เซอร์
+            สมุดจดบันทึก Username และ Password สำหรับล็อกอินผ่านเบราว์เซอร์อย่างรวดเร็ว (ไม่ได้ใช้ส่งการแจ้งเตือน)
           </p>
         </div>
 
@@ -316,7 +316,7 @@ const AiSettings = () => {
 
           <div className="space-y-2">
             <label className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
-              <LuKey className="size-4 text-orange-500" /> App Password
+              <LuKey className="size-4 text-orange-500" /> Password
             </label>
             <div className="relative">
               <input
@@ -334,7 +334,6 @@ const AiSettings = () => {
                 {showPassword ? <LuEyeOff size={18} /> : <LuEye size={18} />}
               </button>
             </div>
-            <p className="text-xs text-default-400 mt-1">รหัสผ่าน 16 หลักจากการตั้งค่า App Passwords ของ Google</p>
           </div>
         </div>
 
