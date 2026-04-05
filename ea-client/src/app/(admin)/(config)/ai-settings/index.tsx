@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuBot, LuShield } from 'react-icons/lu';
+import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuBot, LuShield, LuEye, LuEyeOff, LuPlus, LuTrash2 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -29,7 +29,8 @@ interface AiAnalysisResult {
 
 const AiSettings = () => {
   const [wsConnected, setWsConnected] = useState(false);
-  const [apiKey, setApiKey] = useState('');
+  const [apiKeys, setApiKeys] = useState<string[]>(['']);
+  const [keyVisible, setKeyVisible] = useState<boolean[]>([false]);
   const [selectedModel, setSelectedModel] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [models, setModels] = useState<AiModel[]>([]);
@@ -70,7 +71,11 @@ const AiSettings = () => {
         const data = JSON.parse(evt.data);
         if (data.type === 'server_config' && data.config) {
           const c = data.config;
-          if (c.gemini_api_key) setApiKey(c.gemini_api_key);
+          if (c.gemini_api_key) {
+            const keys = c.gemini_api_key.split(',').map((k: string) => k.trim()).filter((k: string) => k);
+            setApiKeys(keys.length > 0 ? keys : ['']);
+            setKeyVisible(new Array(keys.length || 1).fill(false));
+          }
           if (c.gemini_model) setSelectedModel(c.gemini_model);
           if (c.ai_enabled !== undefined) setAiEnabled(c.ai_enabled === 'true');
           if (c.ai_auto_analyze !== undefined) setAutoAnalyze(c.ai_auto_analyze === 'true');
@@ -119,7 +124,7 @@ const AiSettings = () => {
   };
 
   const saveAll = () => {
-    saveConfig('gemini_api_key', apiKey);
+    saveConfig('gemini_api_key', apiKeys.filter(k => k.trim()).join(','));
     saveConfig('gemini_model', selectedModel);
     saveConfig('ai_enabled', aiEnabled.toString());
     saveConfig('ai_auto_analyze', autoAnalyze.toString());
@@ -133,7 +138,7 @@ const AiSettings = () => {
   const testAi = () => {
     setTesting(true); setTestResult(null);
     // Save key first, then test
-    saveConfig('gemini_api_key', apiKey);
+    saveConfig('gemini_api_key', apiKeys.filter(k => k.trim()).join(','));
     saveConfig('gemini_model', selectedModel);
     setTimeout(() => send({ action: 'test_ai' }), 300);
     // Timeout 15s — ถ้า server ไม่ตอบกลับให้แสดง error
@@ -192,14 +197,57 @@ const AiSettings = () => {
           </p>
         </div>
 
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={apiKey}
-            onChange={(e) => setApiKey(e.target.value)}
-            placeholder="ใส่ 1 คีย์ หรือหลายคีย์คั่นด้วยลูกน้ำ (คีย์1,คีย์2,คีย์3...) 🔑"
-            className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30"
-          />
+        <div className="space-y-2">
+          {apiKeys.map((key, i) => (
+            <div key={i} className="flex gap-2 items-center">
+              <span className="text-xs text-default-400 w-5 text-center shrink-0">#{i + 1}</span>
+              <div className="relative flex-1">
+                <input
+                  type={keyVisible[i] ? 'text' : 'password'}
+                  value={key}
+                  onChange={(e) => {
+                    const next = [...apiKeys];
+                    next[i] = e.target.value;
+                    setApiKeys(next);
+                  }}
+                  placeholder={`API Key #${i + 1}`}
+                  className="w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono"
+                />
+                <button
+                  onClick={() => {
+                    const next = [...keyVisible];
+                    next[i] = !next[i];
+                    setKeyVisible(next);
+                  }}
+                  className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-600"
+                  title={keyVisible[i] ? 'ซ่อน' : 'แสดง'}
+                >
+                  {keyVisible[i] ? <LuEyeOff className="size-4" /> : <LuEye className="size-4" />}
+                </button>
+              </div>
+              {apiKeys.length > 1 && (
+                <button
+                  onClick={() => {
+                    setApiKeys(apiKeys.filter((_, j) => j !== i));
+                    setKeyVisible(keyVisible.filter((_, j) => j !== i));
+                  }}
+                  className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                  title="ลบคีย์นี้"
+                >
+                  <LuTrash2 className="size-4" />
+                </button>
+              )}
+            </div>
+          ))}
+          <button
+            onClick={() => {
+              setApiKeys([...apiKeys, '']);
+              setKeyVisible([...keyVisible, false]);
+            }}
+            className="flex items-center gap-2 text-xs text-violet-500 hover:text-violet-600 font-medium px-2 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
+          >
+            <LuPlus className="size-3.5" /> เพิ่ม API Key
+          </button>
         </div>
 
         {/* Model Selection */}
@@ -217,7 +265,7 @@ const AiSettings = () => {
             </select>
             <LuChevronDown className="size-4 absolute right-3 top-1/2 -translate-y-1/2 text-default-400 pointer-events-none" />
           </div>
-          <button onClick={testAi} disabled={testing || !apiKey}
+          <button onClick={testAi} disabled={testing || !apiKeys.some(k => k.trim())}
             className="btn px-4 py-2.5 rounded-xl bg-violet-600 text-white hover:bg-violet-700 text-sm font-medium flex items-center gap-2 border-none disabled:opacity-50">
             {testing ? <><LuSparkles className="size-4 animate-spin" /> กำลังทดสอบ...</> : <><LuZap className="size-4" /> ทดสอบ</>}
           </button>
@@ -334,7 +382,7 @@ const AiSettings = () => {
           >
             {['M1','M5','M15','M30','H1','H4','D1'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
           </select>
-          <button onClick={analyzeMarket} disabled={analyzing || !apiKey}
+          <button onClick={analyzeMarket} disabled={analyzing || !apiKeys.some(k => k.trim())}
             className="btn flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2 border-none disabled:opacity-50">
             {analyzing ? <><LuSparkles className="size-4 animate-spin" /> กำลังวิเคราะห์...</> : <><LuBrain className="size-4" /> วิเคราะห์</>}
           </button>
@@ -411,9 +459,9 @@ const AiSettings = () => {
             onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
             placeholder="พิมพ์คำถามที่นี่..."
             className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-            disabled={chatLoading || !apiKey}
+            disabled={chatLoading || !apiKeys.some(k => k.trim())}
           />
-          <button onClick={sendChat} disabled={chatLoading || !chatInput.trim() || !apiKey}
+          <button onClick={sendChat} disabled={chatLoading || !chatInput.trim() || !apiKeys.some(k => k.trim())}
             className="btn px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-medium flex items-center gap-2 border-none disabled:opacity-50">
             <LuSend className="size-4" /> ส่ง
           </button>
