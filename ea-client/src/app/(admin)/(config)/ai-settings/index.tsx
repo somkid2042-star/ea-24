@@ -222,8 +222,8 @@ const AiSettings = () => {
             <div 
               key={i} 
               draggable
-              onDragStart={(e) => (emailDragItem.current = i)}
-              onDragEnter={(e) => (emailDragOverItem.current = i)}
+              onDragStart={() => (emailDragItem.current = i)}
+              onDragEnter={() => (emailDragOverItem.current = i)}
               onDragEnd={handleEmailSort}
               onDragOver={(e) => e.preventDefault()}
               className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center cursor-move group"
