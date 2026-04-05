@@ -907,6 +907,175 @@ pub async fn run_all_agents(
 }
 
 // ──────────────────────────────────────────────
+//  Master Orchestrator: Multi-Timeframe Version
+// ──────────────────────────────────────────────
+
+pub async fn run_all_agents_multi_tf(
+    gemini_key: &str, model: &str, tavily_key: &str,
+    symbol: &str,
+    multi_tf_candles: &[(&str, Vec<crate::strategy::Candle>)],
+    balance: f64, equity: f64,
+    open_positions: usize, max_positions: usize,
+    max_drawdown_pct: f64, emergency_stop: bool,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> MultiAgentResult {
+    info!("🤖 [Multi-Agent] Starting Multi-TF analysis for {}...", symbol);
+
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "agent": "orchestrator", "status": "running",
+        "message": format!("🚀 เริ่มวิเคราะห์ {} ด้วย 5 Agents + Multi-Timeframe (M5/M15/H1/H4)...", symbol)
+    }).to_string());
+
+    // Run Agent 1 (News) in parallel with multi-timeframe Chart analysis
+    let news_fut = run_news_hunter(gemini_key, model, tavily_key, symbol, log_tx);
+
+    // Run Chart Analyst on all timeframes
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "agent": "chart_analyst", "status": "running",
+        "message": "📊 วิเคราะห์หลาย Timeframe พร้อมกัน: M5, M15, H1, H4..."
+    }).to_string());
+
+    // Build multi-TF chart summary for AI
+    let mut tf_summaries = Vec::new();
+    for (tf, candles) in multi_tf_candles {
+        let count = candles.len();
+        if candles.is_empty() {
+            tf_summaries.push(format!("{}: ไม่มีข้อมูล", tf));
+            continue;
+        }
+        let recent = &candles[candles.len().saturating_sub(20)..];
+        let candle_str: String = recent.iter().map(|c| {
+            format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
+        }).collect::<Vec<_>>().join("\n");
+        let price = candles.last().map(|c| c.close).unwrap_or(0.0);
+        let trend = if candles.len() >= 5 {
+            let s = candles[candles.len().saturating_sub(5)].close;
+            let e = candles[candles.len()-1].close;
+            if e > s * 1.001 { "UPTREND" } else if e < s * 0.999 { "DOWNTREND" } else { "SIDEWAYS" }
+        } else { "UNKNOWN" };
+        tf_summaries.push(format!(
+            "=== {} ({} candles) | Price: {:.5} | Trend: {} ===\n{}", tf, count, price, trend, candle_str
+        ));
+    }
+
+    let multi_tf_prompt = format!(
+r#"You are a professional multi-timeframe technical analyst. Analyze ALL the timeframes below for {symbol}.
+
+{tf_data}
+
+For each timeframe, identify:
+1. Trend direction
+2. Key support/resistance
+3. Candlestick patterns
+
+Then determine:
+- Which timeframe gives the BEST entry signal right now?
+- What is the overall market bias from combining all timeframes?
+
+Respond in this EXACT format:
+BEST_TIMEFRAME: [M5/M15/H1/H4]
+RECOMMENDATION: [BUY/SELL/HOLD]
+CONFIDENCE: [0-100]
+REASONING: [2-3 sentence multi-timeframe summary in Thai language]
+TF_M5: [BUY/SELL/HOLD]
+TF_M15: [BUY/SELL/HOLD]
+TF_H1: [BUY/SELL/HOLD]
+TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
+
+    // Run chart analysis via Gemini
+    let chart_fut = async {
+        match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600).await {
+            Ok(text) => {
+                let mut rec = "HOLD".to_string();
+                let mut conf = 50.0;
+                let mut reason = String::new();
+                let mut best_tf = "M15".to_string();
+                let mut tf_m5 = "HOLD".to_string();
+                let mut tf_m15 = "HOLD".to_string();
+                let mut tf_h1 = "HOLD".to_string();
+                let mut tf_h4 = "HOLD".to_string();
+                
+                for line in text.lines() {
+                    let l = line.trim();
+                    if l.starts_with("BEST_TIMEFRAME:") { best_tf = l.replace("BEST_TIMEFRAME:", "").trim().to_string(); }
+                    if l.starts_with("RECOMMENDATION:") {
+                        let v = l.replace("RECOMMENDATION:", "").trim().to_uppercase();
+                        if v.contains("BUY") { rec = "BUY".into() } else if v.contains("SELL") { rec = "SELL".into() }
+                    }
+                    if l.starts_with("CONFIDENCE:") {
+                        let v: String = l.replace("CONFIDENCE:", "").trim().chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                        conf = v.parse().unwrap_or(50.0);
+                    }
+                    if l.starts_with("REASONING:") { reason = l.replace("REASONING:", "").trim().to_string(); }
+                    if l.starts_with("TF_M5:") { let v = l.replace("TF_M5:", "").trim().to_uppercase(); tf_m5 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                    if l.starts_with("TF_M15:") { let v = l.replace("TF_M15:", "").trim().to_uppercase(); tf_m15 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                    if l.starts_with("TF_H1:") { let v = l.replace("TF_H1:", "").trim().to_uppercase(); tf_h1 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                    if l.starts_with("TF_H4:") { let v = l.replace("TF_H4:", "").trim().to_uppercase(); tf_h4 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                }
+                if reason.is_empty() { reason = text.chars().take(200).collect(); }
+                
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "agent": "chart_analyst", "status": "done",
+                    "message": format!("📊 Best TF: {} → {} ({:.0}%) | M5:{} M15:{} H1:{} H4:{}", best_tf, rec, conf, tf_m5, tf_m15, tf_h1, tf_h4)
+                }).to_string());
+                
+                ChartResult {
+                    recommendation: rec,
+                    confidence: conf,
+                    reasoning: format!("[Best: {}] {} | M5:{} M15:{} H1:{} H4:{}", best_tf, reason, tf_m5, tf_m15, tf_h1, tf_h4),
+                }
+            }
+            Err(e) => {
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "agent": "chart_analyst", "status": "error",
+                    "message": format!("วิเคราะห์กราฟไม่สำเร็จ: {}", e)
+                }).to_string());
+                ChartResult {
+                    recommendation: "HOLD".to_string(), confidence: 30.0,
+                    reasoning: format!("Error: {}", e),
+                }
+            }
+        }
+    };
+
+    let (news_result, chart_result) = tokio::join!(news_fut, chart_fut);
+
+    // Run Calendar + Risk
+    let calendar_result = run_calendar_watcher(symbol, log_tx).await;
+    let risk_result = run_risk_manager(
+        balance, equity, open_positions, max_positions,
+        max_drawdown_pct, emergency_stop, log_tx,
+    );
+
+    // Run Decision Maker
+    let (decision, confidence, reasoning) = run_decision_maker(
+        gemini_key, model, symbol,
+        &news_result, &chart_result, &calendar_result, &risk_result,
+        log_tx,
+    ).await;
+
+    let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
+
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "agent": "orchestrator", "status": "done",
+        "message": format!("🏁 ผลสุดท้าย: {} (confidence {:.0}%)", decision, confidence)
+    }).to_string());
+
+    info!("🤖 [Multi-Agent] Final: {} Multi-TF → {} ({:.0}%)", symbol, decision, confidence);
+
+    MultiAgentResult {
+        final_decision: decision,
+        confidence,
+        news: news_result,
+        chart: chart_result,
+        calendar: calendar_result,
+        risk: risk_result,
+        reasoning,
+        model: model_name.to_string(),
+    }
+}
+
+// ──────────────────────────────────────────────
 //  Original functions (backward compatibility)
 // ──────────────────────────────────────────────
 

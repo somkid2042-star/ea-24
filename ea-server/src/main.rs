@@ -1528,7 +1528,6 @@ async fn handle_ws_connection(
                                     }
                                     "run_agents" => {
                                         let sym = client_msg.symbol.unwrap_or_else(|| "XAUUSD".to_string());
-                                        let tf = client_msg.timeframe.unwrap_or_else(|| "M15".to_string());
                                         let balance = client_msg.balance.unwrap_or(10000.0);
                                         let equity = client_msg.equity.unwrap_or(10000.0);
                                         let open_pos = client_msg.open_positions.unwrap_or(0);
@@ -1536,24 +1535,31 @@ async fn handle_ws_connection(
                                         let max_dd = client_msg.max_drawdown_pct.unwrap_or(10.0);
                                         let estop = client_msg.emergency_stop.unwrap_or(false);
                                         
-                                        info!("🤖 [UI] Run Multi-Agents requested for {} {}", sym, tf);
+                                        info!("🤖 [UI] Run Multi-Agents (Multi-TF) requested for {}", sym);
                                         
                                         let gemini_key = db.get_config("gemini_api_key").await.unwrap_or_default();
                                         let gemini_model = db.get_config("gemini_model").await.unwrap_or_default();
                                         let tavily_key = db.get_config("tavily_api_key").await.unwrap_or_default();
                                         
-                                        let tf_min: i64 = match tf.as_str() {
-                                            "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
-                                            "H1" => 60, "H4" => 240, "D1" => 1440, _ => 15,
-                                        };
-                                        let candles = db.get_candles_for_strategy(&sym, tf_min, 100).await;
+                                        // Multi-timeframe: get candles for M5, M15, H1, H4
+                                        let candles_m5 = db.get_candles_for_strategy(&sym, 5, 50).await;
+                                        let candles_m15 = db.get_candles_for_strategy(&sym, 15, 50).await;
+                                        let candles_h1 = db.get_candles_for_strategy(&sym, 60, 50).await;
+                                        let candles_h4 = db.get_candles_for_strategy(&sym, 240, 30).await;
+
+                                        let multi_tf_candles = vec![
+                                            ("M5", candles_m5),
+                                            ("M15", candles_m15),
+                                            ("H1", candles_h1),
+                                            ("H4", candles_h4),
+                                        ];
+
                                         let tx_agents = tx.clone();
-                                        
                                         let sym_resp = sym.clone();
                                         tokio::spawn(async move {
-                                            let result = ai_engine::run_all_agents(
+                                            let result = ai_engine::run_all_agents_multi_tf(
                                                 &gemini_key, &gemini_model, &tavily_key,
-                                                &sym, &tf, &candles,
+                                                &sym, &multi_tf_candles,
                                                 balance, equity, open_pos, max_pos, max_dd, estop,
                                                 &tx_agents
                                             ).await;
@@ -1566,6 +1572,14 @@ async fn handle_ws_connection(
                                         });
 
                                         let resp = serde_json::json!({ "type": "agents_started", "symbol": sym_resp });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "get_tracked_symbols" => {
+                                        let symbols = db.get_tracked_symbols().await;
+                                        let resp = serde_json::json!({
+                                            "type": "tracked_symbols",
+                                            "symbols": symbols
+                                        });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     _ => {}
