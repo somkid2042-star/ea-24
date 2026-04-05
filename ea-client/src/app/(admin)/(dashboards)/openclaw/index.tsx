@@ -1,5 +1,6 @@
 import { useState, useEffect, useRef } from 'react';
 import { LuBot, LuTerminal, LuPlay, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit } from 'react-icons/lu';
+import { getWsUrl } from '@/utils/config';
 
 type AiLog = { timestamp: number; agent: string; status: string; message: string; };
 
@@ -39,7 +40,7 @@ const OpenClawDashboard = () => {
   }, [logs]);
 
   useEffect(() => {
-    const WS_URL = `ws://${window.location.hostname}:8080/`;
+    const WS_URL = getWsUrl();
     const ws = new WebSocket(WS_URL);
     wsRef.current = ws;
 
