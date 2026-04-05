@@ -869,7 +869,8 @@ pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String
 pub fn available_models() -> Vec<(&'static str, &'static str)> {
     vec![
         ("gemini-2.5-flash", "Gemini 2.5 Flash (แนะนำ — ฟรี)"),
-        ("gemini-2.5-pro", "Gemini 2.5 Pro (ฉลาดสุด — ต้องเปิด Billing)"),
-        ("gemini-2.0-flash", "Gemini 2.0 Flash (ต้องเปิด Billing)"),
+        ("gemini-3.0-flash", "Gemini 3 Flash (ใหม่ล่าสุด)"),
+        ("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite (เร็วมาก)"),
+        ("gemma-3-4b-it", "Gemma 3 4B (โมเดลเปิด)"),
     ]
 }
