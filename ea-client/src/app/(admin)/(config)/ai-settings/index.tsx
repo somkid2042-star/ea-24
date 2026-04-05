@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink, LuGripVertical } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink } from 'react-icons/lu';
 import { openUrl as tauriOpen } from '@tauri-apps/plugin-opener';
 import { getWsUrl } from '@/utils/config';
 
@@ -22,8 +22,6 @@ const AiSettings = () => {
 
   const hideEmailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const emailDragItem = useRef<number | null>(null);
-  const emailDragOverItem = useRef<number | null>(null);
 
   // Auto-hide feature for Email/Account section
   const resetEmailHideTimer = useCallback(() => {
@@ -104,18 +102,24 @@ const AiSettings = () => {
     saveConfig('gemini_api_key', toSave.map(e => e.apiKey).join(','));
   };
 
-  const handleEmailSort = () => {
-    if (emailDragItem.current === null || emailDragOverItem.current === null) return;
-    if (emailDragItem.current === emailDragOverItem.current) return;
-    
-    const _emails = [...emails];
-    const draggedItemContent = _emails.splice(emailDragItem.current, 1)[0];
-    _emails.splice(emailDragOverItem.current, 0, draggedItemContent);
-    
-    emailDragItem.current = null;
-    emailDragOverItem.current = null;
-    setEmails(_emails);
-    saveEmailConfig(_emails);
+  const moveEmailUp = (index: number) => {
+    if (index === 0) return;
+    const next = [...emails];
+    const temp = next[index - 1];
+    next[index - 1] = next[index];
+    next[index] = temp;
+    setEmails(next);
+    saveEmailConfig(next);
+  };
+
+  const moveEmailDown = (index: number) => {
+    if (index === emails.length - 1) return;
+    const next = [...emails];
+    const temp = next[index + 1];
+    next[index + 1] = next[index];
+    next[index] = temp;
+    setEmails(next);
+    saveEmailConfig(next);
   };
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -221,22 +225,25 @@ const AiSettings = () => {
           {emails.map((acc, i) => (
             <div 
               key={i} 
-              onDragEnter={() => { emailDragOverItem.current = i; }}
-              onDragOver={(e) => { e.preventDefault(); e.dataTransfer.dropEffect = 'move'; }}
-              onDrop={(e) => { e.preventDefault(); handleEmailSort(); }}
               className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center group"
             >
-              <div 
-                draggable
-                onDragStart={(e) => {
-                  emailDragItem.current = i;
-                  e.dataTransfer.effectAllowed = 'move';
-                  e.dataTransfer.setData('text/plain', i.toString());
-                }}
-                className="flex shrink-0 cursor-grab active:cursor-grabbing items-center justify-center -ml-2 p-1" 
-                title="ลากเพื่อสลับตำแหน่ง"
-              >
-                <LuGripVertical className="size-4 text-default-300 opacity-50 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity" />
+              <div className="flex flex-col gap-0.5 shrink-0 -ml-1">
+                <button 
+                  onClick={() => moveEmailUp(i)}
+                  disabled={i === 0}
+                  className="p-0.5 text-default-400 hover:text-blue-500 hover:bg-blue-500/10 rounded disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-default-400 transition-colors"
+                  title="เลื่อนขึ้น"
+                >
+                  <LuChevronUp className="size-3.5" />
+                </button>
+                <button 
+                  onClick={() => moveEmailDown(i)}
+                  disabled={i === emails.length - 1}
+                  className="p-0.5 text-default-400 hover:text-blue-500 hover:bg-blue-500/10 rounded disabled:opacity-20 disabled:hover:bg-transparent disabled:hover:text-default-400 transition-colors"
+                  title="เลื่อนลง"
+                >
+                  <LuChevronDown className="size-3.5" />
+                </button>
               </div>
               <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0" title="Email">
                 <LuMail className="size-4 text-blue-500" />
