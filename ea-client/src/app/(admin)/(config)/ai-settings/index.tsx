@@ -222,8 +222,12 @@ const AiSettings = () => {
             <div 
               key={i} 
               draggable
-              onDragStart={() => (emailDragItem.current = i)}
-              onDragEnter={() => (emailDragOverItem.current = i)}
+              onDragStart={(e) => {
+                emailDragItem.current = i;
+                e.dataTransfer.effectAllowed = 'move';
+                e.dataTransfer.setData('text/plain', i.toString());
+              }}
+              onDragEnter={() => { emailDragOverItem.current = i; }}
               onDragEnd={handleEmailSort}
               onDragOver={(e) => e.preventDefault()}
               className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center cursor-move group"
