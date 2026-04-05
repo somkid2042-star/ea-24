@@ -29,6 +29,13 @@ const DashboardAi = () => {
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
   const [aiMode, setAiMode] = useState("auto");
   const [showModeDropdown, setShowModeDropdown] = useState(false);
+  
+  // Auto-Pilot States
+  const [autoAnalyze, setAutoAnalyze] = useState(false);
+  const [autoTargetSymbols, setAutoTargetSymbols] = useState('XAUUSD, EURUSD');
+  const [autoAnalyzeInterval, setAutoAnalyzeInterval] = useState('15');
+  const [autoTrade, setAutoTrade] = useState(false);
+  
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   
@@ -44,8 +51,9 @@ const DashboardAi = () => {
     ws.onopen = () => {
       setConnected(true);
       setLogs([{ timestamp: Date.now(), agent: 'System', status: 'done', message: '✅ เชื่อมต่อกับ Trading Server สำเร็จ' }]);
-      // Request tracked symbols
+      // Request tracked symbols and config
       ws.send(JSON.stringify({ action: "get_tracked_symbols" }));
+      ws.send(JSON.stringify({ action: "get_server_config" }));
     };
     
     ws.onclose = () => setConnected(false);
@@ -54,6 +62,14 @@ const DashboardAi = () => {
       try {
         const data = JSON.parse(evt.data);
         
+        if (data.type === 'server_config' && data.config) {
+          const c = data.config;
+          if (c.ai_auto_analyze !== undefined) setAutoAnalyze(c.ai_auto_analyze === 'true');
+          if (c.ai_analyze_interval) setAutoAnalyzeInterval(c.ai_analyze_interval);
+          if (c.ai_target_symbols) setAutoTargetSymbols(c.ai_target_symbols);
+          if (c.ai_auto_trade !== undefined) setAutoTrade(c.ai_auto_trade === 'true');
+        }
+
         if (data.type === 'tracked_symbols') {
           setTrackedSymbols(data.symbols || []);
           if (data.symbols?.length > 0 && !data.symbols.includes(symbol)) {
@@ -95,6 +111,11 @@ const DashboardAi = () => {
 
     return () => ws.close();
   }, []);
+
+  const updateConfig = (key: string, val: string) => {
+    if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
+    wsRef.current.send(JSON.stringify({ action: 'set_server_config', config_key: key, config_value: val }));
+  };
 
   const runAnalysis = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN) return;
@@ -237,6 +258,71 @@ const DashboardAi = () => {
             {isAnalyzing ? <LuLoader className="animate-spin size-4" /> : <LuZap className="size-4" />}
             {isAnalyzing ? 'กำลังวิเคราะห์...' : 'วิเคราะห์ AI'}
           </button>
+        </div>
+      </div>
+
+      {/* Auto-Pilot Control Bar */}
+      <div className="card p-4 flex flex-col md:flex-row items-start md:items-center justify-between gap-4 border-primary/20 bg-primary/5">
+        <div className="flex items-center gap-3">
+          <div className="size-10 rounded-xl bg-primary/20 flex items-center justify-center">
+            <LuBot className="size-5 text-primary" />
+          </div>
+          <div>
+            <h3 className="font-bold text-default-900 text-sm">ระบบ Auto-Pilot ทำงานเบื้องหลัง</h3>
+            <p className="text-xs text-default-500">วิเคราะห์ตลาด 24/7 และแจ้งเตือน/เทรดอัตโนมัติ</p>
+          </div>
+        </div>
+
+        <div className="flex flex-wrap items-center gap-3">
+          <input
+            type="text"
+            value={autoTargetSymbols}
+            onChange={(e) => setAutoTargetSymbols(e.target.value)}
+            onBlur={() => updateConfig('ai_target_symbols', autoTargetSymbols)}
+            placeholder="XAUUSD, EURUSD"
+            className="px-3 py-2 rounded-lg bg-background border border-default-200 text-xs font-mono w-[140px]"
+            title="คู่เงินที่ต้องการวิเคราะห์ (คั่นด้วยลูกน้ำ)"
+          />
+
+          <select
+            value={autoAnalyzeInterval}
+            onChange={(e) => {
+              setAutoAnalyzeInterval(e.target.value);
+              updateConfig('ai_analyze_interval', e.target.value);
+            }}
+            className="px-3 py-2 rounded-lg bg-background border border-default-200 text-xs font-medium"
+          >
+            <option value="5">ทุก 5 นาที</option>
+            <option value="15">ทุก 15 นาที</option>
+            <option value="30">ทุก 30 นาที</option>
+            <option value="60">ทุก 1 ชั่วโมง</option>
+            <option value="240">ทุก 4 ชั่วโมง</option>
+          </select>
+          
+          <button
+            onClick={() => {
+              const next = !autoTrade;
+              setAutoTrade(next);
+              updateConfig('ai_auto_trade', next.toString());
+            }}
+            className={`px-3 py-2 rounded-lg text-xs font-bold border transition-colors ${autoTrade ? 'bg-amber-500/10 text-amber-600 border-amber-500/30' : 'bg-default-100 text-default-600 border-default-200'}`}
+          >
+            {autoTrade ? '⚡ Auto Trade' : '🔔 แจ้งเตือนอย่างเดียว'}
+          </button>
+
+          <div className="flex items-center gap-2 border-l border-default-200 pl-3">
+            <span className="text-xs font-bold text-default-700">{autoAnalyze ? 'ON' : 'OFF'}</span>
+            <button
+              onClick={() => {
+                const next = !autoAnalyze;
+                setAutoAnalyze(next);
+                updateConfig('ai_auto_analyze', next.toString());
+              }}
+              className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoAnalyze ? 'bg-primary' : 'bg-default-300'}`}
+            >
+              <span className={`inline-block size-4 transform rounded-full bg-white transition-transform ${autoAnalyze ? 'translate-x-6' : 'translate-x-1'}`} />
+            </button>
+          </div>
         </div>
       </div>
 

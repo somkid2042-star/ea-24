@@ -304,42 +304,54 @@ async fn run_server() {
                 if last_run.elapsed().as_secs() >= interval_min * 60 {
                     last_run = std::time::Instant::now();
                     
-                    let sym = db_ai.get_config("ai_target_symbol").await.unwrap_or_else(|| "XAUUSD".to_string());
-                    let tf = db_ai.get_config("ai_analyze_timeframe").await.unwrap_or_else(|| "M15".to_string());
+                    let sym_str = db_ai.get_config("ai_target_symbols").await.unwrap_or_else(|| "XAUUSD".to_string());
+                    let syms: Vec<String> = sym_str.split(',').map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect();
                     let auto_trade = db_ai.get_config("ai_auto_trade").await.unwrap_or_else(|| "false".to_string()) == "true";
                     let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
+                    let ai_mode = db_ai.get_config("ai_mode").await.unwrap_or_else(|| "auto".to_string());
                     
-                    info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
-                    
-                    let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
-                    let _ = tx_ai.send(start_msg);
-                    
-                    let gemini_key = db_ai.get_config("gemini_api_key").await.unwrap_or_default();
-                    let gemini_model = db_ai.get_config("gemini_model").await.unwrap_or_default();
-                    let tavily_key = db_ai.get_config("tavily_api_key").await.unwrap_or_default();
-                    
-                    let tf_min: i64 = match tf.as_str() { "M1"=>1, "M5"=>5, "M15"=>15, "M30"=>30, "H1"=>60, "H4"=>240, "D1"=>1440, _=>15 };
-                    let candles = db_ai.get_candles_for_strategy(&sym, tf_min, 100).await;
-                    
-                    let (bal, eq, open_pos) = {
-                        let state = ea_state_ai.read().await;
-                        (state.balance, state.equity, state.open_positions)
-                    };
-                    
-                    let result = ai_engine::run_all_agents(
-                        &gemini_key, &gemini_model, &tavily_key,
-                        &sym, &tf, &candles,
-                        if bal > 0.0 { bal } else { 10000.0 }, 
-                        if eq > 0.0 { eq } else { 10000.0 }, 
-                        open_pos, 5, 10.0, false, 
-                        &tx_ai
-                    ).await;
-                    
-                    let resp = serde_json::json!({
-                        "type": "multi_agent_result",
-                        "result": result
-                    });
-                    let _ = tx_ai.send(resp.to_string());
+                    for sym in syms {
+                        info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
+                        
+                        let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
+                        let _ = tx_ai.send(start_msg);
+                        
+                        let gemini_key = db_ai.get_config("gemini_api_key").await.unwrap_or_default();
+                        let gemini_model = db_ai.get_config("gemini_model").await.unwrap_or_default();
+                        let tavily_key = db_ai.get_config("tavily_api_key").await.unwrap_or_default();
+                        
+                        let candles_m5 = db_ai.get_candles_for_strategy(&sym, 5, 50).await;
+                        let candles_m15 = db_ai.get_candles_for_strategy(&sym, 15, 50).await;
+                        let candles_h1 = db_ai.get_candles_for_strategy(&sym, 60, 50).await;
+                        let candles_h4 = db_ai.get_candles_for_strategy(&sym, 240, 30).await;
+                        
+                        let multi_tf_candles = vec![
+                            ("M5", candles_m5),
+                            ("M15", candles_m15),
+                            ("H1", candles_h1),
+                            ("H4", candles_h4),
+                        ];
+                        
+                        let (bal, eq, open_pos) = {
+                            let state = ea_state_ai.read().await;
+                            (state.balance, state.equity, state.open_positions)
+                        };
+                        
+                        let result = ai_engine::run_all_agents_multi_tf(
+                            &gemini_key, &gemini_model, &tavily_key,
+                            &sym, &multi_tf_candles,
+                            if bal > 0.0 { bal } else { 10000.0 }, 
+                            if eq > 0.0 { eq } else { 10000.0 }, 
+                            open_pos, 5, 10.0, false, 
+                            &ai_mode,
+                            &tx_ai
+                        ).await;
+                        
+                        let resp = serde_json::json!({
+                            "type": "multi_agent_result",
+                            "result": result
+                        });
+                        let _ = tx_ai.send(resp.to_string());
                     
                     if result.final_decision == "BUY" || result.final_decision == "SELL" {
                         if auto_trade {
@@ -369,10 +381,12 @@ async fn run_server() {
                         }
                     }
                 }
-            } else {
-                 // reset last_run to ensure immediate run when re-enabled
-                 last_run = std::time::Instant::now() - std::time::Duration::from_secs(86400);
+                tokio::time::sleep(tokio::time::Duration::from_secs(12)).await;
             }
+        } else {
+             // reset last_run to ensure immediate run when re-enabled
+             last_run = std::time::Instant::now() - std::time::Duration::from_secs(86400);
+        }
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
     });

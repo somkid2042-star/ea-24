@@ -1,5 +1,5 @@
-import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuChevronUp, LuBot, LuShield, LuEye, LuEyeOff, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
+import { useState, useRef, useCallback, useEffect } from 'react';
+import { LuBrain, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -9,56 +9,33 @@ interface AiModel {
   name: string;
 }
 
-interface ChatMessage {
-  role: 'user' | 'ai';
-  text: string;
-  timestamp: number;
-}
-
-interface AiAnalysisResult {
-  success: boolean;
-  symbol?: string;
-  timeframe?: string;
-  recommendation?: string;
-  confidence?: number;
-  reasoning?: string;
-  full_analysis?: string;
-  model?: string;
-  message?: string;
-}
-
 const AiSettings = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const [apiKeys, setApiKeys] = useState<string[]>(['']);
-  const [keyVisible, setKeyVisible] = useState<boolean[]>([false]);
-  const [showKeysSection, setShowKeysSection] = useState(true);
+  const [activeIndex, setActiveIndex] = useState(0);
+  const [showKeysSection, setShowKeysSection] = useState(false);
   const [keyStatus, setKeyStatus] = useState<Record<number, { valid: boolean; name: string; checking: boolean }>>({});
   const [selectedModel, setSelectedModel] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [saved, setSaved] = useState(false);
-  
-  // Auto-Pilot Settings
-  const [autoAnalyze, setAutoAnalyze] = useState(false);
-  const [autoAnalyzeInterval, setAutoAnalyzeInterval] = useState('5');
-  const [autoTargetSymbol, setAutoTargetSymbol] = useState('XAUUSD');
-  const [autoAnalyzeTf, setAutoAnalyzeTf] = useState('M15');
-  const [autoTrade, setAutoTrade] = useState(false);
-  
-  // Chat
-  const [chatMessages, setChatMessages] = useState<ChatMessage[]>([]);
-  const [chatInput, setChatInput] = useState('');
-  const [chatLoading, setChatLoading] = useState(false);
-  // Analysis
-  const [analysisSymbol, setAnalysisSymbol] = useState('XAUUSD');
-  const [analysisTf, setAnalysisTf] = useState('M15');
-  const [analysis, setAnalysis] = useState<AiAnalysisResult | null>(null);
-  const [analyzing, setAnalyzing] = useState(false);
 
+  const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
-  const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Auto-hide feature when showKeysSection is true
+  const resetHideTimer = useCallback(() => {
+    if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current);
+    hideTimeoutRef.current = setTimeout(() => {
+      setShowKeysSection(false);
+    }, 60000); // Auto hide after 60 seconds
+  }, []);
+
+  useEffect(() => {
+    if (showKeysSection) resetHideTimer();
+    return () => { if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current); };
+  }, [showKeysSection, resetHideTimer]);
 
   // Validate API key by calling Google's API
   const validateKey = async (index: number, key: string) => {
@@ -97,15 +74,10 @@ const AiSettings = () => {
           if (c.gemini_api_key) {
             const keys = c.gemini_api_key.split(',').map((k: string) => k.trim()).filter((k: string) => k);
             setApiKeys(keys.length > 0 ? keys : ['']);
-            setKeyVisible(new Array(keys.length || 1).fill(false));
+            setActiveIndex(0); // The first key is always the active one based on our save logic
           }
           if (c.gemini_model) setSelectedModel(c.gemini_model);
           if (c.ai_enabled !== undefined) setAiEnabled(c.ai_enabled === 'true');
-          if (c.ai_auto_analyze !== undefined) setAutoAnalyze(c.ai_auto_analyze === 'true');
-          if (c.ai_analyze_interval) setAutoAnalyzeInterval(c.ai_analyze_interval);
-          if (c.ai_target_symbol) setAutoTargetSymbol(c.ai_target_symbol);
-          if (c.ai_analyze_timeframe) setAutoAnalyzeTf(c.ai_analyze_timeframe);
-          if (c.ai_auto_trade !== undefined) setAutoTrade(c.ai_auto_trade === 'true');
         }
         if (data.type === 'ai_models') {
           setModels(data.models || []);
@@ -116,29 +88,12 @@ const AiSettings = () => {
           setTestResult({ success: data.success, message: data.message });
           setTimeout(() => setTestResult(null), 5000);
         }
-        if (data.type === 'ai_response') {
-          setChatLoading(false);
-          setChatMessages(prev => [...prev, {
-            role: 'ai',
-            text: data.success ? data.answer : `❌ ${data.answer}`,
-            timestamp: Date.now(),
-          }]);
-        }
-        if (data.type === 'ai_analysis') {
-          setAnalyzing(false);
-          setAnalysis(data);
-        }
-        if (data.type === 'config_saved') {
-          setSaved(true);
-          setTimeout(() => setSaved(false), 2000);
-        }
       } catch {}
     };
     wsRef.current = ws;
   }, []);
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
-  useEffect(() => { chatEndRef.current?.scrollIntoView({ behavior: 'smooth' }); }, [chatMessages]);
 
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
 
@@ -146,22 +101,15 @@ const AiSettings = () => {
     send({ action: 'set_server_config', config_key: key, config_value: value });
   };
 
-  const saveAll = () => {
-    saveConfig('gemini_api_key', apiKeys.filter(k => k.trim()).join(','));
-    saveConfig('gemini_model', selectedModel);
-    saveConfig('ai_enabled', aiEnabled.toString());
-    saveConfig('ai_auto_analyze', autoAnalyze.toString());
-    saveConfig('ai_analyze_interval', autoAnalyzeInterval);
-    saveConfig('ai_target_symbol', autoTargetSymbol);
-    saveConfig('ai_analyze_timeframe', autoAnalyzeTf);
-    saveConfig('ai_auto_trade', autoTrade.toString());
-  };
-
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const testAi = () => {
     setTesting(true); setTestResult(null);
-    // Save key first, then test
-    saveConfig('gemini_api_key', apiKeys.filter(k => k.trim()).join(','));
+    // Move the active index API key to the first position so the backend uses it immediately
+    const orderedKeys = apiKeys[activeIndex] 
+      ? [apiKeys[activeIndex], ...apiKeys.filter((_, idx) => idx !== activeIndex)].filter(k => k.trim()) 
+      : apiKeys.filter(k => k.trim());
+      
+    saveConfig('gemini_api_key', orderedKeys.join(','));
     saveConfig('gemini_model', selectedModel);
     setTimeout(() => send({ action: 'test_ai' }), 300);
     // Timeout 15s — ถ้า server ไม่ตอบกลับให้แสดง error
@@ -176,31 +124,12 @@ const AiSettings = () => {
     }, 15000);
   };
 
-  const sendChat = () => {
-    if (!chatInput.trim() || chatLoading) return;
-    setChatMessages(prev => [...prev, { role: 'user', text: chatInput, timestamp: Date.now() }]);
-    send({ action: 'ask_ai', question: chatInput });
-    setChatInput('');
-    setChatLoading(true);
-  };
-
-  const analyzeMarket = () => {
-    setAnalyzing(true); setAnalysis(null);
-    send({ action: 'analyze_market', symbol: analysisSymbol, timeframe: analysisTf, strategy: 'Auto' });
-  };
-
-  const recBg = (rec?: string) => {
-    if (rec === 'BUY') return 'bg-emerald-500/15 text-emerald-400 border-emerald-500/30';
-    if (rec === 'SELL') return 'bg-red-500/15 text-red-400 border-red-500/30';
-    return 'bg-amber-500/15 text-amber-400 border-amber-500/30';
-  };
-
   return (
     <main className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-default-900">🤖 AI Trading Engine</h4>
-          <p className="mt-1 text-sm text-default-500">ตั้งค่า Gemini AI สำหรับวิเคราะห์ตลาดอัตโนมัติ</p>
+          <h4 className="text-lg font-semibold text-default-900">🔑 จัดการ API Key ทั้งหมด</h4>
+          <p className="mt-1 text-sm text-default-500">จัดการหน้ากำหนดให้ AI ใช้ API Key อันไหน และตั้งค่า Google Gemini โมเดล</p>
         </div>
         <div className={`rounded-full px-3 py-1 text-xs font-medium ${wsConnected ? 'bg-green-100 dark:bg-green-500/20 text-green-600' : 'bg-red-100 dark:bg-red-500/20 text-red-600'}`}>
           {wsConnected ? 'เชื่อมต่อแล้ว' : 'ไม่เชื่อมต่อ'}
@@ -230,48 +159,47 @@ const AiSettings = () => {
         </div>
 
         {showKeysSection && (
-        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 bg-default-50 dark:bg-default-100/5 p-4 rounded-xl border border-default-200/50">
           {apiKeys.map((key, i) => (
-            <div key={i} className="space-y-1">
-              <div className="flex gap-2 items-center">
-                <span className="text-xs text-default-400 w-5 text-center shrink-0">#{i + 1}</span>
+            <div key={i} className="space-y-2 pb-3 border-b border-default-200/50 last:border-0 last:pb-0">
+              <div className="flex gap-3 items-center">
+                <label className="flex items-center justify-center shrink-0 w-8 h-8 rounded-full bg-violet-500/10 text-violet-600 font-bold text-sm cursor-pointer hover:bg-violet-500/20 transition-colors" title="กำหนดให้ AI ใช้คีย์นี้">
+                  <input 
+                    type="radio" 
+                    name="activeApiKey" 
+                    className="hidden" 
+                    checked={activeIndex === i} 
+                    onChange={() => setActiveIndex(i)} 
+                  />
+                  {activeIndex === i ? <LuCheck className="size-4" /> : i + 1}
+                </label>
+                
                 <div className="relative flex-1">
                   <input
-                    type={keyVisible[i] ? 'text' : 'password'}
+                    type="text"
                     value={key}
                     onChange={(e) => {
+                      resetHideTimer();
                       const next = [...apiKeys];
                       next[i] = e.target.value;
                       setApiKeys(next);
-                      // Clear status when key changes
                       setKeyStatus(prev => { const n = {...prev}; delete n[i]; return n; });
                     }}
                     onBlur={() => {
-                      // Auto-validate when user leaves the field
                       if (key.trim().length > 10) validateKey(i, key.trim());
                     }}
                     placeholder={`API Key #${i + 1}`}
-                    className={`w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono ${
-                      keyStatus[i]?.valid === true ? 'border-green-500/50' : keyStatus[i]?.valid === false ? 'border-red-500/50' : 'border-default-200 dark:border-default-300/10'
+                    className={`w-full px-4 py-2.5 rounded-xl bg-background border focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono text-sm ${
+                      keyStatus[i]?.valid === true ? 'border-green-500/50' : keyStatus[i]?.valid === false ? 'border-red-500/50' : 'border-default-200'
                     }`}
                   />
-                  <button
-                    onClick={() => {
-                      const next = [...keyVisible];
-                      next[i] = !next[i];
-                      setKeyVisible(next);
-                    }}
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-600"
-                    title={keyVisible[i] ? 'ซ่อน' : 'แสดง'}
-                  >
-                    {keyVisible[i] ? <LuEyeOff className="size-4" /> : <LuEye className="size-4" />}
-                  </button>
                 </div>
                 {apiKeys.length > 1 && (
                   <button
                     onClick={() => {
                       setApiKeys(apiKeys.filter((_, j) => j !== i));
-                      setKeyVisible(keyVisible.filter((_, j) => j !== i));
+                      if (activeIndex === i) setActiveIndex(0);
+                      else if (activeIndex > i) setActiveIndex(activeIndex - 1);
                       setKeyStatus(prev => { const n = {...prev}; delete n[i]; return n; });
                     }}
                     className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
@@ -281,26 +209,36 @@ const AiSettings = () => {
                   </button>
                 )}
               </div>
-              {/* Key status badge */}
-              {keyStatus[i] && (
-                <div className={`ml-7 flex items-center gap-1.5 text-xs ${
-                  keyStatus[i].checking ? 'text-default-400' : keyStatus[i].valid ? 'text-green-500' : 'text-red-500'
-                }`}>
-                  {keyStatus[i].checking ? (
-                    <><LuLoader className="size-3 animate-spin" /> กำลังตรวจสอบ...</>
-                  ) : keyStatus[i].valid ? (
-                    <><LuCheck className="size-3" /> ✅ {keyStatus[i].name}</>
-                  ) : (
-                    <><LuX className="size-3" /> ❌ {keyStatus[i].name}</>
-                  )}
-                </div>
-              )}
+              
+              <div className="flex items-center justify-between ml-11">
+                {/* Key status badge */}
+                {keyStatus[i] && (
+                  <div className={`flex items-center gap-1.5 text-xs ${
+                    keyStatus[i].checking ? 'text-default-400' : keyStatus[i].valid ? 'text-green-500' : 'text-red-500'
+                  }`}>
+                    {keyStatus[i].checking ? (
+                      <><LuLoader className="size-3 animate-spin" /> กำลังตรวจสอบ...</>
+                    ) : keyStatus[i].valid ? (
+                      <><LuCheck className="size-3" /> ✅ {keyStatus[i].name}</>
+                    ) : (
+                      <><LuX className="size-3" /> ❌ {keyStatus[i].name}</>
+                    )}
+                  </div>
+                )}
+                {!keyStatus[i] && <div/>}
+                
+                {activeIndex === i && (
+                  <span className="text-xs font-semibold text-violet-600 bg-violet-100 dark:bg-violet-500/20 px-2 py-0.5 rounded-md">
+                    🌟 ใช้งานหลัก
+                  </span>
+                )}
+              </div>
             </div>
           ))}
           <button
             onClick={() => {
+              resetHideTimer();
               setApiKeys([...apiKeys, '']);
-              setKeyVisible([...keyVisible, false]);
             }}
             className="flex items-center gap-2 text-xs text-violet-500 hover:text-violet-600 font-medium px-2 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
           >
@@ -353,179 +291,6 @@ const AiSettings = () => {
         </div>
       </div>
 
-      {/* Auto-Pilot Configuration */}
-      <div className="card !p-6 space-y-4 border-l-4 border-l-cyan-500">
-        <div>
-          <h5 className="text-sm font-semibold text-default-900 mb-2 flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-cyan-500/10 flex items-center justify-center"><LuBot className="size-4 text-cyan-500" /></div>
-            🤖 AI Auto-Pilot (วิเคราะห์ & ออกออเดอร์อัตโนมัติ)
-          </h5>
-          <p className="text-xs text-default-500 mb-3">
-            ให้ AI รัน Multi-Agent เฝ้ากราฟตลอดเวลาตามที่กำหนด
-          </p>
-        </div>
-
-        <div className="flex items-center justify-between p-3 rounded-xl bg-default-50 dark:bg-default-200/5 mb-2">
-          <div className="flex items-center gap-3">
-            <div>
-              <p className="text-sm font-semibold text-default-900">เปิดระบบ Auto-Pilot</p>
-              <p className="text-xs text-default-500">ให้ระบบหลังบ้านวิเคราะห์ตลอด 24 ชั่วโมง</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setAutoAnalyze(!autoAnalyze)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${autoAnalyze ? 'bg-cyan-500' : 'bg-default-300 dark:bg-default-200/30'}`}>
-            <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${autoAnalyze ? 'translate-x-5' : ''}`} />
-          </button>
-        </div>
-
-        {autoAnalyze && (
-          <div className="space-y-4 animate-in fade-in slide-in-from-top-2">
-            <div className="flex gap-2 items-center text-sm">
-                <span>วิเคราะห์คู่เงิน:</span>
-                <input type="text" value={autoTargetSymbol} onChange={e => setAutoTargetSymbol(e.target.value.toUpperCase())} className="input input-sm w-24 uppercase" />
-                <span>TF:</span>
-                <select value={autoAnalyzeTf} onChange={e => setAutoAnalyzeTf(e.target.value)} className="input input-sm w-20">
-                  {['M1','M5','M15','M30','H1','H4','D1'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
-                </select>
-                <span>ทุกๆ</span>
-                <input type="number" value={autoAnalyzeInterval} onChange={e => setAutoAnalyzeInterval(e.target.value)} className="input input-sm w-20" />
-                <span>นาที</span>
-            </div>
-
-            <div className="flex items-center justify-between p-3 rounded-xl border border-default-200 dark:border-default-200/10">
-              <div className="flex items-center gap-3">
-                <div className={`size-8 rounded-lg flex items-center justify-center ${autoTrade ? 'bg-green-500/10 text-green-500' : 'bg-orange-500/10 text-orange-500'}`}>
-                   {autoTrade ? <LuZap className="size-4" /> : <LuShield className="size-4" />}
-                </div>
-                <div>
-                  <p className="text-sm font-semibold text-default-900">โหมดการออกออเดอร์</p>
-                  <p className="text-xs text-default-500">{autoTrade ? 'ยิง Signal เข้า MT5 อัตโนมัติทันทีที่ AI ตัดสินใจ (Auto-Trade)' : 'ส่งแจ้งเตือนมายังหน้าจอ & Telegram เพื่อรอคนกดยืนยัน (Manual Confirm)'}</p>
-                </div>
-              </div>
-              <button
-                onClick={() => setAutoTrade(!autoTrade)}
-                className={`relative w-11 h-6 rounded-full transition-colors shrink-0 outline-none ${autoTrade ? 'bg-green-500' : 'bg-orange-500'}`}>
-                <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${autoTrade ? 'translate-x-5' : ''}`} />
-              </button>
-            </div>
-          </div>
-        )}
-      </div>
-
-      {/* Save Button */}
-      <button onClick={saveAll}
-        className="btn w-full py-3 rounded-xl bg-violet-600 text-white hover:bg-violet-700 text-sm font-semibold flex items-center justify-center gap-2 border-none shadow-md shadow-violet-600/20">
-        {saved ? <><LuCheck className="size-4" /> บันทึกแล้ว!</> : <><LuSave className="size-4" /> บันทึกการตั้งค่า</>}
-      </button>
-
-      {/* Market Analysis */}
-      <div className="card !p-6 space-y-4">
-        <h5 className="text-sm font-semibold text-default-900 flex items-center gap-2">
-          <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuSparkles className="size-4 text-blue-500" /></div>
-          วิเคราะห์ตลาดด้วย AI
-        </h5>
-
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={analysisSymbol}
-            onChange={(e) => setAnalysisSymbol(e.target.value.toUpperCase())}
-            placeholder="Symbol"
-            className="w-32 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-blue-500/30"
-          />
-          <select
-            value={analysisTf}
-            onChange={(e) => setAnalysisTf(e.target.value)}
-            className="px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-blue-500/30 appearance-none cursor-pointer"
-          >
-            {['M1','M5','M15','M30','H1','H4','D1'].map(tf => <option key={tf} value={tf}>{tf}</option>)}
-          </select>
-          <button onClick={analyzeMarket} disabled={analyzing || !apiKeys.some(k => k.trim())}
-            className="btn flex-1 px-4 py-2.5 rounded-xl bg-blue-600 text-white hover:bg-blue-700 text-sm font-medium flex items-center justify-center gap-2 border-none disabled:opacity-50">
-            {analyzing ? <><LuSparkles className="size-4 animate-spin" /> กำลังวิเคราะห์...</> : <><LuBrain className="size-4" /> วิเคราะห์</>}
-          </button>
-        </div>
-
-        {analysis && (
-          <div className="rounded-xl border border-default-200 dark:border-default-300/10 overflow-hidden">
-            {analysis.success ? (
-              <>
-                <div className="flex items-center gap-3 p-4 bg-default-50 dark:bg-default-200/5">
-                  <div className={`px-4 py-2 rounded-lg text-lg font-bold border ${recBg(analysis.recommendation)}`}>
-                    {analysis.recommendation === 'BUY' ? '📈 BUY' : analysis.recommendation === 'SELL' ? '📉 SELL' : '⏸️ HOLD'}
-                  </div>
-                  <div>
-                    <p className="text-sm font-semibold text-default-900">{analysis.symbol} {analysis.timeframe}</p>
-                    <p className="text-xs text-default-500">ความมั่นใจ: {analysis.confidence?.toFixed(0)}% | โมเดล: {analysis.model}</p>
-                  </div>
-                </div>
-                <div className="p-4 space-y-2">
-                  <p className="text-sm text-default-700"><strong>เหตุผล:</strong> {analysis.reasoning}</p>
-                  {analysis.full_analysis && (
-                    <details className="mt-2">
-                      <summary className="text-xs text-default-500 cursor-pointer hover:text-default-700">ดูผลวิเคราะห์ฉบับเต็ม</summary>
-                      <pre className="mt-2 p-3 rounded-lg bg-default-100 dark:bg-default-200/10 text-xs text-default-600 whitespace-pre-wrap max-h-48 overflow-y-auto">{analysis.full_analysis}</pre>
-                    </details>
-                  )}
-                </div>
-              </>
-            ) : (
-              <div className="p-4 text-sm text-red-500">❌ {analysis.message}</div>
-            )}
-          </div>
-        )}
-      </div>
-
-      {/* AI Chat */}
-      <div className="card !p-6 space-y-4">
-        <h5 className="text-sm font-semibold text-default-900 flex items-center gap-2">
-          <div className="size-8 rounded-lg bg-emerald-500/10 flex items-center justify-center"><LuMessageCircle className="size-4 text-emerald-500" /></div>
-          แชทกับ AI
-        </h5>
-
-        <div className="h-56 rounded-xl bg-default-50 dark:bg-default-200/5 border border-default-200 dark:border-default-300/10 overflow-y-auto p-3 space-y-2">
-          {chatMessages.length === 0 && (
-            <p className="text-xs text-default-400 text-center py-8">ถาม AI ได้เลย เช่น "ตลาดวันนี้เป็นยังไง?" หรือ "แนะนำคู่เงินที่น่าสนใจ"</p>
-          )}
-          {chatMessages.map((msg, i) => (
-            <div key={i} className={`flex ${msg.role === 'user' ? 'justify-end' : 'justify-start'}`}>
-              <div className={`max-w-[80%] px-3 py-2 rounded-xl text-sm ${
-                msg.role === 'user'
-                  ? 'bg-violet-600 text-white rounded-br-sm'
-                  : 'bg-default-100 dark:bg-default-200/10 text-default-900 rounded-bl-sm'
-              }`}>
-                {msg.role === 'ai' && <span className="text-xs font-medium text-violet-500 block mb-1">🤖 AI</span>}
-                <p className="whitespace-pre-wrap">{msg.text}</p>
-              </div>
-            </div>
-          ))}
-          {chatLoading && (
-            <div className="flex justify-start">
-              <div className="px-3 py-2 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-500 text-sm rounded-bl-sm">
-                <LuSparkles className="size-4 animate-spin inline mr-1" /> กำลังคิด...
-              </div>
-            </div>
-          )}
-          <div ref={chatEndRef} />
-        </div>
-
-        <div className="flex gap-2">
-          <input
-            type="text"
-            value={chatInput}
-            onChange={(e) => setChatInput(e.target.value)}
-            onKeyDown={(e) => { if (e.key === 'Enter') sendChat(); }}
-            placeholder="พิมพ์คำถามที่นี่..."
-            className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-emerald-500/30"
-            disabled={chatLoading || !apiKeys.some(k => k.trim())}
-          />
-          <button onClick={sendChat} disabled={chatLoading || !chatInput.trim() || !apiKeys.some(k => k.trim())}
-            className="btn px-4 py-2.5 rounded-xl bg-emerald-600 text-white hover:bg-emerald-700 text-sm font-medium flex items-center gap-2 border-none disabled:opacity-50">
-            <LuSend className="size-4" /> ส่ง
-          </button>
-        </div>
-      </div>
     </main>
   );
 };
