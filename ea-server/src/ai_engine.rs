@@ -359,7 +359,7 @@ pub async fn run_news_hunter(
 
     // Send log: starting
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "news_hunter", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
         "message": format!("กำลังค้นหาข่าว {}...", symbol)
     }).to_string());
 
@@ -368,7 +368,7 @@ pub async fn run_news_hunter(
         Ok(results) if !results.is_empty() => {
             info!("{} Found {} articles via Google News", agent, results.len());
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "news_hunter", "status": "running",
+                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
                 "message": format!("พบข่าว {} รายการ (Google News) — กำลังวิเคราะห์ sentiment...", results.len())
             }).to_string());
             results
@@ -380,7 +380,7 @@ pub async fn run_news_hunter(
                     Ok(results) => {
                         info!("{} Found {} articles via Tavily", agent, results.len());
                         let _ = log_tx.send(serde_json::json!({
-                            "type": "agent_log", "agent": "news_hunter", "status": "running",
+                            "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
                             "message": format!("พบข่าว {} รายการ (Tavily) — กำลังวิเคราะห์ sentiment...", results.len())
                         }).to_string());
                         results
@@ -388,7 +388,7 @@ pub async fn run_news_hunter(
                     Err(e) => {
                         warn!("{} All search methods failed: {}", agent, e);
                         let _ = log_tx.send(serde_json::json!({
-                            "type": "agent_log", "agent": "news_hunter", "status": "error",
+                            "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "error",
                             "message": format!("ค้นข่าวไม่สำเร็จ: {}", e)
                         }).to_string());
                         return NewsResult {
@@ -401,7 +401,7 @@ pub async fn run_news_hunter(
             } else {
                 warn!("{} Google News failed and no Tavily key", agent);
                 let _ = log_tx.send(serde_json::json!({
-                    "type": "agent_log", "agent": "news_hunter", "status": "error",
+                    "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "error",
                     "message": "ค้นข่าวไม่สำเร็จ — ไม่มี Tavily Key สำรอง"
                 }).to_string());
                 return NewsResult {
@@ -428,7 +428,7 @@ pub async fn run_news_hunter(
 
     if news_text.is_empty() {
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "news_hunter", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
             "message": "ไม่พบข่าวที่เกี่ยวข้อง — ใช้ NEUTRAL"
         }).to_string());
         return NewsResult {
@@ -467,14 +467,14 @@ SUMMARY: [1-2 sentence summary in Thai language]"#);
             if summary.is_empty() { summary = response.chars().take(150).collect(); }
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "news_hunter", "status": "done",
+                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
                 "message": format!("✅ Sentiment: {} — {}", sentiment, summary)
             }).to_string());
             NewsResult { sentiment, summary, headlines, source_count: articles.len() }
         }
         Err(e) => {
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "news_hunter", "status": "error",
+                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "error",
                 "message": format!("วิเคราะห์ sentiment ไม่สำเร็จ: {}", e)
             }).to_string());
             NewsResult {
@@ -498,13 +498,13 @@ pub async fn run_chart_analyst(
 ) -> ChartResult {
     let agent = "📊 Chart Analyst";
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "chart_analyst", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "running",
         "message": format!("กำลังวิเคราะห์กราฟ {} {} ({} candles)...", symbol, timeframe, candles.len())
     }).to_string());
 
     if candles.is_empty() {
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "chart_analyst", "status": "error",
+            "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "error",
             "message": "ไม่มีข้อมูล candle — รอ MT5 เชื่อมต่อ"
         }).to_string());
         return ChartResult {
@@ -567,14 +567,14 @@ REASONING: [1-2 sentence summary in Thai language]"#, recent.len());
             if reason.is_empty() { reason = response.chars().take(150).collect(); }
             info!("{} {} — confidence {:.0}%", agent, rec, conf);
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "chart_analyst", "status": "done",
+                "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
                 "message": format!("✅ {} (confidence {:.0}%) — {}", rec, conf, reason)
             }).to_string());
             ChartResult { recommendation: rec, confidence: conf, reasoning: reason }
         }
         Err(e) => {
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "chart_analyst", "status": "error",
+                "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "error",
                 "message": format!("วิเคราะห์กราฟไม่สำเร็จ: {}", e)
             }).to_string());
             ChartResult { recommendation: "HOLD".to_string(), confidence: 30.0, reasoning: format!("Error: {}", e) }
@@ -592,7 +592,7 @@ pub async fn run_calendar_watcher(
 ) -> CalendarResult {
     let agent = "📅 Calendar";
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "calendar", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "calendar", "status": "running",
         "message": "กำลังตรวจสอบปฏิทินเศรษฐกิจ..."
     }).to_string());
 
@@ -653,7 +653,7 @@ pub async fn run_calendar_watcher(
 
     info!("{} High impact: {} — {}", agent, high_impact, warning);
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "calendar", "status": "done",
+        "type": "agent_log", "symbol": symbol, "agent": "calendar", "status": "done",
         "message": &warning
     }).to_string());
 
@@ -665,6 +665,7 @@ pub async fn run_calendar_watcher(
 // ──────────────────────────────────────────────
 
 pub fn run_risk_manager(
+    symbol: &str,
     balance: f64, equity: f64,
     open_positions: usize, max_positions: usize,
     max_drawdown_pct: f64,
@@ -673,7 +674,7 @@ pub fn run_risk_manager(
 ) -> RiskResult {
     let agent = "🛡️ Risk Manager";
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "risk_manager", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "running",
         "message": format!("ตรวจสอบความเสี่ยง... Balance: ${:.2}, Equity: ${:.2}", balance, equity)
     }).to_string());
 
@@ -683,7 +684,7 @@ pub fn run_risk_manager(
     if emergency_stop {
         let msg = "🚨 Emergency Stop เปิดอยู่ — ห้ามเทรด!";
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "risk_manager", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "done",
             "message": msg
         }).to_string());
         return RiskResult {
@@ -695,7 +696,7 @@ pub fn run_risk_manager(
     if open_positions >= max_positions {
         let msg = format!("⛔ ออเดอร์เต็ม ({}/{})", open_positions, max_positions);
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "risk_manager", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "done",
             "message": &msg
         }).to_string());
         return RiskResult {
@@ -707,7 +708,7 @@ pub fn run_risk_manager(
     if drawdown > max_drawdown_pct {
         let msg = format!("🚨 Drawdown {:.2}% เกิน limit {:.1}%", drawdown, max_drawdown_pct);
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "risk_manager", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "done",
             "message": &msg
         }).to_string());
         return RiskResult {
@@ -718,7 +719,7 @@ pub fn run_risk_manager(
 
     let msg = format!("✅ ผ่าน — DD {:.2}%, ออเดอร์ {}/{}", drawdown, open_positions, max_positions);
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "risk_manager", "status": "done",
+        "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "done",
         "message": &msg
     }).to_string());
     RiskResult {
@@ -740,7 +741,7 @@ pub async fn run_decision_maker(
 ) -> (String, f64, String) {
     let agent = "🧠 Decision Maker";
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "decision_maker", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "running",
         "message": "กำลังรวมข้อมูลจากทุก Agent เพื่อตัดสินใจ..."
     }).to_string());
 
@@ -748,7 +749,7 @@ pub async fn run_decision_maker(
     if !risk.approved {
         let msg = format!("❌ BLOCKED โดย Risk Manager: {}", risk.reason);
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "decision_maker", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "done",
             "message": &msg
         }).to_string());
         return ("BLOCKED".to_string(), 0.0, msg);
@@ -758,7 +759,7 @@ pub async fn run_decision_maker(
     if calendar.high_impact_soon {
         let msg = format!("⚠️ HOLD — มีข่าวสำคัญใกล้ออก: {}", calendar.warning);
         let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "agent": "decision_maker", "status": "done",
+            "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "done",
             "message": &msg
         }).to_string());
         return ("HOLD".to_string(), 30.0, msg);
@@ -826,7 +827,7 @@ REASONING: [concise summary in Thai language]"#,
             }
             if reasoning.is_empty() { reasoning = response.chars().take(200).collect(); }
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "decision_maker", "status": "done",
+                "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "done",
                 "message": format!("✅ ตัดสินใจ: {} (confidence {:.0}%) — {}", decision, confidence, reasoning)
             }).to_string());
             (decision, confidence, reasoning)
@@ -834,7 +835,7 @@ REASONING: [concise summary in Thai language]"#,
         Err(e) => {
             let msg = format!("Error: {}", e);
             let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "decision_maker", "status": "error",
+                "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "error",
                 "message": &msg
             }).to_string());
             ("HOLD".to_string(), 0.0, msg)
@@ -858,7 +859,7 @@ pub async fn run_all_agents(
     info!("🤖 [Multi-Agent] Starting 5-agent analysis for {} {}...", symbol, timeframe);
 
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "orchestrator", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "orchestrator", "status": "running",
         "message": format!("🚀 เริ่มวิเคราะห์ {} {} ด้วย 5 Agents...", symbol, timeframe)
     }).to_string());
 
@@ -874,7 +875,7 @@ pub async fn run_all_agents(
 
     // Run Agent 5 (Risk) — instant, no API call
     let risk_result = run_risk_manager(
-        balance, equity, open_positions, max_positions,
+        symbol, balance, equity, open_positions, max_positions,
         max_drawdown_pct, emergency_stop, log_tx,
     );
 
@@ -888,7 +889,7 @@ pub async fn run_all_agents(
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
 
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "orchestrator", "status": "done",
+        "type": "agent_log", "symbol": symbol, "agent": "orchestrator", "status": "done",
         "message": format!("🏁 ผลสุดท้าย: {} (confidence {:.0}%)", decision, confidence)
     }).to_string());
 
@@ -923,7 +924,7 @@ pub async fn run_all_agents_multi_tf(
     info!("🤖 [Multi-Agent] Starting Multi-TF analysis for {}...", symbol);
 
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "orchestrator", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "orchestrator", "status": "running",
         "message": format!("🚀 เริ่มวิเคราะห์ {} ด้วย 5 Agents + Multi-Timeframe (M5/M15/H1/H4)...", symbol)
     }).to_string());
 
@@ -932,7 +933,7 @@ pub async fn run_all_agents_multi_tf(
 
     // Run Chart Analyst on all timeframes
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "chart_analyst", "status": "running",
+        "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "running",
         "message": "📊 วิเคราะห์หลาย Timeframe พร้อมกัน: M5, M15, H1, H4..."
     }).to_string());
 
@@ -1037,7 +1038,7 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
                 if reason.is_empty() { reason = text.chars().take(200).collect(); }
                 
                 let _ = log_tx.send(serde_json::json!({
-                    "type": "agent_log", "agent": "chart_analyst", "status": "done",
+                    "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
                     "message": format!("📊 Best TF: {} → {} ({:.0}%) | M5:{} M15:{} H1:{} H4:{}", best_tf, rec, conf, tf_m5, tf_m15, tf_h1, tf_h4)
                 }).to_string());
                 
@@ -1049,7 +1050,7 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
             }
             Err(e) => {
                 let _ = log_tx.send(serde_json::json!({
-                    "type": "agent_log", "agent": "chart_analyst", "status": "error",
+                    "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "error",
                     "message": format!("วิเคราะห์กราฟไม่สำเร็จ: {}", e)
                 }).to_string());
                 ChartResult {
@@ -1065,7 +1066,7 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
     // Run Calendar + Risk
     let calendar_result = run_calendar_watcher(symbol, log_tx).await;
     let risk_result = run_risk_manager(
-        balance, equity, open_positions, max_positions,
+        symbol, balance, equity, open_positions, max_positions,
         max_drawdown_pct, emergency_stop, log_tx,
     );
 
@@ -1079,7 +1080,7 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
 
     let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "agent": "orchestrator", "status": "done",
+        "type": "agent_log", "symbol": symbol, "agent": "orchestrator", "status": "done",
         "message": format!("🏁 ผลสุดท้าย: {} (confidence {:.0}%)", decision, confidence)
     }).to_string());
 

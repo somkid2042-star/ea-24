@@ -291,34 +291,40 @@ async fn run_server() {
     let ea_state_ai = ea_state.clone();
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
-        let mut last_run = std::time::Instant::now();
-        // Set last loop to be 'interval' minus 5 seconds away so it triggers almost instantly on boot
-        // We'll calculate it inside the loop depending on config
+        let mut last_runs: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
 
         loop {
             let auto_analyze = db_ai.get_config("ai_auto_analyze").await.unwrap_or_else(|| "false".to_string()) == "true";
             if auto_analyze {
-                let interval_str = db_ai.get_config("ai_analyze_interval").await.unwrap_or_else(|| "5".to_string());
-                let interval_min: u64 = interval_str.parse().unwrap_or(5);
+                let jobs_str = db_ai.get_config("ai_autopilot_jobs").await.unwrap_or_else(|| "[]".to_string());
+                let jobs: Vec<serde_json::Value> = serde_json::from_str(&jobs_str).unwrap_or_default();
                 
-                if last_run.elapsed().as_secs() >= interval_min * 60 {
-                    last_run = std::time::Instant::now();
+                let gemini_key = db_ai.get_config("gemini_api_key").await.unwrap_or_default();
+                let gemini_model = db_ai.get_config("gemini_model").await.unwrap_or_default();
+                let tavily_key = db_ai.get_config("tavily_api_key").await.unwrap_or_default();
+                let ai_mode = db_ai.get_config("ai_mode").await.unwrap_or_else(|| "auto".to_string());
+                
+                for job in jobs {
+                    let sym = job["symbol"].as_str().unwrap_or("").to_uppercase();
+                    if sym.is_empty() { continue; }
                     
-                    let sym_str = db_ai.get_config("ai_target_symbols").await.unwrap_or_else(|| "XAUUSD".to_string());
-                    let syms: Vec<String> = sym_str.split(',').map(|s| s.trim().to_uppercase()).filter(|s| !s.is_empty()).collect();
-                    let auto_trade = db_ai.get_config("ai_auto_trade").await.unwrap_or_else(|| "false".to_string()) == "true";
+                    let interval_min = job["interval"].as_u64().unwrap_or(5);
+                    let auto_trade = job["auto_trade"].as_bool().unwrap_or(false);
                     let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
-                    let ai_mode = db_ai.get_config("ai_mode").await.unwrap_or_else(|| "auto".to_string());
-                    
-                    for sym in syms {
+
+                    let last = *last_runs.entry(sym.clone()).or_insert_with(|| {
+                        std::time::Instant::now()
+                            .checked_sub(std::time::Duration::from_secs(interval_min * 60))
+                            .unwrap_or_else(std::time::Instant::now)
+                    });
+
+                    if last.elapsed().as_secs() >= interval_min * 60 {
+                        last_runs.insert(sym.clone(), std::time::Instant::now());
+                        
                         info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
                         
                         let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
                         let _ = tx_ai.send(start_msg);
-                        
-                        let gemini_key = db_ai.get_config("gemini_api_key").await.unwrap_or_default();
-                        let gemini_model = db_ai.get_config("gemini_model").await.unwrap_or_default();
-                        let tavily_key = db_ai.get_config("tavily_api_key").await.unwrap_or_default();
                         
                         let candles_m5 = db_ai.get_candles_for_strategy(&sym, 5, 50).await;
                         let candles_m15 = db_ai.get_candles_for_strategy(&sym, 15, 50).await;
@@ -337,56 +343,57 @@ async fn run_server() {
                             (state.balance, state.equity, state.open_positions)
                         };
                         
+                        let job_ai_mode = job["ai_mode"].as_str().unwrap_or(&ai_mode).to_string();
+                        
                         let result = ai_engine::run_all_agents_multi_tf(
                             &gemini_key, &gemini_model, &tavily_key,
                             &sym, &multi_tf_candles,
                             if bal > 0.0 { bal } else { 10000.0 }, 
                             if eq > 0.0 { eq } else { 10000.0 }, 
                             open_pos, 5, 10.0, false, 
-                            &ai_mode,
+                            &job_ai_mode,
                             &tx_ai
                         ).await;
                         
                         let resp = serde_json::json!({
                             "type": "multi_agent_result",
+                            "symbol": sym,
                             "result": result
                         });
                         let _ = tx_ai.send(resp.to_string());
                     
-                    if result.final_decision == "BUY" || result.final_decision == "SELL" {
-                        if auto_trade {
-                            info!("🤖 [Auto-Pilot] Executing {} order automatically on {}", result.final_decision, sym);
-                            let cmd = serde_json::json!({
-                                "action": "open_trade",
-                                "symbol": sym,
-                                "direction": result.final_decision,
-                                "lot_size": auto_lot
-                            }).to_string();
-                            let _ = tx_ai.send(cmd);
-                        } else {
-                            info!("🤖 [Auto-Pilot] Proposing {} order on {}, awaiting user confirmation", result.final_decision, sym);
-                            let proposal = serde_json::json!({
-                                "type": "ai_trade_proposal",
-                                "symbol": sym,
-                                "direction": result.final_decision,
-                                "confidence": result.confidence,
-                                "reasoning": result.reasoning,
-                                "lot_size": auto_lot
-                            }).to_string();
-                            let _ = tx_ai.send(proposal);
-                            
-                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🚨 AI Trade Proposal: {} {}\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning)).await;
+                        if result.final_decision == "BUY" || result.final_decision == "SELL" {
+                            if auto_trade {
+                                info!("🤖 [Auto-Pilot] Executing {} order automatically on {}", result.final_decision, sym);
+                                let cmd = serde_json::json!({
+                                    "action": "open_trade",
+                                    "symbol": sym,
+                                    "direction": result.final_decision,
+                                    "lot_size": auto_lot
+                                }).to_string();
+                                let _ = tx_ai.send(cmd);
+                            } else {
+                                info!("🤖 [Auto-Pilot] Proposing {} order on {}, awaiting user confirmation", result.final_decision, sym);
+                                let proposal = serde_json::json!({
+                                    "type": "ai_trade_proposal",
+                                    "symbol": sym,
+                                    "direction": result.final_decision,
+                                    "confidence": result.confidence,
+                                    "reasoning": result.reasoning,
+                                    "lot_size": auto_lot
+                                }).to_string();
+                                let _ = tx_ai.send(proposal);
+                                
+                                let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🚨 AI Trade Proposal: {} {}\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning)).await;
+                            }
                         }
                     }
                 }
-                tokio::time::sleep(tokio::time::Duration::from_secs(12)).await;
+            } else {
+                 last_runs.clear();
             }
-        } else {
-             // reset last_run to ensure immediate run when re-enabled
-             last_run = std::time::Instant::now() - std::time::Duration::from_secs(86400);
-        }
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
     });
