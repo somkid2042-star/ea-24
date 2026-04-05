@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuSave, LuExternalLink, LuEye, LuEyeOff } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuSave, LuExternalLink } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -19,12 +19,12 @@ const AiSettings = () => {
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [email, setEmail] = useState('');
-  const [appPassword, setAppPassword] = useState('');
-  const [showPassword, setShowPassword] = useState(false);
+  const [emails, setEmails] = useState<{address: string, password: string}[]>([{address: '', password: ''}]);
+  const [showEmailSection, setShowEmailSection] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
 
   const hideTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const hideEmailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
 
   // Auto-hide feature when showKeysSection is true
@@ -39,6 +39,19 @@ const AiSettings = () => {
     if (showKeysSection) resetHideTimer();
     return () => { if (hideTimeoutRef.current) clearTimeout(hideTimeoutRef.current); };
   }, [showKeysSection, resetHideTimer]);
+
+  // Auto-hide feature for Email section
+  const resetEmailHideTimer = useCallback(() => {
+    if (hideEmailTimeoutRef.current) clearTimeout(hideEmailTimeoutRef.current);
+    hideEmailTimeoutRef.current = setTimeout(() => {
+      setShowEmailSection(false);
+    }, 60000); // Auto hide after 60 seconds
+  }, []);
+
+  useEffect(() => {
+    if (showEmailSection) resetEmailHideTimer();
+    return () => { if (hideEmailTimeoutRef.current) clearTimeout(hideEmailTimeoutRef.current); };
+  }, [showEmailSection, resetEmailHideTimer]);
 
   // Validate API key by calling Google's API
   const validateKey = async (index: number, key: string) => {
@@ -80,8 +93,17 @@ const AiSettings = () => {
             setActiveIndex(0); // The first key is always the active one based on our save logic
           }
           if (c.gemini_model) setSelectedModel(c.gemini_model);
-          if (c.gmail_address) setEmail(c.gmail_address);
-          if (c.gmail_app_password) setAppPassword(c.gmail_app_password);
+          if (c.gmail_address || c.gmail_app_password) {
+            const addrs = (c.gmail_address || '').split(',').map((x: string) => x.trim());
+            const passes = (c.gmail_app_password || '').split(',').map((x: string) => x.trim());
+            const length = Math.max(addrs.length, passes.length, 1);
+            const loaded = [];
+            for (let i = 0; i < length; i++) {
+              loaded.push({ address: addrs[i] || '', password: passes[i] || '' });
+            }
+            if (loaded.length > 0) setEmails(loaded);
+            else setEmails([{address: '', password: ''}]);
+          }
         }
         if (data.type === 'ai_models') {
           setModels(data.models || []);
@@ -110,8 +132,10 @@ const AiSettings = () => {
   };
 
   const saveEmailConfig = () => {
-    saveConfig('gmail_address', email);
-    saveConfig('gmail_app_password', appPassword);
+    const validEmails = emails.filter(e => e.address.trim() || e.password.trim());
+    const toSave = validEmails.length > 0 ? validEmails : [{address: '', password: ''}];
+    saveConfig('gmail_address', toSave.map(e => e.address).join(','));
+    saveConfig('gmail_app_password', toSave.map(e => e.password).join(','));
   };
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -289,55 +313,93 @@ const AiSettings = () => {
       </div>
 
       {/* Email Setup */}
-      <div className="card !p-6 space-y-6 mt-6">
-        <div>
-          <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
-            บันทึกบัญชี Email สำหรับเข้าสู่ระบบ
-          </h5>
-          <p className="text-xs text-default-500">
-            สมุดจดบันทึก Username และ Password สำหรับล็อกอินผ่านเบราว์เซอร์อย่างรวดเร็ว (ไม่ได้ใช้ส่งการแจ้งเตือน)
-          </p>
+      <div className="card !p-6 space-y-4 mt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
+              บันทึกบัญชี Email สำหรับเข้าสู่ระบบ
+              <span className="text-xs font-normal text-default-400">({emails.filter(e => e.address.trim() || e.password.trim()).length} บัญชี)</span>
+            </h5>
+            <p className="text-xs text-default-500">
+              สมุดจดบันทึก Username และ Password สำหรับล็อกอินผ่านเบราว์เซอร์อย่างรวดเร็ว (ไม่ได้ใช้ส่งการแจ้งเตือน)
+            </p>
+          </div>
+          <button
+            onClick={() => setShowEmailSection(!showEmailSection)}
+            className="flex items-center gap-1.5 text-xs font-medium text-blue-500 hover:text-blue-600 px-3 py-1.5 rounded-lg hover:bg-blue-500/10 transition-colors"
+          >
+            {showEmailSection ? <><LuChevronUp className="size-4" /> ซ่อน</> : <><LuChevronDown className="size-4" /> แสดง</>}
+          </button>
         </div>
 
-        <div className="grid gap-6 md:grid-cols-2">
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
-              <LuMail className="size-4 text-blue-500" /> Gmail Address
-            </label>
-            <input
-              type="email"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              placeholder="example@gmail.com"
-              className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
-            />
-          </div>
+        {showEmailSection && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 bg-default-50 dark:bg-default-100/5 p-4 rounded-xl border border-default-200/50">
+          {emails.map((acc, i) => (
+            <div key={i} className="flex flex-col sm:flex-row gap-4 pb-4 border-b border-default-200/50 last:border-0 last:pb-0">
+              <div className="space-y-2 flex-1">
+                <label className="text-xs font-semibold text-default-900 flex items-center gap-2">
+                  <LuMail className="size-3.5 text-blue-500" /> Email
+                </label>
+                <input
+                  type="text"
+                  value={acc.address}
+                  onChange={(e) => {
+                    resetEmailHideTimer();
+                    const next = [...emails];
+                    next[i].address = e.target.value;
+                    setEmails(next);
+                  }}
+                  placeholder="name@gmail.com"
+                  className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+                />
+              </div>
 
-          <div className="space-y-2">
-            <label className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
-              <LuKey className="size-4 text-orange-500" /> Password
-            </label>
-            <div className="relative">
-              <input
-                type={showPassword ? "text" : "password"}
-                value={appPassword}
-                onChange={(e) => setAppPassword(e.target.value)}
-                placeholder="xxxx xxxx xxxx xxxx"
-                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
-              />
-              <button 
-                type="button"
-                onClick={() => setShowPassword(!showPassword)}
-                className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-700"
-              >
-                {showPassword ? <LuEyeOff size={18} /> : <LuEye size={18} />}
-              </button>
+              <div className="space-y-2 flex-1">
+                <label className="text-xs font-semibold text-default-900 flex items-center gap-2">
+                  <LuKey className="size-3.5 text-orange-500" /> Password
+                </label>
+                <div className="relative">
+                  <input
+                    type="text"
+                    value={acc.password}
+                    onChange={(e) => {
+                      resetEmailHideTimer();
+                      const next = [...emails];
+                      next[i].password = e.target.value;
+                      setEmails(next);
+                    }}
+                    placeholder="password1234"
+                    className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+                  />
+                </div>
+              </div>
+
+              {emails.length > 1 && (
+                <div className="flex items-end">
+                  <button
+                    onClick={() => setEmails(emails.filter((_, j) => j !== i))}
+                    className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                  >
+                    <LuTrash2 className="size-4" />
+                  </button>
+                </div>
+              )}
             </div>
-          </div>
+          ))}
+          <button
+            onClick={() => {
+              resetEmailHideTimer();
+              setEmails([...emails, {address: '', password: ''}]);
+            }}
+            className="flex items-center gap-2 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1.5 rounded-lg hover:bg-blue-500/10 transition-colors"
+          >
+            <LuPlus className="size-3.5" /> เพิ่มบัญชี
+          </button>
         </div>
+        )}
 
-        <div className="pt-4 border-t border-default-100 dark:border-default-200/10 flex flex-wrap items-center gap-3">
+        <div className="pt-2 flex flex-wrap items-center gap-3">
           <button
             onClick={saveEmailConfig}
             className="px-6 py-2.5 rounded-xl font-bold text-sm text-white shadow-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2"
