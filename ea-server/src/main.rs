@@ -80,6 +80,7 @@ struct ClientMessage {
     content_base64: Option<String>,
     // AI fields
     question: Option<String>,
+    ai_mode: Option<String>,
 }
 
 #[derive(Debug, Serialize, Clone)]
@@ -1571,6 +1572,7 @@ async fn handle_ws_connection(
                                             ("H4", candles_h4),
                                         ];
 
+                                        let ai_mode = client_msg.ai_mode.clone().unwrap_or_else(|| "auto".to_string());
                                         let tx_agents = tx.clone();
                                         let sym_resp = sym.clone();
                                         tokio::spawn(async move {
@@ -1578,6 +1580,7 @@ async fn handle_ws_connection(
                                                 &gemini_key, &gemini_model, &tavily_key,
                                                 &sym, &multi_tf_candles,
                                                 balance, equity, open_pos, max_pos, max_dd, estop,
+                                                &ai_mode,
                                                 &tx_agents
                                             ).await;
                                             

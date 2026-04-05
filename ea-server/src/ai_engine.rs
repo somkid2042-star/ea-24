@@ -917,6 +917,7 @@ pub async fn run_all_agents_multi_tf(
     balance: f64, equity: f64,
     open_positions: usize, max_positions: usize,
     max_drawdown_pct: f64, emergency_stop: bool,
+    ai_mode: &str,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> MultiAgentResult {
     info!("🤖 [Multi-Agent] Starting Multi-TF analysis for {}...", symbol);
@@ -943,6 +944,7 @@ pub async fn run_all_agents_multi_tf(
             tf_summaries.push(format!("{}: ไม่มีข้อมูล", tf));
             continue;
         }
+        
         let recent = &candles[candles.len().saturating_sub(20)..];
         let candle_str: String = recent.iter().map(|c| {
             format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
@@ -953,9 +955,28 @@ pub async fn run_all_agents_multi_tf(
             let e = candles[candles.len()-1].close;
             if e > s * 1.001 { "UPTREND" } else if e < s * 0.999 { "DOWNTREND" } else { "SIDEWAYS" }
         } else { "UNKNOWN" };
-        tf_summaries.push(format!(
+        
+        let mut base_summary = format!(
             "=== {} ({} candles) | Price: {:.5} | Trend: {} ===\n{}", tf, count, price, trend, candle_str
-        ));
+        );
+
+        if ai_mode == "eval_10_strategies" {
+            let ind = crate::strategy::compute_indicators(candles);
+            let mut strat_results = Vec::new();
+            for &strat in crate::strategy::ALL_STRATEGIES {
+                let (signal, reason) = crate::strategy::evaluate_strategy(strat, &ind);
+                let sig_str = match signal {
+                    crate::strategy::Signal::Buy => "BUY",
+                    crate::strategy::Signal::Sell => "SELL",
+                    crate::strategy::Signal::None => "HOLD",
+                };
+                strat_results.push(format!("{}: {} ({})", strat, sig_str, reason));
+            }
+            base_summary.push_str("\n\n10-Strategy Outputs:\n");
+            base_summary.push_str(&strat_results.join("\n"));
+        }
+
+        tf_summaries.push(base_summary);
     }
 
     let multi_tf_prompt = format!(
@@ -971,6 +992,7 @@ For each timeframe, identify:
 Then determine:
 - Which timeframe gives the BEST entry signal right now?
 - What is the overall market bias from combining all timeframes?
+- If 10-Strategy Outputs are present, evaluate which strategy is most accurate under current market conditions and incorporate that into your decision.
 
 Respond in this EXACT format:
 BEST_TIMEFRAME: [M5/M15/H1/H4]

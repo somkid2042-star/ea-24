@@ -27,7 +27,7 @@ pub struct Candle {
 /// Extended indicator values for a symbol
 #[derive(Debug, Clone, Default)]
 #[allow(dead_code)]
-struct Indicators {
+pub struct Indicators {
     // Core
     rsi_14: f64,
     ema_9: f64,
@@ -78,7 +78,7 @@ pub enum Signal {
 }
 
 /// All strategy names
-const ALL_STRATEGIES: &[&str] = &[
+pub const ALL_STRATEGIES: &[&str] = &[
     "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert", "Grid Master",
     "SMC", "ICT", "Fibonacci", "Momentum Surge", "Session Sniper",
 ];
@@ -266,7 +266,7 @@ fn calc_asian_range(candles: &[Candle]) -> (f64, f64) {
     (h, l)
 }
 
-fn compute_indicators(candles: &[Candle]) -> Indicators {
+pub fn compute_indicators(candles: &[Candle]) -> Indicators {
     if candles.len() < 50 {
         return Indicators::default();
     }
@@ -335,7 +335,7 @@ fn compute_indicators(candles: &[Candle]) -> Indicators {
 //  Strategy Signal Logic (10 strategies + Auto)
 // ──────────────────────────────────────────────
 
-fn evaluate_strategy(strategy: &str, ind: &Indicators) -> (Signal, String) {
+pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> (Signal, String) {
     match strategy {
         "Scalper Pro"      => eval_scalper(ind),
         "Trend Rider"      => eval_trend_rider(ind),

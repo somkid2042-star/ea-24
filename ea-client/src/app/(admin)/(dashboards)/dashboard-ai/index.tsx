@@ -27,6 +27,8 @@ const DashboardAi = () => {
   const [finalResult, setFinalResult] = useState<any>(null);
   const [tradeProposal, setTradeProposal] = useState<any>(null);
   const [showSymbolDropdown, setShowSymbolDropdown] = useState(false);
+  const [aiMode, setAiMode] = useState("auto");
+  const [showModeDropdown, setShowModeDropdown] = useState(false);
   const wsRef = useRef<WebSocket | null>(null);
   const logsEndRef = useRef<HTMLDivElement>(null);
   
@@ -101,6 +103,7 @@ const DashboardAi = () => {
     wsRef.current.send(JSON.stringify({
       action: "run_agents",
       symbol: symbol,
+      ai_mode: aiMode,
     }));
   };
 
@@ -189,6 +192,34 @@ const DashboardAi = () => {
                     ยังไม่มี Symbol<br />(รอ MT5 เชื่อมต่อ)
                   </div>
                 )}
+              </div>
+            )}
+          </div>
+
+          {/* Mode Selector */}
+          <div className="relative">
+            <button
+              onClick={() => setShowModeDropdown(!showModeDropdown)}
+              className="flex items-center gap-2 px-4 py-2.5 rounded-xl border border-default-200 bg-background hover:bg-default-100 transition-all font-bold text-sm min-w-[180px] justify-between text-default-700"
+            >
+              <span>{aiMode === 'auto' ? '💡 AI หาให้ (Price Action)' : '⚙️ ประเมิน 10 กลยุทธ์'}</span>
+              <LuChevronDown className={`size-4 text-default-400 transition-transform ${showModeDropdown ? 'rotate-180' : ''}`} />
+            </button>
+            
+            {showModeDropdown && (
+              <div className="absolute top-full mt-1 right-0 w-full min-w-[200px] bg-background border border-default-200 rounded-xl shadow-2xl z-50 overflow-hidden">
+                <button
+                  onClick={() => { setAiMode('auto'); setShowModeDropdown(false); }}
+                  className={`w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-primary/10 transition-colors ${aiMode === 'auto' ? 'bg-primary/10 text-primary' : 'text-default-700'}`}
+                >
+                  💡 AI หาให้ (Price Action)
+                </button>
+                <button
+                  onClick={() => { setAiMode('eval_10_strategies'); setShowModeDropdown(false); }}
+                  className={`w-full text-left px-4 py-2.5 text-sm font-semibold hover:bg-primary/10 transition-colors ${aiMode === 'eval_10_strategies' ? 'bg-primary/10 text-primary' : 'text-default-700'}`}
+                >
+                  ⚙️ ประเมิน 10 กลยุทธ์
+                </button>
               </div>
             )}
           </div>
