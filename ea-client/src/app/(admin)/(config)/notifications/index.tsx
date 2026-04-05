@@ -80,7 +80,7 @@ const NotificationSettings = () => {
     <main className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-default-900">🔔 การแจ้งเตือน (Notifications)</h4>
+          <h4 className="text-lg font-semibold text-default-900">Notifications</h4>
           <p className="mt-1 text-sm text-default-500">ตั้งค่าการแจ้งเตือนผ่าน Telegram Bot</p>
         </div>
         <div className={`rounded-full px-3 py-1 text-xs font-medium ${wsConnected ? 'bg-green-100 dark:bg-green-500/20 text-green-600' : 'bg-red-100 dark:bg-red-500/20 text-red-600'}`}>

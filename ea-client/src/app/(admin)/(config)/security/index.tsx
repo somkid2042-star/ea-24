@@ -51,7 +51,7 @@ const SecuritySettings = () => {
             </div>
           </div>
           <div className="mt-3 rounded-md bg-yellow-50 p-3 text-sm text-yellow-700 dark:bg-yellow-500/10 dark:text-yellow-500">
-            ⚠️ No license activated. Running in trial mode (max 1 MT5 instance).
+            No license activated. Running in trial mode (max 1 MT5 instance).
           </div>
         </div>
       </div>

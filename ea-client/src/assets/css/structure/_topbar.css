@@ -3,6 +3,7 @@
 // */
 
 .app-header {
+  @apply shadow-sm shadow-default-900/5 dark:shadow-none;
   .topbar-item {
     @apply h-9.5 flex items-center;
   }

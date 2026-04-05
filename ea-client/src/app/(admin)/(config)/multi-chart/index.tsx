@@ -133,7 +133,7 @@ const MultiChart = () => {
     <main className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-default-900">📈 Multi-Symbol Watch</h4>
+          <h4 className="text-lg font-semibold text-default-900">Multi-Symbol Watch</h4>
           <p className="mt-1 text-sm text-default-500">ดูกราฟหลายคู่เงินพร้อมกัน (M15)</p>
         </div>
         <div className="flex items-center gap-2">

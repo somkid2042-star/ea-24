@@ -308,6 +308,9 @@ async fn run_server() {
                     let sym = job["symbol"].as_str().unwrap_or("").to_uppercase();
                     if sym.is_empty() { continue; }
                     
+                    let is_enabled = job["enabled"].as_bool().unwrap_or(true);
+                    if !is_enabled { continue; }
+                    
                     let interval_min = job["interval"].as_u64().unwrap_or(5);
                     let auto_trade = job["auto_trade"].as_bool().unwrap_or(false);
                     let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
@@ -619,7 +622,39 @@ async fn handle_mt5_connection(
                                         }
                                     } else if msg_type == Some("trade_history") {
                                         if let Some(deals) = val.get("deals") {
-                                            db.save_trade_history(deals).await;
+                                            let new_deals = db.save_trade_history(deals).await;
+                                            
+                                            // 🔔 Send Telegram Notification for closed trades
+                                            let notify_close = db.get_config("notify_on_close").await.unwrap_or("true".to_string()) == "true";
+                                            let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
+                                            let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            
+                                            if notify_close && !bot_token.is_empty() && !chat_id.is_empty() {
+                                                for deal in new_deals {
+                                                    let ticket = deal["ticket"].as_i64().unwrap_or(0);
+                                                    let pos_id = deal["pos_id"].as_i64().unwrap_or(0);
+                                                    
+                                                    // In MT5, an exit deal has ticket != pos_id and affects PNL.
+                                                    if pos_id > 0 && ticket != pos_id {
+                                                        let profit = deal["profit"].as_f64().unwrap_or(0.0);
+                                                        let swap = deal["swap"].as_f64().unwrap_or(0.0);
+                                                        let comm = deal["commission"].as_f64().unwrap_or(0.0);
+                                                        let total_pnl = profit + swap + comm;
+                                                        
+                                                        let sym = deal["symbol"].as_str().unwrap_or("");
+                                                        let lot = deal["volume"].as_f64().unwrap_or(0.0);
+                                                        
+                                                        // A sell deal closes a long position -> origin was BUY
+                                                        let type_str = deal["type"].as_str().unwrap_or("");
+                                                        let dir = if type_str == "1" || type_str.contains("SELL") { "BUY" } else { "SELL" };
+                                                        
+                                                        let msg = crate::notify::format_trade_close(sym, dir, lot, total_pnl);
+                                                        let bt = bot_token.clone();
+                                                        let cid = chat_id.clone();
+                                                        tokio::spawn(async move { crate::notify::send_telegram_notify(&bt, &cid, &msg).await; });
+                                                    }
+                                                }
+                                            }
                                         }
                                     } else if msg_type == Some("candle_data") {
                                         if let Some(candles) = val.get("candles") {

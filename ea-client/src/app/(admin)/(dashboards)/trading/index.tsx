@@ -3,12 +3,12 @@ import { useNavigate } from 'react-router-dom';
 import { createChart, ColorType, CandlestickSeries, createSeriesMarkers } from 'lightweight-charts';
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
-  LuLayoutDashboard, LuServer, LuShieldCheck,
+  LuServer, LuShieldCheck,
   LuWorkflow, LuBriefcase, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
-  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuBrain,
-  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2
+  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuKey,
+  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -24,16 +24,16 @@ const TradeActivePage = lazy(() => import('@/app/(admin)/(config)/trade-active/i
 const TradeSetupPage = lazy(() => import('@/app/(admin)/(config)/trade-setup/index'));
 const TradeHistoryPage = lazy(() => import('@/app/(admin)/(config)/trade-history/index'));
 const PnlReportPage = lazy(() => import('@/app/(admin)/(config)/pnl-report/index'));
+const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
 const NotificationsPage = lazy(() => import('@/app/(admin)/(config)/notifications/index'));
 const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-management/index'));
-const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
 const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
 const DashboardAiPage = lazy(() => import('@/app/(admin)/(dashboards)/dashboard-ai/index'));
 const AiSettingsPage = lazy(() => import('@/app/(admin)/(config)/ai-settings/index'));
 
 /* ── Types ── */
 type Position = { ticket: number; symbol: string; type: string; volume: number; open_price: number; current_price: number; pnl: number; swap: number; sl: number; tp: number; magic: number; open_time: string; comment: string; };
-type AccountData = { balance: number; equity: number; profit: number; margin: number; free_margin: number; currency: string; positions: Position[]; positions_count: number; trading_enabled: boolean; };
+type AccountData = { balance: number; equity: number; profit: number; margin: number; free_margin: number; currency: string; positions: Position[]; positions_count: number; trading_enabled: boolean; login?: number; };
 type MarketWatchSymbol = { symbol: string; bid: number; ask: number; spread: number; digits: number; serverTime?: number; };
 type TradeResult = { action: string; success: boolean; symbol?: string; direction?: string; lot?: number; ticket?: number; error?: string; };
 type AlertMsg = { type: 'alert'; level: 'info' | 'warning' | 'error'; title: string; message: string; };
@@ -41,23 +41,26 @@ type OHLCCandle = { time: number; open: number; high: number; low: number; close
 type ChartMarker = { time: number; position: 'aboveBar' | 'belowBar'; color: string; shape: 'arrowUp' | 'arrowDown' | 'circle'; text: string; };
 type StrategySignalEntry = { setup_id: number; signal: string; symbol: string; strategy: string; reason: string; timestamp: string; price?: number; };
 
-// Color map for 10 strategies + Auto
+// Color map for 15 strategies + Auto + Grid
 const STRATEGY_COLORS: Record<string, string> = {
   'Scalper Pro': '#e6194b', 'Trend Rider': '#3cb44b', 'Grid Master': '#ffe119',
   'Breakout Hunter': '#4363d8', 'Mean Revert': '#f58231', 'SMC': '#911eb4',
   'ICT': '#42d4f4', 'Fibonacci': '#f032e6', 'Momentum Surge': '#bfef45',
   'Session Sniper': '#fabed4', 'Auto': '#ffffff',
+  'Engulfing Driver': '#fabebe', 'Bollinger Squeeze': '#008080',
+  'Pullback Sniper': '#e6beff', 'Reversal Catcher': '#9a6324',
+  'Golden Cross': '#fffac8', 'Fractal Breakout': '#800000',
 };
 
 const CHART_TIMEFRAMES = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const tfToSeconds = (tf: string): number => {
-  switch(tf) { case 'M1': return 60; case 'M5': return 300; case 'M15': return 900; case 'M30': return 1800; case 'H1': return 3600; case 'H4': return 14400; case 'D1': return 86400; default: return 60; }
+  switch (tf) { case 'M1': return 60; case 'M5': return 300; case 'M15': return 900; case 'M30': return 1800; case 'H1': return 3600; case 'H4': return 14400; case 'D1': return 86400; default: return 60; }
 };
 
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'dashboard-ai' | 'ai';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'journal' | 'notify' | 'risk' | 'multichart' | 'dashboard-ai' | 'ai';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
 /* ── Grouped Navigation ── */
@@ -66,40 +69,40 @@ type NavGroup = { id: string; label: string; items: NavItem[] };
 const NAV_GROUPS: NavGroup[] = [
   {
     id: 'main',
-    label: 'หลัก',
+    label: '',
     items: [
-      { key: 'chart', icon: <LuLayoutDashboard size={18} />, label: 'หน้าหลัก' },
-      { key: 'multichart', icon: <LuGrid2X2 size={18} />, label: 'Multi-Chart' },
+      { key: 'chart', icon: <LuHouse size={20} strokeWidth={1} />, label: 'หน้าหลัก' },
     ],
   },
   {
     id: 'trading',
-    label: 'การเทรด',
+    label: '',
     items: [
-      { key: 'strategies', icon: <LuWorkflow size={18} />, label: 'กลยุทธ์' },
-      { key: 'trades', icon: <LuBriefcase size={18} />, label: 'ออเดอร์' },
-      { key: 'setup', icon: <LuSlidersHorizontal size={18} />, label: 'ตั้งค่าเทรด' },
-      { key: 'history', icon: <LuHistory size={18} />, label: 'ประวัติ' },
-      { key: 'report', icon: <LuChartNoAxesCombined size={18} />, label: 'P&L Report' },
-      { key: 'journal', icon: <LuBookOpen size={18} />, label: 'บันทึก' },
-    ],
-  },
-  {
-    id: 'ai',
-    label: 'AI & เครื่องมือ',
-    items: [
-      { key: 'ai', icon: <LuBrain size={18} />, label: '🤖 AI Engine' },
-      { key: 'dashboard-ai', icon: <LuBot size={18} />, label: 'Dashboard AI' },
+      { key: 'trades', icon: <LuChartCandlestick size={20} strokeWidth={1} />, label: 'ออเดอร์' },
     ],
   },
 ];
 
 const SETTINGS_ITEMS: NavItem[] = [
-  { key: 'mt5', icon: <LuChartCandlestick size={18} />, label: 'MT5 Connection' },
-  { key: 'server', icon: <LuServer size={18} />, label: 'Server' },
-  { key: 'security', icon: <LuShieldCheck size={18} />, label: 'Security & License' },
-  { key: 'risk', icon: <LuShieldAlert size={18} />, label: 'Risk Management' },
-  { key: 'notify', icon: <LuBell size={18} />, label: 'Notifications' },
+  { key: 'strategies', icon: <LuWorkflow size={20} strokeWidth={1} />, label: 'Strategies' },
+  { key: 'mt5', icon: <LuChartCandlestick size={20} strokeWidth={1} />, label: 'MT5 Connection' },
+  { key: 'server', icon: <LuServer size={20} strokeWidth={1} />, label: 'Server' },
+  { key: 'security', icon: <LuShieldCheck size={20} strokeWidth={1} />, label: 'Security & License' },
+  { key: 'risk', icon: <LuShieldAlert size={20} strokeWidth={1} />, label: 'Risk Management' },
+  { key: 'notify', icon: <LuBell size={20} strokeWidth={1} />, label: 'Notifications' },
+  { key: 'ai', icon: <LuKey size={20} strokeWidth={1} />, label: 'API Keys' },
+];
+
+const REPORT_ITEMS: NavItem[] = [
+  { key: 'history', icon: <LuHistory size={20} strokeWidth={1} />, label: 'Trade History' },
+  { key: 'report', icon: <LuChartNoAxesCombined size={20} strokeWidth={1} />, label: 'P&L Report' },
+  { key: 'journal', icon: <LuBookOpen size={20} strokeWidth={1} />, label: 'Trading Journal' },
+];
+
+const TRADE_ITEMS: NavItem[] = [
+  { key: 'multichart', icon: <LuGrid2X2 size={20} strokeWidth={1} />, label: 'Multi-Symbol Watch' },
+  { key: 'setup', icon: <LuSlidersHorizontal size={20} strokeWidth={1} />, label: 'Trade Setup' },
+  { key: 'dashboard-ai', icon: <LuBot size={20} strokeWidth={1} />, label: 'Multi-Currency Auto-Pilot' },
 ];
 
 const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticComponent<React.ComponentType>> = {
@@ -111,17 +114,17 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   setup: TradeSetupPage,
   history: TradeHistoryPage,
   report: PnlReportPage,
+  journal: JournalPage,
   notify: NotificationsPage,
   risk: RiskManagementPage,
-  journal: JournalPage,
   multichart: MultiChartPage,
   'dashboard-ai': DashboardAiPage,
   ai: AiSettingsPage,
 };
 
 /* ── Chart Colors (MT5 style) ── */
-const CHART_DARK = { text: '#848e9c', grid: '#1e222d', bg: '#1a1d29', up: '#089981', down: '#f23645', cross: '#555' };
-const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: '#ffffff', up: '#089981', down: '#f23645', cross: '#999' };
+const CHART_DARK = { text: '#848e9c', grid: '#1e222d', bg: 'transparent', up: '#089981', down: '#f23645', cross: '#555' };
+const CHART_LIGHT = { text: '#787b86', grid: '#e9ecf1', bg: 'transparent', up: '#089981', down: '#f23645', cross: '#999' };
 
 type ChartPriceLine = { price: number; color: string; text: string; };
 
@@ -163,8 +166,9 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     seriesRef.current = series;
     markersPluginRef.current = createSeriesMarkers(series, []);
     let resizeTimeout: any = null;
+    let isDisposed = false;
     const handleResize = () => {
-      if (!containerRef.current) return;
+      if (isDisposed || !containerRef.current) return;
       const w = Math.floor(containerRef.current.clientWidth || containerRef.current.offsetWidth || 600);
       const h = Math.floor(containerRef.current.clientHeight || containerRef.current.offsetHeight || 400);
       const opts = chart.options();
@@ -174,14 +178,14 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     };
     window.addEventListener('resize', () => {
       clearTimeout(resizeTimeout);
-      resizeTimeout = setTimeout(handleResize, 100);
+      if (!isDisposed) resizeTimeout = setTimeout(handleResize, 100);
     });
     // Use ResizeObserver for reliable size detection (critical for Tauri WebKitGTK)
     let ro: ResizeObserver | null = null;
     if (typeof ResizeObserver !== 'undefined') {
       ro = new ResizeObserver(() => {
         clearTimeout(resizeTimeout);
-        resizeTimeout = setTimeout(handleResize, 50);
+        if (!isDisposed) resizeTimeout = setTimeout(handleResize, 50);
       });
       ro.observe(el);
     }
@@ -189,11 +193,12 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     setTimeout(handleResize, 50);
     setTimeout(handleResize, 200);
     setTimeout(handleResize, 500);
-    return () => { 
+    return () => {
+      isDisposed = true;
       clearTimeout(resizeTimeout);
-      window.removeEventListener('resize', handleResize); 
-      ro?.disconnect(); 
-      chart.remove(); 
+      window.removeEventListener('resize', handleResize);
+      ro?.disconnect();
+      chart.remove();
     };
   }, []); // Run only once
 
@@ -219,28 +224,28 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
 
   useEffect(() => {
     if (!seriesRef.current) return;
-    if (candles.length === 0) { 
-      seriesRef.current.setData([]); 
-      lastCandleRef.current = null; 
+    if (candles.length === 0) {
+      seriesRef.current.setData([]);
+      lastCandleRef.current = null;
       hasFitContentRef.current = false; // Reset so fitContent runs on next data
-      return; 
+      return;
     }
     const sorted = [...candles].sort((a, b) => a.time - b.time);
     const deduped: OHLCCandle[] = [];
-    for (const c of sorted) { 
+    for (const c of sorted) {
       const t = Math.floor(Number(c.time));
       if (Number.isNaN(t)) continue;
       if (deduped.length === 0 || t > deduped[deduped.length - 1].time) {
-        deduped.push({ 
-          time: t, 
-          open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close) 
+        deduped.push({
+          time: t,
+          open: Number(c.open), high: Number(c.high), low: Number(c.low), close: Number(c.close)
         });
       }
     }
     seriesRef.current.setData(deduped.map(c => ({ time: c.time as any, open: c.open, high: c.high, low: c.low, close: c.close })));
     lastCandleRef.current = deduped[deduped.length - 1];
     lastLocalTfIndexRef.current = Math.floor(Date.now() / 1000 / tfToSeconds(chartTf));
-    
+
     // Show last ~80 candles so each candle is big, then scroll to latest
     if (deduped.length > 0 && !hasFitContentRef.current) {
       setTimeout(() => {
@@ -260,18 +265,18 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
     if (!seriesRef.current || bid <= 0) return;
     const last = lastCandleRef.current;
     if (!last) return;
-    
+
     const tfSecs = tfToSeconds(chartTf);
     // Use MT5 server time when available, fallback to local time
     const nowSecs = serverTime && serverTime > 0 ? serverTime : Math.floor(Date.now() / 1000);
     const currentIndex = Math.floor(nowSecs / tfSecs);
     let targetTime = last.time;
-    
+
     if (currentIndex > lastLocalTfIndexRef.current) {
       // Snap to MT5 server time boundary for accurate candle alignment
       targetTime = currentIndex * tfSecs;
     }
-    
+
     if (targetTime === last.time) {
       const u = { time: targetTime as any, open: last.open, high: Math.max(last.high, bid), low: Math.min(last.low, bid), close: bid };
       seriesRef.current.update(u);
@@ -308,7 +313,7 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
   useEffect(() => {
     if (!seriesRef.current) return;
     priceLinesRef.current.forEach(line => {
-      try { seriesRef.current?.removePriceLine(line); } catch (e) {}
+      try { seriesRef.current?.removePriceLine(line); } catch (e) { }
     });
     priceLinesRef.current = [];
 
@@ -324,7 +329,7 @@ const CandleChart = ({ symbol, candles, bid, darkMode, chartTf, markers, priceLi
             title: pl.text,
           });
           if (line) priceLinesRef.current.push(line);
-        } catch (e) {}
+        } catch (e) { }
       });
     }
   }, [priceLines]);
@@ -343,7 +348,11 @@ const TradingDashboard = () => {
   const [alert, setAlert] = useState<AlertMsg | null>(null);
   const [activePanel, setActivePanel] = useState<PanelKey>('chart');
   const [settingsOpen, setSettingsOpen] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
+  const [tradeOpen, setTradeOpen] = useState(false);
   const settingsRef = useRef<HTMLDivElement>(null);
+  const reportRef = useRef<HTMLDivElement>(null);
+  const tradeRef = useRef<HTMLDivElement>(null);
   const { theme, updateSettings } = useLayoutContext();
   const darkMode = theme === 'dark';
   const [chartTf, setChartTf] = useState('M5');
@@ -407,19 +416,66 @@ const TradingDashboard = () => {
     return false;
   }, [isLoadingHistory, lastPriceUpdateTime, candles, chartTf]);
 
+  const [marketCountdown, setMarketCountdown] = useState<string>('');
+
+  useEffect(() => {
+    const updateCountdown = () => {
+      const now = new Date();
+      const day = now.getUTCDay();
+      const hour = now.getUTCHours();
+      let isWeekendClosed = false;
+      let targetDate = new Date(now);
+
+      if (day === 5 && hour >= 21) {
+        targetDate.setUTCDate(now.getUTCDate() + 2);
+        isWeekendClosed = true;
+      } else if (day === 6) {
+        targetDate.setUTCDate(now.getUTCDate() + 1);
+        isWeekendClosed = true;
+      } else if (day === 0 && hour < 21) {
+        isWeekendClosed = true;
+      }
+
+      if (isWeekendClosed) {
+        targetDate.setUTCHours(21, 0, 0, 0);
+        const diff = targetDate.getTime() - now.getTime();
+        if (diff > 0) {
+          const h = Math.floor(diff / (1000 * 60 * 60));
+          const m = Math.floor((diff % (1000 * 60 * 60)) / (1000 * 60));
+          const s = Math.floor((diff % (1000 * 60)) / 1000);
+          setMarketCountdown(`Opens in ${h.toString().padStart(2, '0')}h ${m.toString().padStart(2, '0')}m ${s.toString().padStart(2, '0')}s`);
+        } else {
+          setMarketCountdown('');
+        }
+      } else {
+        setMarketCountdown('');
+      }
+    };
+
+    updateCountdown();
+    const interval = setInterval(updateCountdown, 1000);
+    return () => clearInterval(interval);
+  }, []);
+
   // Close settings flyout when clicking outside
   useEffect(() => {
     const handleClickOutside = (e: MouseEvent) => {
       if (settingsRef.current && !settingsRef.current.contains(e.target as Node)) {
         setSettingsOpen(false);
       }
+      if (reportRef.current && !reportRef.current.contains(e.target as Node)) {
+        setReportOpen(false);
+      }
+      if (tradeRef.current && !tradeRef.current.contains(e.target as Node)) {
+        setTradeOpen(false);
+      }
     };
-    if (settingsOpen) document.addEventListener('mousedown', handleClickOutside);
+    if (settingsOpen || reportOpen || tradeOpen) document.addEventListener('mousedown', handleClickOutside);
     return () => document.removeEventListener('mousedown', handleClickOutside);
-  }, [settingsOpen]);
+  }, [settingsOpen, reportOpen, tradeOpen]);
   const wsRef = useRef<WebSocket | null>(null);
 
-  useEffect(() => { const int = setInterval(() => setTickFlip(f => f+1), 5000); return () => clearInterval(int); }, []);
+  useEffect(() => { const int = setInterval(() => setTickFlip(f => f + 1), 5000); return () => clearInterval(int); }, []);
 
   // Memoize markers: combine position markers + strategy signal markers
   const chartMarkers = useMemo<ChartMarker[]>(() => {
@@ -498,14 +554,14 @@ const TradingDashboard = () => {
     }];
   }, [selectedPosition]);
 
-   /* ── WebSocket ── */
+  /* ── WebSocket ── */
   const chartTfRef = useRef(chartTf);
   chartTfRef.current = chartTf;
   const activeSymbolRef = useRef(activeSymbol);
   activeSymbolRef.current = activeSymbol;
 
   const fetchHistoryState = useRef<string>('');
-  
+
   const loadingTimeoutRef = useRef<any>(null);
   const candleCacheRef = useRef<Record<string, OHLCCandle[]>>({});
 
@@ -523,18 +579,34 @@ const TradingDashboard = () => {
     }
   }, []);
 
+  const isWsUnmounted = useRef(false);
+  const reconnectTimeoutRef = useRef<any>(null);
+  const wsBackoffRef = useRef(3000);
+
   const connectWs = useCallback(() => {
+    if (wsRef.current && (wsRef.current.readyState === WebSocket.OPEN || wsRef.current.readyState === WebSocket.CONNECTING)) return;
     const ws = new WebSocket(WS_URL);
     console.log('[WS] Connecting to:', WS_URL);
     ws.onopen = () => {
       console.log('[WS] ✅ Connected successfully!');
+      wsBackoffRef.current = 3000; // Reset backoff on success
       // Request history as soon as WS connects
       setTimeout(() => requestHistory(ws), 500);
       // Request strategy signals history
       setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ action: 'get_signals', limit: 50 })); }, 800);
     };
-    ws.onerror = (err) => { console.error('[WS] ❌ Error:', err); };
-    ws.onclose = (evt) => { console.log('[WS] Closed: code=', evt.code, 'reason=', evt.reason); setEaConnected(false); setTimeout(connectWs, 3000); };
+    ws.onerror = () => { /* suppress — onclose handles reconnect */ };
+    ws.onclose = (evt) => {
+      if (evt.code !== 1000) console.log('[WS] Closed: code=', evt.code);
+      setEaConnected(false);
+      wsRef.current = null;
+      if (!isWsUnmounted.current) {
+        if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+        const delay = wsBackoffRef.current;
+        wsBackoffRef.current = Math.min(delay * 2, 30000); // Exponential backoff, max 30s
+        reconnectTimeoutRef.current = setTimeout(connectWs, delay);
+      }
+    };
     ws.onmessage = (evt) => {
       try {
         const data = JSON.parse(evt.data);
@@ -552,27 +624,27 @@ const TradingDashboard = () => {
         if (data.type === 'account_data') { setAccount(data as AccountData); setEaConnected(true); }
         if (data.type === 'market_watch') {
           setMarketWatch(prev => {
-             const now = Date.now();
-             const next = data.symbols?.map((s: any) => ({ ...s, serverTime: data.server_time })) || [];
-             setLastPriceUpdateTime(prevTime => {
-                const newTimes = { ...prevTime };
-                next.forEach((nxt: any) => {
-                   const old = prev.find(p => p.symbol === nxt.symbol);
-                   if (!old || old.bid !== nxt.bid || old.ask !== nxt.ask) {
-                      newTimes[nxt.symbol] = now;
-                   } else if (!newTimes[nxt.symbol]) {
-                      newTimes[nxt.symbol] = now;
-                   }
-                });
-                return newTimes;
-             });
-             return next;
+            const now = Date.now();
+            const next = data.symbols?.map((s: any) => ({ ...s, serverTime: data.server_time })) || [];
+            setLastPriceUpdateTime(prevTime => {
+              const newTimes = { ...prevTime };
+              next.forEach((nxt: any) => {
+                const old = prev.find(p => p.symbol === nxt.symbol);
+                if (!old || old.bid !== nxt.bid || old.ask !== nxt.ask) {
+                  newTimes[nxt.symbol] = now;
+                } else if (!newTimes[nxt.symbol]) {
+                  newTimes[nxt.symbol] = now;
+                }
+              });
+              return newTimes;
+            });
+            return next;
           });
           if (data.symbols?.length > 0 && activeSymbol === 'XAUUSD' && !data.symbols.find((s: MarketWatchSymbol) => s.symbol === 'XAUUSD')) setActiveSymbol(data.symbols[0].symbol);
         }
-        if (data.type === 'trade_result') { 
-          setToast(data as TradeResult); 
-          setTimeout(() => setToast(null), 5000); 
+        if (data.type === 'trade_result') {
+          setToast(data as TradeResult);
+          setTimeout(() => setToast(null), 5000);
           if (data.error && data.error.includes("Market closed")) {
             setLastPriceUpdateTime(prev => ({ ...prev, [data.symbol || activeSymbolRef.current]: 0 }));
           }
@@ -581,8 +653,8 @@ const TradingDashboard = () => {
         if (data.type === 'gap_fill_status') {
           setSymbolDataStatus(prev => ({ ...prev, [data.symbol]: data.status }));
           if (data.status === 'loaded' && data.symbol === activeSymbolRef.current) {
-             // EA finished loading candles — re-request from server DB which now has the data
-             setTimeout(() => requestHistory(), 800);
+            // EA finished loading candles — re-request from server DB which now has the data
+            setTimeout(() => requestHistory(), 800);
           }
         }
         if (data.type === 'history') {
@@ -592,7 +664,7 @@ const TradingDashboard = () => {
           // (server might have sent M1 candles while user is on M5)
           // But only update chart if timeframe matches OR if we currently have no data
           if (data.timeframe && data.timeframe !== chartTfRef.current && data.source !== 'mt5_direct') return;
-          
+
           if (data.candles && data.candles.length > 0) {
             // If source is mt5_direct but timeframe doesn't match,
             // don't set candles directly — instead trigger a re-request from DB
@@ -619,8 +691,8 @@ const TradingDashboard = () => {
         }
         // Live tick update — update marketWatch bid/ask + server_time in real-time for live candle
         if (data.type === 'tick' && data.symbol && data.bid) {
-          setMarketWatch(prev => prev.map(m => 
-            m.symbol === data.symbol 
+          setMarketWatch(prev => prev.map(m =>
+            m.symbol === data.symbol
               ? { ...m, bid: data.bid, ask: data.ask ?? m.ask, spread: data.spread ?? m.spread, serverTime: data.server_time ?? m.serverTime }
               : m
           ));
@@ -671,9 +743,20 @@ const TradingDashboard = () => {
       } catch { /* */ }
     };
     wsRef.current = ws;
-  }, []); // No deps — WebSocket stays alive across symbol/TF changes
+  }, [requestHistory]);
 
-  useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
+  useEffect(() => {
+    isWsUnmounted.current = false;
+    connectWs();
+    return () => {
+      isWsUnmounted.current = true;
+      if (reconnectTimeoutRef.current) clearTimeout(reconnectTimeoutRef.current);
+      if (wsRef.current) {
+        wsRef.current.close();
+        wsRef.current = null;
+      }
+    };
+  }, [connectWs]);
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
 
   // Request candle history on symbol/timeframe change
@@ -714,19 +797,19 @@ const TradingDashboard = () => {
         <div className="flex-1 flex flex-col overflow-auto p-4 gap-4">
           {/* Account Overview */}
           {!chartFullscreen && (
-          <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 w-full">
-            {[
-              { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: 'text-default-900' },
-              { label: 'Equity', value: `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
-              { label: 'Profit', value: `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
-              { label: 'Margin', value: `$${(account?.margin ?? 0).toFixed(2)}`, colorClass: 'text-default-600' },
-            ].map(item => (
-              <div key={item.label} className="card !rounded-2xl !p-4 lg:!p-5">
-                <div className="text-[11px] text-default-400 dark:text-default-500 font-medium uppercase tracking-wider mb-1">{item.label}</div>
-                <div className={`text-xl font-bold ${item.colorClass}`}>{item.value}</div>
-              </div>
-            ))}
-          </div>
+            <div className="grid grid-cols-2 lg:grid-cols-4 gap-3 lg:gap-4 w-full">
+              {[
+                { label: 'Balance', value: `$${balance.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: 'text-default-900' },
+                { label: 'Equity', value: `$${equity.toLocaleString('en-US', { minimumFractionDigits: 2 })}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
+                { label: 'Profit', value: `${profit >= 0 ? '+' : ''}$${profit.toFixed(2)}`, colorClass: profit >= 0 ? 'text-success' : 'text-danger' },
+                { label: 'Margin', value: `$${(account?.margin ?? 0).toFixed(2)}`, colorClass: 'text-default-600' },
+              ].map(item => (
+                <div key={item.label} className="card !rounded-2xl !p-4 lg:!p-5">
+                  <div className="text-[11px] text-default-400 dark:text-default-500 font-medium uppercase tracking-wider mb-1">{item.label}</div>
+                  <div className={`text-xl font-bold ${item.colorClass}`}>{item.value}</div>
+                </div>
+              ))}
+            </div>
           )}
 
           {/* Chart & Open Positions Split */}
@@ -779,22 +862,28 @@ const TradingDashboard = () => {
                     </div>
                   )}
 
-                  {/* Market Closed Overlay — displayed on chart */}
-                  {isMarketClosedDynamic(activeSymbol) && (
-                    <div className="absolute inset-0 z-40 flex items-center justify-center bg-black/30 dark:bg-black/50 backdrop-blur-[2px] rounded-lg pointer-events-none transition-all duration-300">
-                      <div className="text-center bg-card/80 dark:bg-card/60 backdrop-blur-md px-12 py-8 rounded-3xl border border-danger/30 shadow-2xl transform scale-100">
-                        <div className="text-4xl md:text-5xl font-black text-danger drop-shadow-lg tracking-wide flex items-center justify-center gap-3 uppercase">
-                          <LuShieldAlert className="size-10 md:size-12 text-danger" />
-                          Market Closed
+                  {isMarketClosedDynamic(activeSymbol) ? (
+                    <div className="absolute inset-0 z-40 flex items-center justify-center pointer-events-none transition-all duration-300">
+                      <div className="text-center flex flex-col items-center justify-center">
+                        <div className="text-[90px] md:text-[140px] font-black text-default-200 dark:text-black tracking-tight leading-none mb-1 uppercase">
+                          {activeSymbol}
                         </div>
+                        <div className="text-sm md:text-base font-bold text-default-400 dark:text-black/80 uppercase tracking-[0.4em] mb-4">
+                          MARKET CLOSED
+                        </div>
+                        {marketCountdown && (
+                          <div className="text-base font-mono text-white dark:text-default-800 bg-default-200 dark:bg-black px-5 py-1.5 rounded-full mt-2 shadow-sm font-semibold tracking-wider">
+                            {marketCountdown}
+                          </div>
+                        )}
                       </div>
                     </div>
+                  ) : (
+                    <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
+                      markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
+                      barSpacing={chartBarSpacing}
+                    />
                   )}
-                  
-                  <CandleChart symbol={activeSymbol} candles={candles} bid={bid} darkMode={darkMode} chartTf={chartTf}
-                    markers={chartMarkers} priceLines={chartPriceLines} serverTime={sym?.serverTime}
-                    barSpacing={chartBarSpacing}
-                  />
 
                 </div>
               </div>
@@ -805,46 +894,46 @@ const TradingDashboard = () => {
               {positions.length > 0 ? (
                 <div className="w-full overflow-x-auto whitespace-nowrap">
                   <table className="w-full" style={{ minWidth: 600 }}>
-                  <thead>
-                    <tr>
-                      {['Symbol', 'Type', 'Volume', 'Open Price', 'Current', 'P&L', 'SL', 'TP', ''].map(h => (
-                        <th key={h} className={`text-[11px] text-default-400 font-semibold pb-3 ${h === '' ? 'text-right' : 'text-left'}`}>{h}</th>
-                      ))}
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {positions.map((pos, i) => (
-                      <tr key={pos.ticket}
-                        onClick={() => {
-                          setSelectedPosition(selectedPosition?.ticket === pos.ticket ? null : pos);
-                          if (pos.symbol !== activeSymbol) setActiveSymbol(pos.symbol);
-                        }}
-                        className={`cursor-pointer transition-colors ${selectedPosition?.ticket === pos.ticket ? 'bg-primary/10 dark:bg-primary/20' : i % 2 === 0 ? 'hover:bg-default-50 dark:hover:bg-default-200/10' : 'bg-default-50/50 dark:bg-default-200/5 hover:bg-default-100 dark:hover:bg-default-200/15'}`}
-                      >
-                        <td className="text-[13px] font-semibold text-default-900 py-3 px-1">{pos.symbol}</td>
-                        <td className={`text-xs font-semibold ${pos.type === 'BUY' ? 'text-success' : 'text-danger'}`}>{pos.type}</td>
-                        <td className="text-xs text-default-600">{pos.volume}</td>
-                        <td className="text-xs text-default-600 font-mono">{pos.open_price}</td>
-                        <td className="text-xs text-default-600 font-mono">{pos.current_price}</td>
-                        <td className={`text-xs font-bold ${pos.pnl >= 0 ? 'text-success' : 'text-danger'}`}>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</td>
-                        <td className="text-[11px] text-default-400">{pos.sl || '—'}</td>
-                        <td className="text-[11px] text-default-400">{pos.tp || '—'}</td>
-                        <td className="text-right pr-2">
-                          <button
-                            onClick={(e) => { e.stopPropagation(); setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol }); }}
-                            className="btn btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white"
-                          >Close</button>
-                        </td>
+                    <thead>
+                      <tr>
+                        {['Symbol', 'Type', 'Volume', 'Open Price', 'Current', 'P&L', 'SL', 'TP', ''].map(h => (
+                          <th key={h} className={`text-[11px] text-default-400 font-semibold pb-3 ${h === '' ? 'text-right' : 'text-left'}`}>{h}</th>
+                        ))}
                       </tr>
-                    ))}
-                  </tbody>
-                </table>
+                    </thead>
+                    <tbody>
+                      {positions.map((pos, i) => (
+                        <tr key={pos.ticket}
+                          onClick={() => {
+                            setSelectedPosition(selectedPosition?.ticket === pos.ticket ? null : pos);
+                            if (pos.symbol !== activeSymbol) setActiveSymbol(pos.symbol);
+                          }}
+                          className={`cursor-pointer transition-colors ${selectedPosition?.ticket === pos.ticket ? 'bg-primary/10 dark:bg-primary/20' : i % 2 === 0 ? 'hover:bg-default-50 dark:hover:bg-default-200/10' : 'bg-default-50/50 dark:bg-default-200/5 hover:bg-default-100 dark:hover:bg-default-200/15'}`}
+                        >
+                          <td className="text-[13px] font-semibold text-default-900 py-3 px-1">{pos.symbol}</td>
+                          <td className={`text-xs font-semibold ${pos.type === 'BUY' ? 'text-success' : 'text-danger'}`}>{pos.type}</td>
+                          <td className="text-xs text-default-600">{pos.volume}</td>
+                          <td className="text-xs text-default-600 font-mono">{pos.open_price}</td>
+                          <td className="text-xs text-default-600 font-mono">{pos.current_price}</td>
+                          <td className={`text-xs font-bold ${pos.pnl >= 0 ? 'text-success' : 'text-danger'}`}>{pos.pnl >= 0 ? '+' : ''}{pos.pnl.toFixed(2)}</td>
+                          <td className="text-[11px] text-default-400">{pos.sl || '—'}</td>
+                          <td className="text-[11px] text-default-400">{pos.tp || '—'}</td>
+                          <td className="text-right pr-2">
+                            <button
+                              onClick={(e) => { e.stopPropagation(); setCloseModal({ show: true, ticket: pos.ticket, symbol: pos.symbol }); }}
+                              className="btn btn-sm bg-danger/10 text-danger hover:bg-danger hover:text-white"
+                            >Close</button>
+                          </td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
                 </div>
-            ) : (
-              <div className="text-center py-8 text-default-400 text-[13px]">
-                {eaConnected ? 'No open positions' : 'Waiting for MT5 connection...'}
-              </div>
-            )}
+              ) : (
+                <div className="text-center py-8 text-default-400 text-[13px]">
+                  {eaConnected ? 'No open positions' : 'Waiting for MT5 connection...'}
+                </div>
+              )}
             </div>}
           </div>
 
@@ -872,10 +961,10 @@ const TradingDashboard = () => {
   };
 
   return (
-    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden rounded-2xl shadow-2xl">
+    <div className="fixed inset-0 z-[9999] flex flex-col font-body bg-body-bg text-body-color overflow-hidden rounded-xl">
 
       {/* ═══ TOP BAR ═══ */}
-      <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-card dark:bg-[#151821] border-b border-default-200/60 dark:border-default-300/10 rounded-t-2xl" style={{ height: 52 }}>
+      <div data-tauri-drag-region className="flex items-center justify-between px-5 w-full shrink-0 bg-transparent rounded-t-xl" style={{ height: 52 }}>
         {/* Left: Traffic lights + Logo */}
         <div className="flex items-center gap-4">
           <div className="hidden sm:flex items-center" style={{ gap: 8 }}>
@@ -917,7 +1006,7 @@ const TradingDashboard = () => {
 
         {/* Center ticker */}
         <div className="hidden sm:flex items-center gap-2">
-          <span className="text-[13px] font-bold text-default-900">{activeSymbol}</span>
+          <span className="text-[13px] font-bold text-default-900">{account?.login || activeSymbol}</span>
           <span className="text-[13px] text-default-300">—</span>
           <span className={`text-xs font-semibold ${profit >= 0 ? 'text-success' : 'text-danger'}`}>
             {profit >= 0 ? '+' : ''}{profit.toFixed(2)} ({balance > 0 ? ((profit / balance) * 100).toFixed(2) : '0.00'}%)
@@ -1097,34 +1186,112 @@ const TradingDashboard = () => {
         <div className="absolute bottom-0 left-0 right-0 h-16 lg:static lg:h-auto lg:w-[72px] shrink-0 flex flex-row lg:flex-col items-center justify-around lg:justify-start lg:pt-3 lg:pb-3 gap-1 lg:gap-1 overflow-x-auto lg:overflow-visible bg-card/80 dark:bg-card/80 backdrop-blur-md lg:bg-transparent lg:dark:bg-transparent lg:backdrop-blur-none border-t border-default-200/60 dark:border-default-300/10 lg:border-none z-50">
 
           {/* Grouped Navigation */}
-          {NAV_GROUPS.map((group, gi) => (
+          {NAV_GROUPS.map((group) => (
             <div key={group.id} className="flex flex-row lg:flex-col items-center gap-1 lg:gap-1.5">
-              {/* Group label — desktop only */}
-              <div className="nav-group-label hidden lg:block w-full">{group.label}</div>
               {group.items.map(item => {
                 const active = activePanel === item.key;
                 return (
                   <button
                     key={item.key}
-                    onClick={() => { setActivePanel(item.key); setSettingsOpen(false); }}
+                    onClick={() => { setActivePanel(item.key); setSettingsOpen(false); setReportOpen(false); setTradeOpen(false); }}
                     data-tip={item.label}
-                    className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
-                      active
+                    className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${active
                         ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
-                        : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
-                    }`}
-                    style={{ width: 38, height: 38 }}
+                        : 'bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none text-default-700 dark:text-default-700 hover:text-default-900 dark:hover:text-default-900 hover:bg-default-100 dark:hover:bg-default-200/60'
+                      }`}
+                    style={{ width: 42, height: 42 }}
                   >
                     {item.icon}
                   </button>
                 );
               })}
-              {/* Separator between groups — desktop only */}
-              {gi < NAV_GROUPS.length - 1 && (
-                <div className="hidden lg:block w-8 h-px bg-default-200 dark:bg-default-300/15 my-1" />
-              )}
             </div>
           ))}
+
+          {/* ── Trade flyout button ── */}
+          <div className="flex flex-row lg:flex-col items-center gap-1 lg:gap-1.5 relative" ref={tradeRef}>
+            <button
+              onClick={() => { setTradeOpen(!tradeOpen); setSettingsOpen(false); setReportOpen(false); }}
+              data-tip="เครื่องมือเทรด"
+              className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${tradeOpen || TRADE_ITEMS.some(r => r.key === activePanel)
+                  ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                  : 'bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none text-default-700 dark:text-default-700 hover:text-default-900 dark:hover:text-default-900 hover:bg-default-100 dark:hover:bg-default-200/60'
+                }`}
+              style={{ width: 42, height: 42 }}
+            >
+              <LuHeart size={20} strokeWidth={1} />
+            </button>
+
+            {/* Trade Flyout Panel */}
+            <div className={`settings-flyout ${tradeOpen ? 'open' : ''} absolute lg:bottom-0 lg:right-[calc(100%+12px)] bottom-[calc(100%+12px)] left-0 lg:left-auto`}>
+              <div className="bg-card dark:bg-[#1e2130] rounded-2xl shadow-2xl dark:shadow-black/40 border border-default-200/60 dark:border-default-300/10 p-2 min-w-[200px]">
+                <div className="px-3 pt-2 pb-1.5">
+                  <div className="text-[11px] font-bold text-default-500 uppercase tracking-wider flex items-center gap-1.5"><LuHeart size={14} strokeWidth={1.5} /> เครื่องมือเทรด</div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {TRADE_ITEMS.map(item => {
+                    const active = activePanel === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => { setActivePanel(item.key); setTradeOpen(false); }}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all border-none cursor-pointer ${active
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-default-600 dark:text-default-400 hover:bg-default-100 dark:hover:bg-default-200/10 hover:text-default-900 dark:hover:text-white'
+                          }`}
+                      >
+                        <span className={`shrink-0 ${active ? 'text-primary' : 'text-default-400 dark:text-default-500'}`}>{item.icon}</span>
+                        <span className="text-[13px] font-medium">{item.label}</span>
+                        {active && <span className="ml-auto size-1.5 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* ── Report flyout button ── */}
+          <div className="flex flex-row lg:flex-col items-center gap-1 lg:gap-1.5 relative" ref={reportRef}>
+            <button
+              onClick={() => { setReportOpen(!reportOpen); setSettingsOpen(false); setTradeOpen(false); }}
+              className={`shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${reportOpen || REPORT_ITEMS.some(r => r.key === activePanel)
+                  ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
+                  : 'bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none text-default-700 dark:text-default-700 hover:text-default-900 dark:hover:text-default-900 hover:bg-default-100 dark:hover:bg-default-200/60'
+                }`}
+              style={{ width: 42, height: 42 }}
+            >
+              <LuCalendarHeart size={20} strokeWidth={1} />
+            </button>
+
+            {/* Report Flyout Panel */}
+            <div className={`settings-flyout ${reportOpen ? 'open' : ''} absolute lg:bottom-0 lg:right-[calc(100%+12px)] bottom-[calc(100%+12px)] left-0 lg:left-auto`}>
+              <div className="bg-card dark:bg-[#1e2130] rounded-2xl shadow-2xl dark:shadow-black/40 border border-default-200/60 dark:border-default-300/10 p-2 min-w-[200px]">
+                <div className="px-3 pt-2 pb-1.5">
+                  <div className="text-[11px] font-bold text-default-500 uppercase tracking-wider flex items-center gap-1.5"><LuCalendarHeart size={14} strokeWidth={1.5} /> Report</div>
+                </div>
+                <div className="flex flex-col gap-0.5">
+                  {REPORT_ITEMS.map(item => {
+                    const active = activePanel === item.key;
+                    return (
+                      <button
+                        key={item.key}
+                        onClick={() => { setActivePanel(item.key); setReportOpen(false); }}
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all border-none cursor-pointer ${active
+                            ? 'bg-primary/10 text-primary'
+                            : 'text-default-600 dark:text-default-400 hover:bg-default-100 dark:hover:bg-default-200/10 hover:text-default-900 dark:hover:text-white'
+                          }`}
+                      >
+                        <span className={`shrink-0 ${active ? 'text-primary' : 'text-default-400 dark:text-default-500'}`}>{item.icon}</span>
+                        <span className="text-[13px] font-medium">{item.label}</span>
+                        {active && <span className="ml-auto size-1.5 rounded-full bg-primary" />}
+                      </button>
+                    );
+                  })}
+                </div>
+              </div>
+            </div>
+          </div>
 
           {/* Bottom section: Settings, Theme, Connection */}
           <div className="lg:mt-auto flex flex-row lg:flex-col items-center gap-1.5 lg:gap-1.5 px-2 lg:px-0 relative" ref={settingsRef}>
@@ -1132,23 +1299,22 @@ const TradingDashboard = () => {
 
             {/* ── Settings button ── */}
             <button
-              onClick={() => setSettingsOpen(!settingsOpen)}
+              onClick={() => { setSettingsOpen(!settingsOpen); setReportOpen(false); setTradeOpen(false); }}
               data-tip="ตั้งค่า"
-              className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${
-                settingsOpen || SETTINGS_ITEMS.some(s => s.key === activePanel)
+              className={`mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl ${settingsOpen || SETTINGS_ITEMS.some(s => s.key === activePanel)
                   ? 'bg-primary/10 text-primary shadow-sm shadow-primary/10'
-                  : 'bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:text-default-900 dark:hover:text-white hover:bg-default-300 dark:hover:bg-default-200/60'
-              }`}
-              style={{ width: 38, height: 38 }}
+                  : 'bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none text-default-700 dark:text-default-700 hover:text-default-900 dark:hover:text-default-900 hover:bg-default-100 dark:hover:bg-default-200/60'
+                }`}
+              style={{ width: 42, height: 42 }}
             >
-              <LuSettings size={18} className={`transition-transform duration-300 ${settingsOpen ? 'rotate-90' : ''}`} />
+              <LuSettings size={20} strokeWidth={1} className={`transition-transform duration-300 ${settingsOpen ? 'rotate-90' : ''}`} />
             </button>
 
             {/* ── Settings Flyout Panel ── */}
             <div className={`settings-flyout ${settingsOpen ? 'open' : ''} absolute lg:bottom-0 lg:right-[calc(100%+12px)] bottom-[calc(100%+12px)] left-0 lg:left-auto`}>
               <div className="bg-card dark:bg-[#1e2130] rounded-2xl shadow-2xl dark:shadow-black/40 border border-default-200/60 dark:border-default-300/10 p-2 min-w-[200px]">
                 <div className="px-3 pt-2 pb-1.5">
-                  <div className="text-[11px] font-bold text-default-500 uppercase tracking-wider">⚙ ตั้งค่า</div>
+                  <div className="text-[11px] font-bold text-default-500 uppercase tracking-wider flex items-center gap-1.5"><LuSettings size={14} strokeWidth={1.5} /> Settings</div>
                 </div>
                 <div className="flex flex-col gap-0.5">
                   {SETTINGS_ITEMS.map(item => {
@@ -1157,11 +1323,10 @@ const TradingDashboard = () => {
                       <button
                         key={item.key}
                         onClick={() => { setActivePanel(item.key); setSettingsOpen(false); }}
-                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all border-none cursor-pointer ${
-                          active
+                        className={`flex items-center gap-2.5 px-3 py-2 rounded-xl text-left transition-all border-none cursor-pointer ${active
                             ? 'bg-primary/10 text-primary'
                             : 'text-default-600 dark:text-default-400 hover:bg-default-100 dark:hover:bg-default-200/10 hover:text-default-900 dark:hover:text-white'
-                        }`}
+                          }`}
                       >
                         <span className={`shrink-0 ${active ? 'text-primary' : 'text-default-400 dark:text-default-500'}`}>{item.icon}</span>
                         <span className="text-[13px] font-medium">{item.label}</span>
@@ -1177,10 +1342,10 @@ const TradingDashboard = () => {
             <button
               onClick={() => updateSettings({ theme: darkMode ? 'light' : 'dark' })}
               data-tip={darkMode ? 'Light Mode' : 'Dark Mode'}
-              className="mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl bg-default-200/80 dark:bg-default-200/40 text-default-700 dark:text-default-300 hover:bg-default-300 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-white"
-              style={{ width: 38, height: 38 }}
+              className="mac-tooltip shrink-0 flex items-center justify-center transition-all cursor-pointer border-none rounded-xl bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none text-default-700 dark:text-default-700 hover:bg-default-100 hover:text-default-900 dark:hover:bg-default-200/60 dark:hover:text-default-900"
+              style={{ width: 42, height: 42 }}
             >
-              {darkMode ? <LuSun size={18} /> : <LuMoon size={18} />}
+              {darkMode ? <LuSun size={20} strokeWidth={1} /> : <LuMoon size={20} strokeWidth={1} />}
             </button>
 
             {/* Connection Status */}

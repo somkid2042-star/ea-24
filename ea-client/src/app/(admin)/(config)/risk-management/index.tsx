@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuShieldCheck, LuSave, LuCheck, LuOctagon, LuGauge, LuDollarSign, LuLayers, LuTrendingDown } from 'react-icons/lu';
+import { LuShieldCheck, LuSave, LuCheck, LuOctagon, LuGauge, LuDollarSign, LuLayers, LuTrendingDown, LuCircleCheck, LuCircleX } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -78,7 +78,7 @@ const RiskManagement = () => {
     <main className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-default-900">🛡️ จัดการความเสี่ยง (Risk Management)</h4>
+          <h4 className="text-lg font-semibold text-default-900 flex items-center gap-2"><LuShieldCheck className="size-5 text-primary" /> Risk Management</h4>
           <p className="mt-1 text-sm text-default-500">ตั้งค่าขีดจำกัดเพื่อป้องกันการขาดทุน</p>
         </div>
       </div>
@@ -91,14 +91,14 @@ const RiskManagement = () => {
               <LuOctagon className={`size-6 ${emergencyStop ? 'text-white' : 'text-default-500'}`} />
             </div>
             <div>
-              <p className="text-base font-bold text-default-900">🚨 หยุดฉุกเฉิน (Emergency Stop)</p>
+              <p className="text-base font-bold text-default-900 flex items-center gap-1.5"><LuOctagon className="size-4 text-red-500" /> Emergency Stop</p>
               <p className="text-xs text-default-500">หยุดเปิดออเดอร์ทุกกลยุทธ์ทันที</p>
             </div>
           </div>
           <button
             onClick={toggleEmergencyStop}
             className={`px-6 py-2.5 rounded-xl text-sm font-bold border-none transition-all ${emergencyStop ? 'bg-green-500 text-white hover:bg-green-600' : 'bg-red-500 text-white hover:bg-red-600'}`}
-          >{emergencyStop ? '✅ เปิดใช้งาน' : '⛔ หยุดเทรด'}</button>
+          >{emergencyStop ? <><LuCircleCheck className="size-4 inline" /> Resume</> : <><LuCircleX className="size-4 inline" /> Stop All</>}</button>
         </div>
       </div>
 

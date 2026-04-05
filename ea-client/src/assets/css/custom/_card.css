@@ -7,16 +7,15 @@ _card.css
 @layer base {
   .card {
     @apply relative rounded-2xl bg-card flex flex-col break-words bg-clip-border h-fit;
-    @apply border border-default-200/60 shadow-sm shadow-default-900/5;
-    @apply dark:border-default-300/10 dark:shadow-none dark:bg-[#151821];
-    transition: box-shadow 0.2s ease, border-color 0.2s ease;
+    @apply shadow-sm shadow-default-900/5 dark:shadow-none;
+    @apply dark:bg-[#151821];
 
     .card-header {
-      @apply flex justify-between items-center gap-3 min-h-14 px-5 border-b border-default-200/60 dark:border-default-300/10;
+      @apply flex justify-between items-center gap-3 min-h-14 px-5;
     }
 
     .card-footer {
-      @apply flex justify-between items-center gap-3 min-h-14 px-5 border-t border-default-200/60 dark:border-default-300/10;
+      @apply flex justify-between items-center gap-3 min-h-14 px-5;
     }
   }
 

@@ -530,7 +530,10 @@ void SendAccountData()
      }
    posJson += "]";
    
+   long login = AccountInfoInteger(ACCOUNT_LOGIN);
+
    string json = "{\"type\":\"account_data\"";
+   json += ",\"login\":" + IntegerToString(login);
    json += ",\"balance\":" + DoubleToString(balance, 2);
    json += ",\"equity\":" + DoubleToString(equity, 2);
    json += ",\"profit\":" + DoubleToString(profit, 2);

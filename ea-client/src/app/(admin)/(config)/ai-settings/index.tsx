@@ -193,7 +193,7 @@ const AiSettings = () => {
 
         {testResult && (
           <div className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${testResult.success ? 'bg-green-50 dark:bg-green-500/10 text-green-600' : 'bg-red-50 dark:bg-red-500/10 text-red-600'}`}>
-            {testResult.success ? <><LuCheck className="size-4" /> ✅ AI ตอบกลับ: {testResult.message}</> : <><LuX className="size-4" /> ❌ {testResult.message}</>}
+            {testResult.success ? <><LuCheck className="size-4" /> AI Response: {testResult.message}</> : <><LuX className="size-4" /> {testResult.message}</>}
           </div>
         )}
       </div>
@@ -206,7 +206,7 @@ const AiSettings = () => {
               <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
               จัดการบัญชีและ API Key
               <span className="text-xs font-normal text-default-400">({emails.filter(e => e.address.trim() || e.password.trim() || e.apiKey.trim()).length} บัญชี)</span>
-              {emailSaved && <span className="text-xs font-semibold text-green-500 ml-2 animate-in fade-in">บันทึกสำเร็จ ✅</span>}
+              {emailSaved && <span className="text-xs font-semibold text-green-500 ml-2 animate-in fade-in">Saved</span>}
             </h5>
             <p className="text-xs text-default-500">
               จดบันทึกบัญชีของ Google พร้อมกับ API Key ประจำบัญชีเพื่อให้ AI นำไปใช้งาน และสั่งล็อกอินเพื่อสร้าง Key ใหม่ได้ทันที

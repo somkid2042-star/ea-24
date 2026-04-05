@@ -5,7 +5,8 @@ Sidenav Menu
 */
 
 .app-menu {
-  @apply w-sidenav-width min-w-sidenav-width bg-(--sidenav-background) transition-all relative top-0 bottom-0 flex flex-col max-h-screen z-40 duration-300 border-e border-current/10;
+  @apply w-sidenav-width min-w-sidenav-width bg-(--sidenav-background) transition-all relative top-0 bottom-0 flex flex-col max-h-screen z-40 duration-300;
+  @apply shadow-sm shadow-default-900/5 dark:shadow-none;
   transition-property: width, min-width, margin;
 }
 
@@ -19,7 +20,7 @@ Sidenav Menu
 
   .menu-item {
     .menu-link {
-      @apply relative w-full flex items-center gap-x-3 rounded px-4 py-2 font-medium text-default-600 transition-all whitespace-nowrap bg-transparent;
+      @apply relative w-full flex items-center gap-x-3 rounded-xl px-4 py-2 font-medium text-default-600 transition-all whitespace-nowrap bg-white dark:bg-[#151821] shadow-sm shadow-default-900/5 dark:shadow-none;
       color: var(--sidenav-item-color);
       font-size: var(--sidenav-item-font-size);
       line-height: var(--sidenav-item-font-size);

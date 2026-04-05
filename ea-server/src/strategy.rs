@@ -81,6 +81,8 @@ pub enum Signal {
 pub const ALL_STRATEGIES: &[&str] = &[
     "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert", "Grid Master",
     "SMC", "ICT", "Fibonacci", "Momentum Surge", "Session Sniper",
+    "Engulfing Driver", "Bollinger Squeeze", "Pullback Sniper",
+    "Reversal Catcher", "Golden Cross", "Fractal Breakout"
 ];
 
 /// Per-symbol cooldown tracker
@@ -347,6 +349,12 @@ pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> (Signal, String) {
         "Fibonacci"        => eval_fibonacci(ind),
         "Momentum Surge"   => eval_momentum(ind),
         "Session Sniper"   => eval_session(ind),
+        "Engulfing Driver" => eval_engulfing(ind),
+        "Bollinger Squeeze"=> eval_bollinger_squeeze(ind),
+        "Pullback Sniper"  => eval_pullback_sniper(ind),
+        "Reversal Catcher" => eval_reversal_catcher(ind),
+        "Golden Cross"     => eval_golden_cross(ind),
+        "Fractal Breakout" => eval_fractal_breakout(ind),
         "Auto"             => eval_auto(ind),
         _ => (Signal::None, "Unknown strategy".to_string()),
     }
@@ -552,14 +560,81 @@ fn eval_session(ind: &Indicators) -> (Signal, String) {
     (Signal::None, String::new())
 }
 
+// ─── 11. Engulfing Driver ───
+fn eval_engulfing(ind: &Indicators) -> (Signal, String) {
+    if ind.current_close > ind.ema_50 && ind.candle_body_ratio > 0.7 && ind.current_close > ind.prev_close {
+        return (Signal::Buy, format!("Engulfing BUY: Strong body ({:.0}%) above EMA50", ind.candle_body_ratio * 100.0));
+    }
+    if ind.current_close < ind.ema_50 && ind.candle_body_ratio > 0.7 && ind.current_close < ind.prev_close {
+        return (Signal::Sell, format!("Engulfing SELL: Strong body ({:.0}%) below EMA50", ind.candle_body_ratio * 100.0));
+    }
+    (Signal::None, String::new())
+}
+
+// ─── 12. Bollinger Squeeze ───
+fn eval_bollinger_squeeze(ind: &Indicators) -> (Signal, String) {
+    let bandwidth = if ind.bb_middle > 0.0 { (ind.bb_upper - ind.bb_lower) / ind.bb_middle } else { 1.0 };
+    if bandwidth < 0.02 {
+        if ind.current_close > ind.bb_upper { return (Signal::Buy, format!("Squeeze BUY: Broke BB Upper, BW={:.3}", bandwidth)); }
+        if ind.current_close < ind.bb_lower { return (Signal::Sell, format!("Squeeze SELL: Broke BB Lower, BW={:.3}", bandwidth)); }
+    }
+    (Signal::None, String::new())
+}
+
+// ─── 13. Pullback Sniper ───
+fn eval_pullback_sniper(ind: &Indicators) -> (Signal, String) {
+    if ind.ema_50 > ind.ema_200 && ind.current_close > ind.ema_200 && ind.rsi_14 < 35.0 {
+        return (Signal::Buy, format!("Pullback BUY: Uptrend (EMA50>200) + RSI Oversold ({:.1})", ind.rsi_14));
+    }
+    if ind.ema_50 < ind.ema_200 && ind.current_close < ind.ema_200 && ind.rsi_14 > 65.0 {
+        return (Signal::Sell, format!("Pullback SELL: Downtrend (EMA50<200) + RSI Overbought ({:.1})", ind.rsi_14));
+    }
+    (Signal::None, String::new())
+}
+
+// ─── 14. Reversal Catcher ───
+fn eval_reversal_catcher(ind: &Indicators) -> (Signal, String) {
+    if ind.rsi_14 < 25.0 && ind.rsi_prev < 25.0 && ind.current_close > ind.prev_close {
+        return (Signal::Buy, format!("Reversal BUY: RSI={:.1} turning up from < 25", ind.rsi_14));
+    }
+    if ind.rsi_14 > 75.0 && ind.rsi_prev > 75.0 && ind.current_close < ind.prev_close {
+        return (Signal::Sell, format!("Reversal SELL: RSI={:.1} turning down from > 75", ind.rsi_14));
+    }
+    (Signal::None, String::new())
+}
+
+// ─── 15. Golden Cross ───
+fn eval_golden_cross(ind: &Indicators) -> (Signal, String) {
+    if ind.ema_50 > ind.ema_200 && ind.current_close > ind.ema_50 && ind.rsi_14 > 50.0 && ind.rsi_14 < 60.0 {
+        return (Signal::Buy, "Golden Cross BUY: EMA50 > EMA200".to_string());
+    }
+    if ind.ema_50 < ind.ema_200 && ind.current_close < ind.ema_50 && ind.rsi_14 < 50.0 && ind.rsi_14 > 40.0 {
+        return (Signal::Sell, "Death Cross SELL: EMA50 < EMA200".to_string());
+    }
+    (Signal::None, String::new())
+}
+
+// ─── 16. Fractal Breakout ───
+fn eval_fractal_breakout(ind: &Indicators) -> (Signal, String) {
+    if ind.current_close > ind.swing_high && ind.prev_close <= ind.swing_high {
+        return (Signal::Buy, format!("Fractal BUY: Broke swing high {:.5}", ind.swing_high));
+    }
+    if ind.current_close < ind.swing_low && ind.prev_close >= ind.swing_low {
+        return (Signal::Sell, format!("Fractal SELL: Broke swing low {:.5}", ind.swing_low));
+    }
+    (Signal::None, String::new())
+}
+
 // ─── AUTO MODE ───
 // Evaluates ALL strategies, picks the one with the strongest signal
 // Priority: SMC > ICT > Fibonacci > Momentum > others
 fn eval_auto(ind: &Indicators) -> (Signal, String) {
-    // Priority order — more sophisticated strategies first
+    // Priority order — more sophisticated strategies first (Grid Master is ignored in Auto)
     let priority: &[&str] = &[
         "SMC", "ICT", "Fibonacci", "Momentum Surge", "Session Sniper",
-        "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert", "Grid Master",
+        "Fractal Breakout", "Bollinger Squeeze", "Engulfing Driver", 
+        "Pullback Sniper", "Reversal Catcher", "Golden Cross",
+        "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert",
     ];
     for &strat in priority {
         let (signal, reason) = evaluate_strategy(strat, ind);

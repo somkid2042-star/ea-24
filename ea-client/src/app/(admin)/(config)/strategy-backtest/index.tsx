@@ -1,7 +1,7 @@
 import { useState } from 'react';
 import { LuPlay, LuTrendingUp, LuTrendingDown } from 'react-icons/lu';
 
-const strategies = ['Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert'];
+const strategies = ['Scalper Pro', 'Trend Rider', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper', 'Engulfing Driver', 'Bollinger Squeeze', 'Pullback Sniper', 'Reversal Catcher', 'Golden Cross', 'Fractal Breakout', 'Grid Master'];
 const symbols = ['EURUSD', 'GBPUSD', 'USDJPY', 'AUDUSD', 'XAUUSD', 'BTCUSD'];
 
 const StrategyBacktest = () => {

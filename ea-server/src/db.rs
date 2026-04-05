@@ -537,11 +537,12 @@ impl Database {
         }
     }
 
-    pub async fn save_trade_history(&self, deals: &serde_json::Value) {
+    pub async fn save_trade_history(&self, deals: &serde_json::Value) -> Vec<serde_json::Value> {
+        let mut new_deals = Vec::new();
         if let Some(deals_arr) = deals.as_array() {
             let mut tx = match self.pool.begin().await {
                 Ok(tx) => tx,
-                Err(_) => return,
+                Err(_) => return new_deals,
             };
             for deal in deals_arr {
                 let ticket = deal["ticket"].as_i64().unwrap_or(0);
@@ -559,12 +560,19 @@ impl Database {
                 let time = deal["time"].as_str().unwrap_or("");
                 let comment = deal["comment"].as_str().unwrap_or("");
 
-                let _ = sqlx::query("INSERT INTO trade_history (ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (ticket) DO NOTHING")
+                let res = sqlx::query("INSERT INTO trade_history (ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment) VALUES ($1,$2,$3,$4,$5,$6,$7,$8,$9,$10,$11,$12,$13) ON CONFLICT (ticket) DO NOTHING")
                     .bind(ticket).bind(order).bind(pos_id).bind(sym).bind(ty).bind(vol).bind(px).bind(profit).bind(swap).bind(comm).bind(magic).bind(time).bind(comment)
                     .execute(&mut *tx).await;
+                
+                if let Ok(result) = res {
+                    if result.rows_affected() > 0 {
+                        new_deals.push(deal.clone());
+                    }
+                }
             }
             let _ = tx.commit().await;
         }
+        new_deals
     }
 
     pub async fn get_trade_history(&self) -> serde_json::Value {

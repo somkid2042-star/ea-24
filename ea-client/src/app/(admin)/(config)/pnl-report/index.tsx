@@ -141,7 +141,7 @@ const PnlReport = () => {
     <main className="space-y-5">
       <div className="flex items-center justify-between">
         <div>
-          <h4 className="text-lg font-semibold text-default-900">📊 P&L Report</h4>
+          <h4 className="text-lg font-semibold text-default-900">P&L Report</h4>
           <p className="mt-1 text-sm text-default-500">สรุปผลกำไร/ขาดทุนและสถิติการเทรด</p>
         </div>
         <div className="flex items-center gap-1 bg-default-100 dark:bg-default-200/20 rounded-lg p-0.5">

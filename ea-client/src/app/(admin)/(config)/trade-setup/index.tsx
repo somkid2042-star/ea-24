@@ -1,7 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
-import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown, LuRadar, LuLoader, LuShieldAlert, LuClock, LuPin, LuZap } from 'react-icons/lu';
+import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown, LuRadar, LuLoader, LuShieldAlert, LuClock, LuPin, LuZap, LuCircleX, LuTarget, LuRuler, LuTriangleAlert, LuSave } from 'react-icons/lu';
 
-const allStrategies = ['Auto', 'Scalper Pro', 'Trend Rider', 'Grid Master', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper'];
+const allStrategies = ['Auto', 'Scalper Pro', 'Trend Rider', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper', 'Engulfing Driver', 'Bollinger Squeeze', 'Pullback Sniper', 'Reversal Catcher', 'Golden Cross', 'Fractal Breakout'];
+const specialStrategies = ['Grid Master'];
 const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const profitModes = [
   { value: 'rr', label: 'R:R' },
@@ -38,6 +39,8 @@ type SetupForm = {
   tpEnabled: boolean; tpMode: string; tpValue: number;
   slEnabled: boolean; slMode: string; slValue: number;
   trailingStopEnabled: boolean; trailingStopPoints: number;
+  scheduleEnabled: boolean; scheduleStart: string; scheduleEnd: string;
+  intervalMinutes: number;
 };
 
 import { getWsUrl } from '@/utils/config';
@@ -47,22 +50,51 @@ const defaultForm: SetupForm = {
   tpEnabled: false, tpMode: 'pips', tpValue: 50,
   slEnabled: false, slMode: 'pips', slValue: 30,
   trailingStopEnabled: false, trailingStopPoints: 50,
+  scheduleEnabled: false, scheduleStart: '00:00', scheduleEnd: '23:59',
+  intervalMinutes: 5,
 };
 
 const WS_URL = getWsUrl();
 
 const modeLabel = (m: string) => profitModes.find(p => p.value === m)?.label || m;
 const modeUnit = (m: string) => m === 'rr' ? 'R' : m === 'pips' ? 'pips' : '$';
-const selectCls = "form-select text-xs";
-const inputCls = "form-input form-input-sm";
+const selectCls = "w-full px-2.5 py-2 text-[11px] font-semibold rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-default-800 dark:text-gray-200 focus:border-blue-500/50 outline-none transition-all shadow-inner cursor-pointer";
+const inputCls = "w-full px-2.5 py-2 text-[11px] font-semibold rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-default-800 dark:text-gray-200 focus:border-blue-500/50 outline-none transition-all shadow-inner";
 
 // Toggle Switch Component
 const Toggle = ({ checked, onChange, disabled }: { checked: boolean; onChange: (v: boolean) => void; disabled?: boolean }) => (
-  <label className={`relative inline-flex items-center ${disabled ? 'opacity-50' : 'cursor-pointer'}`}>
-    <input type="checkbox" checked={checked} onChange={e => !disabled && onChange(e.target.checked)} className="peer sr-only" />
-    <div className="h-5 w-9 rounded-full bg-default-200 after:absolute after:left-[2px] after:top-0.5 after:h-4 after:w-4 after:rounded-full after:bg-white after:transition-all peer-checked:bg-primary peer-checked:after:translate-x-full dark:bg-default-100 peer-checked:dark:bg-primary" />
-  </label>
+  <input type="checkbox" checked={checked} onChange={e => !disabled && onChange(e.target.checked)} disabled={disabled} className="form-switch" />
 );
+
+// Countdown timer for scan interval
+const ScanCountdown = ({ intervalMin, active }: { intervalMin: number; active: boolean }) => {
+  const [remaining, setRemaining] = React.useState(intervalMin * 60);
+
+  React.useEffect(() => {
+    if (!active || intervalMin <= 0) return;
+    const totalSec = intervalMin * 60;
+    const now = Math.floor(Date.now() / 1000);
+    const elapsed = now % totalSec;
+    setRemaining(totalSec - elapsed);
+    const interval = setInterval(() => {
+      const n = Math.floor(Date.now() / 1000);
+      const e = n % totalSec;
+      setRemaining(totalSec - e);
+    }, 1000);
+    return () => clearInterval(interval);
+  }, [intervalMin, active]);
+
+  if (!active || intervalMin <= 0) return null;
+
+  const m = Math.floor(remaining / 60);
+  const s = remaining % 60;
+  return (
+    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 dark:bg-sky-500/20 px-2 py-0.5 text-[10px] font-mono font-medium text-sky-700 dark:text-sky-400">
+      <LuClock className="size-2.5" />
+      {m.toString().padStart(2, '0')}:{s.toString().padStart(2, '0')}
+    </span>
+  );
+};
 
 const TradeSetup = () => {
   const [wsConnected, setWsConnected] = useState(false);
@@ -127,6 +159,8 @@ const TradeSetup = () => {
       tpEnabled: s.tpEnabled, tpMode: s.tpMode, tpValue: s.tpValue,
       slEnabled: s.slEnabled, slMode: s.slMode, slValue: s.slValue,
       trailingStopEnabled: s.trailingStopEnabled, trailingStopPoints: s.trailingStopPoints,
+      scheduleEnabled: (s as any).scheduleEnabled ?? false, scheduleStart: (s as any).scheduleStart ?? '00:00', scheduleEnd: (s as any).scheduleEnd ?? '23:59',
+      intervalMinutes: (s as any).intervalMinutes ?? 5,
     });
     setShowForm(true);
     send({ action: 'get_running_mt5' });
@@ -140,6 +174,8 @@ const TradeSetup = () => {
       tp_enabled: form.tpEnabled, tp_mode: form.tpMode, tp_value: form.tpValue,
       sl_enabled: form.slEnabled, sl_mode: form.slMode, sl_value: form.slValue,
       trailing_stop_enabled: form.trailingStopEnabled, trailing_stop_points: form.trailingStopPoints,
+      schedule_enabled: form.scheduleEnabled, schedule_start: form.scheduleStart, schedule_end: form.scheduleEnd,
+      interval_minutes: form.intervalMinutes,
     };
     if (editId) msg.setup_id = editId;
     send(msg);
@@ -162,7 +198,7 @@ const TradeSetup = () => {
     <main className="space-y-5">
 
       {/* Header */}
-      <div className="flex items-center justify-between">
+      <div className="flex items-center justify-between mb-5">
         <div>
           <h4 className="text-lg font-semibold text-default-900">Trade Setup</h4>
           <p className="text-sm text-default-500">Configure trading pairs, TP/SL, and trailing stop</p>
@@ -171,62 +207,82 @@ const TradeSetup = () => {
           {marketWatch.length > 0 && (
             <span className="rounded-full bg-blue-100 dark:bg-blue-500/20 px-2.5 py-0.5 text-[10px] font-medium text-blue-700 dark:text-blue-400">{marketWatch.length} symbols</span>
           )}
-          <button onClick={openAddForm} className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white">
-            <LuPlus className="size-4" /> Add Setup
+          <button onClick={openAddForm} className="btn bg-primary text-white text-nowrap border-0">
+            <LuPlus className="size-4 me-1" />
+            Add Setup
           </button>
         </div>
       </div>
 
       {/* Form (Add / Edit) */}
       {showForm && (
-        <div className="rounded-xl border border-primary/20 bg-primary/5 dark:bg-primary/10 p-5 space-y-4">
-          <div className="flex items-center justify-between">
-            <h5 className="text-sm font-semibold text-default-900">{editId ? '✏️ Edit Setup' : '➕ New Trade Setup'}</h5>
-            <button onClick={() => { setShowForm(false); setEditId(null); }} className="text-default-400 hover:text-default-600"><LuX className="size-4" /></button>
-          </div>
+        <div className="rounded-xl border border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] shadow-sm mb-6">
+          <div className="p-5 space-y-4">
+            <div className="flex items-center justify-between mb-2">
+              <h5 className="card-title text-default-900 flex items-center gap-1.5">{editId ? <><LuPencil className="size-3.5" /> Edit Setup</> : <><LuPlus className="size-3.5" /> New Trade Setup</>}</h5>
+              <button onClick={() => { setShowForm(false); setEditId(null); }} className="text-default-400 hover:text-default-600"><LuX className="size-4" /></button>
+            </div>
 
           {/* MT5 Instance */}
-          <div>
-            <label className="mb-1 block text-xs font-medium text-default-500">MT5 Instance</label>
+          <div className="mb-4">
+            <label className="inline-block mb-1.5 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">MT5 Instance</label>
             {mt5Instances.length > 0 ? (
               <div className="flex flex-wrap gap-2">
                 {mt5Instances.map(inst => (
                   <button key={inst.id} onClick={() => setF({ mt5Instance: inst.id })}
-                    className={`btn disabled:opacity-40 ${f.mt5Instance === inst.id ? 'bg-primary/20 text-primary border border-primary' : 'bg-default-500/10 text-default-600 hover:bg-primary/10 hover:text-primary'}`}>
+                    className={`btn btn-sm disabled:opacity-40 font-semibold ${f.mt5Instance === inst.id ? 'bg-primary/10 text-primary border border-primary/30 shadow-inner' : 'bg-default-50 dark:bg-[#131826] text-default-600 dark:text-gray-300 border border-default-200 dark:border-white/5 hover:bg-default-100 dark:hover:bg-white/5'}`}>
                     <LuMonitor className="size-4" />{inst.broker_name}
                     {inst.ea_deployed && <span className="rounded bg-green-500/20 px-1 text-[9px] text-green-600 dark:text-green-400">EA</span>}
                   </button>
                 ))}
               </div>
-            ) : <p className="text-xs text-yellow-600 dark:text-yellow-400">⚠ No running MT5 instances.</p>}
+            ) : <p className="text-xs text-yellow-600 dark:text-yellow-400 flex items-center gap-1"><LuTriangleAlert className="size-3" /> No running MT5 instances.</p>}
           </div>
 
           {/* Symbol / Strategy / TF / Lot */}
-          <div className="grid grid-cols-2 gap-3 md:grid-cols-4">
-            <div>
-              <label className="mb-1 block text-xs text-default-500">Symbol <span className="text-[9px] text-blue-500">(Market Watch)</span></label>
+          <div className="grid lg:grid-cols-4 grid-cols-1 gap-5 mb-4">
+            <div className="col-span-1 flex flex-col gap-1">
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol <span className="text-[9px] text-blue-500 lowercase font-normal">(market watch)</span></label>
               {marketWatch.length > 0 ? (
                 <select value={f.symbol} onChange={e => setF({ symbol: e.target.value })} className={selectCls}>
                   {marketWatch.map(m => <option key={m.symbol} value={m.symbol}>{m.symbol} ({m.spread.toFixed(1)} sp)</option>)}
                 </select>
-              ) : <p className="rounded-md border border-yellow-300/50 bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1.5 text-[10px] text-yellow-600 dark:text-yellow-400">⏳ Waiting for Market Watch...</p>}
+              ) : <p className="rounded-md border border-yellow-300/50 bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1.5 text-[10px] text-yellow-600 dark:text-yellow-400 flex items-center gap-1"><LuClock className="size-3" /> Waiting for Market Watch...</p>}
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-default-500">Strategy</label>
+            <div className="col-span-1 flex flex-col gap-1">
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strategy</label>
               <select value={f.strategy} onChange={e => setF({ strategy: e.target.value })} className={selectCls}>
-                {allStrategies.map(s => <option key={s} value={s}>{s}</option>)}
+                <optgroup label="Auto Mode">
+                   <option value="Auto">Auto (15 Strategies)</option>
+                </optgroup>
+                <optgroup label="Standard Strategies">
+                  {allStrategies.filter(s => s !== 'Auto').map(s => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
+                <optgroup label="Specialized">
+                  {specialStrategies.map(s => <option key={s} value={s}>{s}</option>)}
+                </optgroup>
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-default-500">Timeframe</label>
+            <div className="col-span-1 flex flex-col gap-1">
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Timeframe</label>
               <select value={f.timeframe} onChange={e => setF({ timeframe: e.target.value })} className={selectCls}>
                 {timeframes.map(t => <option key={t} value={t}>{t}</option>)}
               </select>
             </div>
-            <div>
-              <label className="mb-1 block text-xs text-default-500">Lot Size</label>
+            <div className="col-span-1 flex flex-col gap-1">
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Lot Size</label>
               <input type="number" step="0.01" min="0.01" value={f.lotSize} onChange={e => setF({ lotSize: Number(e.target.value) })} className={inputCls} />
             </div>
+          </div>
+
+          {/* Interval */}
+          <div className="max-w-xs mb-4 flex flex-col gap-1">
+            <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider"><LuClock className="inline size-3.5 mr-1" />Scan Interval</label>
+            <div className="flex items-center gap-2">
+              <input type="number" step="1" min="1" max="1440" value={f.intervalMinutes} onChange={e => setF({ intervalMinutes: Number(e.target.value) })} className={inputCls} />
+              <span className="text-[10px] text-default-400 whitespace-nowrap">min</span>
+            </div>
+            <p className="mt-1 text-[9px] text-default-400">Bot will re-analyze every {f.intervalMinutes} minute{f.intervalMinutes > 1 ? 's' : ''}</p>
           </div>
 
           {/* TP / SL / Trailing Stop — each with toggle */}
@@ -234,7 +290,7 @@ const TradeSetup = () => {
             {/* TP */}
             <div className={`rounded-lg border p-3 transition ${f.tpEnabled ? 'border-green-200 dark:border-green-500/30 bg-green-50/50 dark:bg-green-500/5' : 'border-default-200 dark:border-default-100 bg-default-50/50 dark:bg-default-100/30'}`}>
               <div className="flex items-center justify-between mb-2">
-                <p className={`text-xs font-semibold ${f.tpEnabled ? 'text-green-700 dark:text-green-400' : 'text-default-400'}`}>✅ Take Profit</p>
+                <p className={`text-xs font-semibold flex items-center gap-1 ${f.tpEnabled ? 'text-green-700 dark:text-green-400' : 'text-default-400'}`}><LuTarget className="size-3.5" /> Take Profit</p>
                 <Toggle checked={f.tpEnabled} onChange={v => setF({ tpEnabled: v })} />
               </div>
               {f.tpEnabled ? (
@@ -250,7 +306,7 @@ const TradeSetup = () => {
             {/* SL */}
             <div className={`rounded-lg border p-3 transition ${f.slEnabled ? 'border-red-200 dark:border-red-500/30 bg-red-50/50 dark:bg-red-500/5' : 'border-default-200 dark:border-default-100 bg-default-50/50 dark:bg-default-100/30'}`}>
               <div className="flex items-center justify-between mb-2">
-                <p className={`text-xs font-semibold ${f.slEnabled ? 'text-red-700 dark:text-red-400' : 'text-default-400'}`}>🛑 Stop Loss</p>
+                <p className={`text-xs font-semibold flex items-center gap-1 ${f.slEnabled ? 'text-red-700 dark:text-red-400' : 'text-default-400'}`}><LuCircleX className="size-3.5" /> Stop Loss</p>
                 <Toggle checked={f.slEnabled} onChange={v => setF({ slEnabled: v })} />
               </div>
               {f.slEnabled ? (
@@ -266,7 +322,7 @@ const TradeSetup = () => {
             {/* Trailing Stop */}
             <div className={`rounded-lg border p-3 transition ${f.trailingStopEnabled ? 'border-blue-200 dark:border-blue-500/30 bg-blue-50/50 dark:bg-blue-500/5' : 'border-default-200 dark:border-default-100 bg-default-50/50 dark:bg-default-100/30'}`}>
               <div className="flex items-center justify-between mb-2">
-                <p className={`text-xs font-semibold ${f.trailingStopEnabled ? 'text-blue-700 dark:text-blue-400' : 'text-default-400'}`}>📐 Trailing Stop</p>
+                <p className={`text-xs font-semibold flex items-center gap-1 ${f.trailingStopEnabled ? 'text-blue-700 dark:text-blue-400' : 'text-default-400'}`}><LuRuler className="size-3.5" /> Trailing Stop</p>
                 <Toggle checked={f.trailingStopEnabled} onChange={v => setF({ trailingStopEnabled: v })} />
               </div>
               {f.trailingStopEnabled ? (
@@ -279,17 +335,43 @@ const TradeSetup = () => {
             </div>
           </div>
 
+          {/* Trading Schedule */}
+          <div className={`rounded-lg border p-3 transition ${f.scheduleEnabled ? 'border-purple-200 dark:border-purple-500/30 bg-purple-50/50 dark:bg-purple-500/5' : 'border-default-200 dark:border-default-100 bg-default-50/50 dark:bg-default-100/30'}`}>
+            <div className="flex items-center justify-between mb-2">
+              <p className={`text-xs font-semibold ${f.scheduleEnabled ? 'text-purple-700 dark:text-purple-400' : 'text-default-400'}`}><LuClock className="inline size-3.5 mr-1" />Trading Schedule</p>
+              <Toggle checked={f.scheduleEnabled} onChange={v => setF({ scheduleEnabled: v })} />
+            </div>
+            {f.scheduleEnabled ? (
+              <div className="grid grid-cols-2 gap-3">
+                <div>
+                  <label className="mb-1 block text-[10px] text-default-400">Start Time</label>
+                  <input type="time" value={f.scheduleStart} onChange={e => setF({ scheduleStart: e.target.value })} className={inputCls} />
+                </div>
+                <div>
+                  <label className="mb-1 block text-[10px] text-default-400">End Time</label>
+                  <input type="time" value={f.scheduleEnd} onChange={e => setF({ scheduleEnd: e.target.value })} className={inputCls} />
+                </div>
+                <p className="col-span-2 text-[9px] text-default-400">Bot will only trade between these hours (server time UTC)</p>
+              </div>
+            ) : <p className="text-xs text-default-400 mt-1">Enable to set trading hours</p>}
+          </div>
+
           {/* Risk */}
-          <div className="max-w-xs">
-            <label className="mb-1 block text-xs text-default-500">Risk %</label>
+          <div className="max-w-xs mb-4 flex flex-col gap-1">
+            <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Risk %</label>
             <input type="number" step="0.5" min="0.1" max="100" value={f.riskPercent} onChange={e => setF({ riskPercent: Number(e.target.value) })} className={inputCls} />
           </div>
 
-          <div className="flex gap-2 pt-1">
-            <button onClick={saveSetup} disabled={!wsConnected || !f.symbol} className="btn bg-primary/10 text-primary hover:bg-primary hover:text-white disabled:opacity-40">
-              {editId ? 'Update Setup' : 'Save to Server'}
-            </button>
-            <button onClick={() => { setShowForm(false); setEditId(null); }} className="btn bg-default-500/10 text-default-600 hover:bg-default-500 hover:text-white">Cancel</button>
+          <div className="flex justify-end items-center mt-5">
+            <div className="flex flex-wrap items-center gap-2">
+              <button onClick={() => { setShowForm(false); setEditId(null); }} className="bg-default-200 text-default-500 text-nowrap border-0 btn hover:bg-default-300">
+                Cancel
+              </button>
+              <button onClick={saveSetup} disabled={!wsConnected || !f.symbol} className="text-white border-0 btn text-nowrap bg-primary disabled:opacity-50">
+                <LuSave className="size-4 me-1" />
+                {editId ? 'Update Setup' : 'Save to Server'}
+              </button>
+            </div>
           </div>
         </div>
       )}
@@ -304,6 +386,7 @@ const TradeSetup = () => {
             <div className="flex items-center justify-between mb-3">
               <div className="flex items-center gap-2">
                 <span className="text-lg font-bold text-primary">{s.symbol}</span>
+                <ScanCountdown intervalMin={(s as any).intervalMinutes ?? 5} active={s.status === 'active'} />
                 <span className={`rounded-full px-2 py-0.5 text-[10px] font-medium ${s.status === 'active' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' : 'bg-yellow-100 text-yellow-700 dark:bg-yellow-500/20 dark:text-yellow-400'}`}>
                   {s.status === 'active' ? '● Active' : '⏸ Paused'}
                 </span>

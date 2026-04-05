@@ -1,7 +1,7 @@
-import React, { useRef, useEffect } from 'react';
-import { LuBot, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuZap, LuMonitorOff } from 'react-icons/lu';
+import React, { useEffect, useState } from 'react';
+import { LuBrainCircuit, LuGlobe, LuActivity, LuCalendar, LuShield, LuMonitorOff, LuZap, LuLoader, LuBot, LuSettings } from "react-icons/lu";
 
-export type AiLog = { timestamp: number; agent: string; status: string; message: string; };
+export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
 export type AgentStatusMap = {
   news_hunter: AgentStatus;
@@ -16,248 +16,245 @@ interface AgentPanelProps {
   title: string;
   symbol: string;
   isClosed?: boolean;
+  jobEnabled?: boolean;
+  onToggleJob?: () => void;
   logs: AiLog[];
   agentStatus: AgentStatusMap;
   finalResult: any;
+  autoTrade?: boolean;
+  onToggleAutoTrade?: () => void;
   disabledAgents?: string[];
+  interval?: number;
+  lastRunTime?: number | null;
+  onEditJob?: () => void;
   onToggleAgent?: (agentKey: string) => void;
 }
 
-const agentConfig = [
-  { key: 'news_hunter', name: 'News Hunter', desc: 'ค้นหาข่าวสารทั่วโลก', icon: <LuGlobe size={20} />, gradient: 'from-cyan-500 to-blue-600', shadow: 'shadow-cyan-500/30' },
-  { key: 'chart_analyst', name: 'Chart Analyst', desc: 'วิเคราะห์โครงสร้างกราฟรูปตัวแปร Multi-TF', icon: <LuActivity size={20} />, gradient: 'from-purple-500 to-pink-600', shadow: 'shadow-purple-500/30' },
-  { key: 'calendar', name: 'Calendar Watcher', desc: 'เฝ้าระวังวันประกาศเวลาสำคัญ', icon: <LuCalendar size={20} />, gradient: 'from-amber-500 to-orange-600', shadow: 'shadow-amber-500/30' },
-  { key: 'risk_manager', name: 'Risk Manager', desc: 'ประเมินความเสี่ยงและ Margin', icon: <LuShield size={20} />, gradient: 'from-emerald-400 to-teal-500', shadow: 'shadow-emerald-500/30' },
-  { key: 'decision_maker', name: 'Decision Maker', desc: 'เปรียบเทียบน้ำหนักตรรกะหาข้อสรุป', icon: <LuBrainCircuit size={20} />, gradient: 'from-rose-500 to-red-600', shadow: 'shadow-rose-500/30' },
-];
-
-const parseTfData = (reasoning: string) => {
-  if (!reasoning) return null;
-  const match = reasoning.match(/Best TF:\s*([A-Z0-9]+).+?M5:([A-Z]+)\s+M15:([A-Z]+)\s+H1:([A-Z]+)\s+H4:([A-Z]+)/);
-  if (!match) return null;
-  return [
-    { tf: 'M5', signal: match[2], isBest: match[1] === 'M5' },
-    { tf: 'M15', signal: match[3], isBest: match[1] === 'M15' },
-    { tf: 'H1', signal: match[4], isBest: match[1] === 'H1' },
-    { tf: 'H4', signal: match[5], isBest: match[1] === 'H4' },
-  ];
+const stripEmojis = (msg: string) => {
+  if (!msg) return '';
+  return msg.replace(/[\p{Extended_Pictographic}⚠️]/gu, '').replace(/[✅❌⚠️📊🏁💡🔴🟢]/g, '').trim();
 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed, logs, agentStatus, finalResult, disabledAgents = [], onToggleAgent }) => {
-  const logsEndRef = useRef<HTMLDivElement>(null);
+const agentConfig = [
+  { key: 'news_hunter', name: 'News Hunter', icon: <LuGlobe size={14} /> },
+  { key: 'chart_analyst', name: 'Chart Analyst', icon: <LuActivity size={14} /> },
+  { key: 'calendar', name: 'Calendar Watcher', icon: <LuCalendar size={14} /> },
+  { key: 'risk_manager', name: 'Risk Manager', icon: <LuShield size={14} /> },
+  { key: 'decision_maker', name: 'Decision Maker', icon: <LuBrainCircuit size={14} /> },
+];
+
+const extendedAgentConfig = [
+  ...agentConfig,
+  { key: 'order_executor', name: 'Order Execution', icon: <LuZap size={14} /> },
+];
+
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
+  const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   
   useEffect(() => {
-    logsEndRef.current?.scrollIntoView({ behavior: "smooth" });
-  }, [logs]);
+    if (!interval || !jobEnabled || agentStatus.orchestrator === 'running') {
+      setTimeLeft(null);
+      return;
+    }
+    
+    const totalMs = interval * 60 * 1000;
+    
+    const updateCountdown = () => {
+      if (lastRunTime) {
+        const target = lastRunTime + totalMs;
+        const remaining = Math.max(0, target - Date.now());
+        const totalSecs = Math.floor(remaining / 1000);
+        setTimeLeft({ m: Math.floor(totalSecs / 60), s: totalSecs % 60 });
+      } else {
+        // No lastRun yet — use modulo sync
+        const totalSec = interval * 60;
+        const now = Math.floor(Date.now() / 1000);
+        const rem = totalSec - (now % totalSec);
+        setTimeLeft({ m: Math.floor(rem / 60), s: rem % 60 });
+      }
+    };
+    
+    updateCountdown();
+    const id = setInterval(updateCountdown, 1000);
+    return () => clearInterval(id);
+  }, [lastRunTime, interval, jobEnabled, agentStatus.orchestrator]);
 
   return (
-    <div className="card w-full relative mt-6 mb-6 overflow-hidden">
+    <div className={`w-full h-full relative flex flex-col transition-all duration-300 bg-white dark:bg-[#0A0D14] ${!jobEnabled ? 'opacity-70 grayscale-[0.5]' : ''}`}>
       {isClosed && (
-        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-6 text-center">
-           <div className="bg-zinc-950 max-w-sm w-full relative overflow-hidden group border border-red-500/30 shadow-[0_0_40px_rgba(239,68,68,0.2)] rounded-lg">
-               <div className="p-6">
-                 <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 flex-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
-                 <LuMonitorOff className="size-10 text-red-500 mx-auto mb-4 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
-                 <h3 className="text-xl font-black text-white tracking-tight mb-2 uppercase">Market Closed</h3>
-                 <p className="text-red-400 text-sm font-bold opacity-90">ตลาดปิดหยุดการคำนวณจาก AI</p>
-               </div>
+        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4 text-center">
+           <div className="bg-white/90 dark:bg-zinc-950/90 w-[180px] border border-red-500/20 rounded-xl p-3 shadow-md">
+             <LuMonitorOff className="size-6 text-red-500 mx-auto mb-1 opacity-80" />
+             <h3 className="text-[11px] font-bold text-default-900 dark:text-white uppercase tracking-wider">Market Closed</h3>
            </div>
         </div>
       )}
 
-      {/* Header Section */}
-      <div className="card-header border-b border-default-200 dark:border-default-300/10 p-4 flex flex-col md:flex-row md:items-center justify-between gap-4 relative z-10">
-        <div className="flex items-center gap-3 relative z-10">
-          <div className="size-10 rounded-xl bg-primary/10 flex items-center justify-center border border-primary/20 shrink-0">
-            <LuBot className="size-5 text-primary drop-shadow-sm" />
+      {/* Header Section (Compact) */}
+      <div className="card-header border-b border-default-200 dark:border-white/5 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#080B10] relative z-[60]">
+        <div className="flex items-center gap-3">
+          <div className={`size-8 rounded-lg flex items-center justify-center border shrink-0 ${jobEnabled ? 'bg-primary/5 border-primary/20 text-primary' : 'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10 text-default-400'}`}>
+            {jobEnabled ? <LuZap className="size-4" /> : <LuMonitorOff className="size-4" />}
           </div>
-          <div>
-            <h2 className="text-sm font-bold text-default-900 tracking-tight flex items-center gap-2">
-              {title}
+          <div className="flex flex-col">
+            <h2 className="text-[13px] font-black text-default-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-1.5">
+              {symbol}
+              {jobEnabled && agentStatus.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-amber-500 animate-pulse"></span>}
+              {!jobEnabled && <span className="text-[9px] bg-default-200 dark:bg-white/10 px-1 py-0.5 rounded text-default-500 font-bold ml-1">PAUSED</span>}
+              {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
+                 <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 dark:bg-sky-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-sky-700 dark:text-sky-400 ml-1">
+                   {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
+                 </span>
+              )}
             </h2>
-            <div className="flex items-center gap-2 mt-1">
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-md bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-200/50 text-[9px] font-bold uppercase shadow-sm">
-                 <LuActivity size={10} className="text-primary" /> {symbol}
-              </span>
-              <span className={`text-[9px] font-bold px-2 py-0.5 rounded-md flex items-center gap-1.5 ${
-                 agentStatus.orchestrator === 'running' ? 'bg-amber-500/10 text-amber-600' : 
-                 agentStatus.orchestrator === 'done' ? 'bg-emerald-500/10 text-emerald-600' : 'bg-default-100 dark:bg-default-50 text-default-500'
-              }`}>
-                 {agentStatus.orchestrator === 'running' && <span className="size-1 bg-amber-500 rounded-full animate-ping"></span>}
-                 {agentStatus.orchestrator === 'done' && <LuCheck size={10} />}
-                 {agentStatus.orchestrator === 'running' ? 'PROCESS ONGOING' : agentStatus.orchestrator === 'done' ? 'ANALYSIS COMPLETE' : 'STANDBY'}
-              </span>
-            </div>
           </div>
         </div>
 
-        {/* Multi-TF Badge Group */}
-        <div className="flex items-center gap-1.5 bg-default-50 dark:bg-black/20 p-1.5 rounded-lg border border-default-200/50 dark:border-default-300/10 relative z-10">
-          <span className="text-[9px] font-bold text-default-400 uppercase tracking-widest pl-1 pr-1 hidden sm:inline-block">Timeframes</span>
-          {['M5', 'M15', 'H1', 'H4'].map(tf => {
-            const tfData = finalResult ? parseTfData(finalResult.chart?.reasoning)?.find(t => t.tf === tf) : null;
-            return (
-              <div key={tf} className={`flex items-center gap-1 px-2 py-1 rounded-md text-[10px] font-bold transition-all duration-300 ${
-                tfData?.isBest ? 'bg-white dark:bg-default-50 text-primary border border-primary/30 shadow-sm shadow-primary/10' :
-                tfData ? 'bg-white dark:bg-default-50 text-default-700 border border-default-200 dark:border-default-200/50 shadow-sm' : 'bg-transparent text-default-400'
-              }`}>
-                <span>{tf}</span>
-                {tfData && (
-                  <span className={`text-[9px] font-bold ${
-                    tfData.signal === 'BUY' ? 'text-emerald-500' : 
-                    tfData.signal === 'SELL' ? 'text-red-500' : 'text-amber-500'
-                  }`}>
-                    {tfData.signal}
-                  </span>
-                )}
-                {tfData?.isBest && <LuZap className="size-3 text-primary animate-pulse" />}
-              </div>
-            );
-          })}
+        <div className="flex flex-wrap items-center gap-2">
+          {onEditJob && (
+             <button
+               onClick={() => onEditJob()}
+               className="p-1 text-default-400 hover:text-default-900 dark:hover:text-white transition-colors"
+               title="Edit Setup"
+             >
+               <LuSettings className="size-3.5" />
+             </button>
+          )}
+          {onToggleJob && (
+             <button
+               onClick={() => onToggleJob()}
+               className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ml-1 ${jobEnabled ? 'bg-primary' : 'bg-default-300 dark:bg-default-700'}`}
+             >
+               <span className={`inline-block size-2.5 transform rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+             </button>
+          )}
         </div>
       </div>
 
-      {/* Body Area */}
-      <div className="card-body p-0 grid grid-cols-1 lg:grid-cols-12 relative z-10 bg-white dark:bg-[#0A0A0A]">
+      {/* Body Area (Ultra Minimal List) */}
+      <div className={`card-body p-2 bg-default-50/50 dark:bg-[#0A0D14] flex-1 overflow-y-auto transition-opacity duration-300 ${!jobEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
         
-        {/* Left Column: AI Pipeline Visualizer (Clean Style) */}
-        <div className="lg:col-span-4 flex flex-col bg-default-50/50 dark:bg-[#0A0A0A] p-4 h-full">
-            <h3 className="text-xs font-bold flex items-center gap-2 mb-4 text-default-500 px-2 lg:px-4">
-              <LuBrainCircuit className="text-primary size-4" />
-              AI PIPELINE
-            </h3>
-
-            <div className="px-2 lg:px-4 pb-4 relative flex-1 space-y-4 h-full">
-              {/* Connecting line behind items */}
-              <div className="absolute left-[28px] lg:left-[36px] top-4 bottom-4 w-px bg-default-200 dark:bg-default-800 z-0"></div>
-
-              {agentConfig.map((agent) => {
-                const isDisabled = disabledAgents.includes(agent.key);
-                const status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
+        <div className="flex flex-col mx-auto w-full relative">
+            <div className="absolute left-6 top-6 bottom-4 w-px bg-default-200 dark:bg-white/10 z-0"></div>
+            <div className="space-y-1 relative z-10">
+              {extendedAgentConfig.map((agent) => {
+                let isDisabled = disabledAgents.includes(agent.key);
+                let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
+                
+                if (agent.key === 'order_executor') {
+                   isDisabled = !autoTrade;
+                   if (agentStatus.orchestrator === 'running' || agentStatus.orchestrator === 'idle') {
+                       status = 'idle';
+                   } else if (agentStatus.orchestrator === 'done' || agentStatus.orchestrator === 'error') {
+                       status = 'done';
+                   }
+                }
+                
                 const isActive = !isDisabled && status === 'running';
                 const isDone = !isDisabled && status === 'done';
                 const isError = !isDisabled && status === 'error';
+                
+                const agentLogs = logs.filter(l => l.agent === agent.key && l.message);
+                let latestAgentLog = agentLogs.length > 0 ? agentLogs[agentLogs.length - 1] : null;
+
+                if (agent.key === 'order_executor' && (!latestAgentLog || !latestAgentLog.timestamp)) {
+                    let msg = 'รอการประมวลผล';
+                    if (status === 'done' && finalResult && autoTrade) {
+                        if (finalResult.final_decision === 'HOLD') {
+                            msg = 'ไม่มีการออกออเดอร์ (HOLD)';
+                        } else {
+                            msg = `ส่งคำสั่งเรียบร้อย (${finalResult.final_decision})`;
+                        }
+                    } else if (status === 'done' && finalResult && !autoTrade) {
+                        msg = `ไม่ได้ส่งคำสั่งเนืองจากปิดการทำงานไว้`;
+                    }
+                    latestAgentLog = { timestamp: Date.now(), symbol: '', type: 'log', agent: 'order_executor', message: msg };
+                }
 
                 return (
                   <div 
                      key={agent.key} 
-                     onClick={() => onToggleAgent && onToggleAgent(agent.key)}
-                     className={`relative z-10 flex gap-4 group items-center cursor-pointer transition-all duration-300 ${!isDisabled ? 'hover:opacity-80' : ''}`}
+                     onClick={() => {
+                         if (agent.key === 'order_executor') {
+                             if (onToggleAutoTrade) onToggleAutoTrade();
+                         } else {
+                             if (onToggleAgent) onToggleAgent(agent.key);
+                         }
+                     }}
+                     className={`flex flex-col py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
+                       isActive ? 'bg-white dark:bg-white/5 border border-primary/20 shadow-sm' : 'hover:bg-default-100/50 dark:hover:bg-white/5 border border-transparent'
+                     }`}
                   >
-                    {/* Status Node */}
-                    <div className="relative flex flex-col items-center">
-                       <div className={`size-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 z-10 border ${
-                         isDisabled ? 'border-dashed border-default-300 dark:border-white text-default-400 dark:text-white bg-white dark:bg-[#0A0A0A]' :
-                         isActive ? `bg-white dark:bg-black border-primary text-primary transform scale-105 shadow-primary/20` : 
-                         isDone ? 'bg-white dark:bg-black border-emerald-500 text-emerald-500' : 
-                         isError ? 'bg-white dark:bg-black border-red-500/50 text-red-500' : 
-                         'bg-white dark:bg-black border-emerald-500 text-emerald-500' // Default Active (Green)
-                       }`}>
-                          {isDisabled ? <div className="scale-75">{agent.icon}</div> :
-                           isActive ? <LuLoader className="animate-spin size-5" /> : 
-                           isDone ? <LuCheck className="size-5" /> :
-                           isError ? <LuX className="size-5" /> :
-                           <div className="scale-75">{agent.icon}</div>}
-                       </div>
+                    <div className="flex items-center gap-2">
+                      <div className="size-8 rounded-lg relative flex items-center justify-center shrink-0 bg-default-50 dark:bg-[#0A0D14]">
+                        <div className={`absolute inset-0 rounded-lg border transition-all ${
+                          isDisabled ? 'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10 opacity-50' :
+                          isActive ? 'bg-primary/5 border-primary/20' :
+                          isDone ? 'bg-emerald-500/5 border-emerald-500/20' :
+                          isError ? 'bg-red-500/5 border-red-500/20' :
+                          'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10'
+                        }`} />
+                        <div className={`relative z-10 transition-all ${
+                          isDisabled ? 'text-default-400' :
+                          isActive ? 'text-primary' :
+                          isDone ? 'text-emerald-500' :
+                          isError ? 'text-red-500' :
+                          'text-default-400'
+                        }`}>
+                           {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
+                        </div>
+                      </div>
+
+                      <div className="flex-1 flex justify-between items-center min-w-0 ml-1">
+                         <div className="flex items-center gap-1.5">
+                           <span className={`font-semibold text-[11px] ${isDisabled ? 'text-default-400 line-through' : 'text-default-700 dark:text-gray-200'}`}>
+                              {agent.name}
+                           </span>
+                         </div>
+                         {!isDisabled && isActive && <span className="text-[9px] text-primary animate-pulse font-medium">Running...</span>}
+                      </div>
                     </div>
 
-                    {/* Agent Details */}
-                    <div className="flex-1 overflow-hidden relative">
-                       <div className="flex justify-between items-center mb-0.5">
-                         <span className={`font-bold text-sm ${isDisabled ? 'text-default-500 dark:text-default-500' : isActive ? 'text-primary' : isError ? 'text-red-500' : 'text-default-700'}`}>
-                            {agent.name} {isDisabled && <span className="text-[9px] uppercase ml-2 px-1.5 py-0.5 rounded shadow-sm bg-default-100 dark:bg-white/5 border border-default-200 dark:border-white/10 text-default-500 dark:text-default-500 font-semibold tracking-wider">OFF</span>}
-                         </span>
+                    {!isDisabled && latestAgentLog && (
+                       <div className="ml-10 mt-0.5 relative group/log z-20">
+                          <p className={`text-[10px] font-mono leading-tight truncate ${
+                            isError ? 'text-red-500' : isDone ? 'text-emerald-600 dark:text-emerald-400/80' : 'text-default-500 dark:text-gray-400'
+                          }`}>
+                            <span className="opacity-40 mr-1.5">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
+                            {stripEmojis(latestAgentLog.message)}
+                          </p>
+                          <div className="absolute top-full left-0 mt-1 shadow-xl bg-white dark:bg-zinc-900 border border-default-200 dark:border-white/10 text-default-800 dark:text-white p-2 rounded-lg text-[10px] whitespace-pre-wrap max-w-[250px] sm:max-w-[280px] z-[60] hidden group-hover/log:block pointer-events-none">
+                              {stripEmojis(latestAgentLog.message)}
+                          </div>
                        </div>
-                       <p className={`text-[10px] leading-tight ${isDisabled ? 'text-default-400 dark:text-default-600' : 'text-default-500'}`}>{agent.desc}</p>
-                    </div>
+                    )}
                   </div>
                 );
               })}
             </div>
         </div>
+        
+        {/* Separator */}
+        <div className="h-px bg-default-200 dark:bg-white/5 mx-2 my-2"></div>
 
-        {/* Right Column: Minimalist Reasoning UI */}
-        <div className="lg:col-span-8 p-6 flex flex-col space-y-4 relative z-10 h-full">
-          {logs.length === 0 && (
-              <div className="flex items-center justify-center py-10 h-full text-default-400 flex-col">
-                <LuBot className="size-10 opacity-20 mb-4" />
-                <p className="font-semibold text-sm">System Standing By</p>
-                <p className="text-xs mt-1 max-w-xs text-center opacity-70">Waiting for triggers to begin the AI analytical sequence.</p>
-              </div>
-          )}
-
-          {/* Render Contiguous Groups of Logs */}
-          {(() => {
-            const groups: { id: string; agent: string; logs: AiLog[] }[] = [];
-            let currentGroup: any = null;
-            logs.forEach(log => {
-              if (log.agent === 'system' || !log.agent) {
-                if (currentGroup) groups.push(currentGroup);
-                currentGroup = null;
-                groups.push({ id: Math.random().toString(), agent: 'system', logs: [log] });
-              } else {
-                if (!currentGroup || currentGroup.agent !== log.agent) {
-                  if (currentGroup) groups.push(currentGroup);
-                  currentGroup = { id: Math.random().toString(), agent: log.agent, logs: [log] };
-                } else {
-                  currentGroup.logs.push(log);
-                }
-              }
-            });
-            if (currentGroup) groups.push(currentGroup);
-
-            return groups.map((group, idx) => {
-              const isLast = idx === groups.length - 1;
-              const isRunning = isLast && agentStatus[group.agent as keyof AgentStatusMap] === 'running';
-
-              if (group.agent === 'system') {
-                return (
-                  <div key={group.id} className="text-sm font-medium text-default-600 px-2 flex items-center gap-2">
-                     <span className="size-1.5 rounded-full bg-default-300"></span>
-                     {group.logs[0].message}
-                  </div>
-                );
-              }
-
-              const agentInfo = agentConfig.find(a => a.key === group.agent) || { name: group.agent?.toUpperCase() || 'AGENT' };
-
-              return (
-                <div key={group.id} className="flex flex-col space-y-2">
-                  <details className="group/accordion" open={isLast}>
-                    <summary className="inline-flex items-center gap-2 px-3 py-1.5 bg-default-100/80 dark:bg-default-50 hover:bg-default-200/80 dark:hover:bg-default-100 rounded-full cursor-pointer transition-colors select-none text-xs font-bold text-default-700 list-none [&::-webkit-details-marker]:hidden">
-                       <span className="group-open/accordion:rotate-90 transition-transform duration-200">
-                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
-                       </span>
-                       {isRunning ? (
-                         <span className="flex items-center gap-2">
-                           <LuLoader className="animate-spin text-primary size-3.5" />
-                           Thinking as {agentInfo.name}...
-                         </span>
-                       ) : (
-                         <span className="flex items-center gap-1.5">
-                           Thought process of {agentInfo.name}
-                         </span>
-                       )}
-                    </summary>
-                    <div className="pl-[22px] pt-3 pb-1 border-l-2 border-default-100 dark:border-default-800 ml-[11px] mt-1 space-y-2">
-                       {group.logs.map((log, i) => {
-                          const isError = log.status === 'error' || log.message.includes('❌');
-                          const isSuccess = log.status === 'done' || log.message.includes('✅');
-                          return (
-                            <div key={i} className={`text-[13px] leading-relaxed font-mono ${
-                              isError ? 'text-red-500' : isSuccess ? 'text-emerald-500 dark:text-emerald-400' : 'text-default-600 dark:text-default-400'
-                            }`}>
-                               {log.message}
-                            </div>
-                          );
-                       })}
-                    </div>
-                  </details>
-                </div>
-              );
-            });
-          })()}
-          <div ref={logsEndRef} className="h-4" />
+        {/* Final Operation Result */}
+        <div className={`mx-2 p-2 rounded-lg border transition-all ${
+            agentStatus.orchestrator === 'running' ? 'bg-blue-500/10 border-blue-500/30 shadow-sm' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/30'
+        }`}>
+           <div className="flex items-center gap-2 mb-1">
+             <LuBot className={`size-4 ${agentStatus.orchestrator === 'running' ? 'text-blue-500 animate-pulse' : 'text-blue-400'}`} />
+             <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Operation Result</span>
+           </div>
+           <div className="ml-6 text-[10px] font-mono text-blue-700 dark:text-blue-200/80">
+              {logs.length > 0 ? (
+                 <div className="flex gap-2">
+                   <span className="opacity-40 shrink-0">[{new Date(logs[logs.length-1].timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
+                   <span className={`break-words ${agentStatus.orchestrator === 'running' ? 'text-blue-500' : ''}`}>
+                     {stripEmojis(logs[logs.length - 1].message)}
+                   </span>
+                 </div>
+              ) : 'Standby...'}
+           </div>
         </div>
       </div>
     </div>

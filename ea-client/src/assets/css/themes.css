@@ -13,7 +13,7 @@
   --color-body-bg: var(--color-default-50);
   --color-body-color: var(--color-default-700);
 
-  --color-card: var(--color-white);
+  --color-card: #ffffff;
 
   --color-primary: #3b82f6;
   --color-secondary: #8b5cf6;
@@ -22,7 +22,7 @@
   --color-warning: #f59e0b;
   --color-danger: #ef4444;
 
-  --color-default-50: #f8fafc;
+  --color-default-50: #f9f9f9;
   --color-default-100: #f1f5f9;
   --color-default-150: #e8edf4;
   --color-default-200: #e2e8f0;
@@ -53,7 +53,7 @@
   --sidenav-item-icon-size: 18px;
   --sidenav-item-font-size: 14px;
 
-  --topbar-background: var(--color-white);
+  --topbar-background: #ffffff;
 }
 
 @custom-variant dark (&:where([data-theme=dark], [data-theme=dark] *, .dark, .dark *));
@@ -89,12 +89,12 @@
 /* Light Menu */
 html[data-theme='light'],
 html[data-sidenav-color='light'] {
-  --sidenav-background: var(--color-white);
+  --sidenav-background: #ffffff;
   --sidenav-item-color: var(--color-default-600);
   --sidenav-item-active-color: theme(backgroundColor.primary);
-  --sidenav-item-active-bg: theme(backgroundColor.primary/10%);
+  --sidenav-item-active-bg: #ffffff;
   --sidenav-item-hover-color: theme(backgroundColor.primary);
-  --sidenav-item-hover-bg: theme(backgroundColor.primary/10%);
+  --sidenav-item-hover-bg: #ffffff;
 }
 
 /* Dark Menu (Dark Mode) */
