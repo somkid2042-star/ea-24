@@ -58,40 +58,7 @@ const CustomSelect = ({ value, options, onChange, icon, minWidth = '120px', clas
   );
 };
 
-// Countdown timer for scan interval
-const ScanCountdown = ({ intervalMin, lastRun }: { intervalMin: number; lastRun: number | null }) => {
-  const [remaining, setRemaining] = useState(0);
-
-  useEffect(() => {
-    if (intervalMin <= 0) return;
-    const totalMs = intervalMin * 60 * 1000;
-    const calc = () => {
-      if (lastRun) {
-        const next = lastRun + totalMs;
-        const diff = Math.max(0, Math.floor((next - Date.now()) / 1000));
-        setRemaining(diff);
-      } else {
-        // No last run yet — use modulo sync
-        const totalSec = intervalMin * 60;
-        const now = Math.floor(Date.now() / 1000);
-        setRemaining(totalSec - (now % totalSec));
-      }
-    };
-    calc();
-    const interval = setInterval(calc, 1000);
-    return () => clearInterval(interval);
-  }, [intervalMin, lastRun]);
-
-  if (intervalMin <= 0) return null;
-  const m = Math.floor(remaining / 60);
-  const s = remaining % 60;
-  return (
-    <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 dark:bg-sky-500/20 px-2 py-0.5 text-[10px] font-mono font-medium text-sky-700 dark:text-sky-400">
-      <LuClock className="size-2.5" />
-      {m.toString().padStart(2, '0')}:{s.toString().padStart(2, '0')}
-    </span>
-  );
-};
+// Countdown timer for scan interval (removed due to unused variable error)
 
 const DashboardAi = () => {
   const [logsBySymbol, setLogsBySymbol] = useState<Record<string, AiLog[]>>({});
