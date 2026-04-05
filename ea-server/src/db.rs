@@ -375,10 +375,10 @@ impl Database {
         let query = "
             SELECT 
                 time,
-                (array_agg(bid ORDER BY timestamp ASC))[1] as open,
-                MAX(bid) as high,
-                MIN(bid) as low,
-                (array_agg(bid ORDER BY timestamp DESC))[1] as close
+                first(bid, timestamp) as open,
+                max(bid) as high,
+                min(bid) as low,
+                last(bid, timestamp) as close
             FROM (
                 SELECT 
                     (EXTRACT(EPOCH FROM timestamp)::bigint / 60) * 60 as time,
@@ -751,10 +751,10 @@ impl Database {
             let query = "
                 SELECT 
                     (EXTRACT(EPOCH FROM timestamp)::bigint / 60) * 60 as m1_time,
-                    (array_agg(bid ORDER BY timestamp ASC))[1] as open,
-                    MAX(bid) as high,
-                    MIN(bid) as low,
-                    (array_agg(bid ORDER BY timestamp DESC))[1] as close
+                    first(bid, timestamp) as open,
+                    max(bid) as high,
+                    min(bid) as low,
+                    last(bid, timestamp) as close
                 FROM tick_log
                 WHERE symbol = $1 AND timestamp > NOW() - INTERVAL '24 hours'
                 GROUP BY m1_time
