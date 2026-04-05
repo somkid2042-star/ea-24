@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink, LuGripVertical } from 'react-icons/lu';
 import { openUrl as tauriOpen } from '@tauri-apps/plugin-opener';
 import { getWsUrl } from '@/utils/config';
 
@@ -22,6 +22,8 @@ const AiSettings = () => {
 
   const hideEmailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const wsRef = useRef<WebSocket | null>(null);
+  const emailDragItem = useRef<number | null>(null);
+  const emailDragOverItem = useRef<number | null>(null);
 
   // Auto-hide feature for Email/Account section
   const resetEmailHideTimer = useCallback(() => {
@@ -93,12 +95,27 @@ const AiSettings = () => {
     send({ action: 'set_server_config', config_key: key, config_value: value });
   };
 
-  const saveEmailConfig = () => {
-    const validEmails = emails.filter(e => e.address.trim() || e.password.trim() || e.apiKey.trim());
+  const saveEmailConfig = (list?: typeof emails) => {
+    const listToSave = list || emails;
+    const validEmails = listToSave.filter(e => e.address.trim() || e.password.trim() || e.apiKey.trim());
     const toSave = validEmails.length > 0 ? validEmails : [{address: '', password: '', apiKey: ''}];
     saveConfig('gmail_address', toSave.map(e => e.address).join(','));
     saveConfig('gmail_app_password', toSave.map(e => e.password).join(','));
     saveConfig('gemini_api_key', toSave.map(e => e.apiKey).join(','));
+  };
+
+  const handleEmailSort = () => {
+    if (emailDragItem.current === null || emailDragOverItem.current === null) return;
+    if (emailDragItem.current === emailDragOverItem.current) return;
+    
+    const _emails = [...emails];
+    const draggedItemContent = _emails.splice(emailDragItem.current, 1)[0];
+    _emails.splice(emailDragOverItem.current, 0, draggedItemContent);
+    
+    emailDragItem.current = null;
+    emailDragOverItem.current = null;
+    setEmails(_emails);
+    saveEmailConfig(_emails);
   };
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -202,8 +219,19 @@ const AiSettings = () => {
         {showEmailSection && (
         <div className="space-y-4 animate-in fade-in slide-in-from-top-2 bg-default-50 dark:bg-default-100/5 p-4 rounded-xl border border-default-200/50">
           {emails.map((acc, i) => (
-            <div key={i} className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center">
-              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0 shrink-0" title="Email">
+            <div 
+              key={i} 
+              draggable
+              onDragStart={(e) => (emailDragItem.current = i)}
+              onDragEnter={(e) => (emailDragOverItem.current = i)}
+              onDragEnd={handleEmailSort}
+              onDragOver={(e) => e.preventDefault()}
+              className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center cursor-move group"
+            >
+              <div className="flex shrink-0 cursor-grab active:cursor-grabbing items-center justify-center -ml-2 p-1" title="ลากเพื่อสลับตำแหน่ง">
+                <LuGripVertical className="size-4 text-default-300 opacity-50 xl:opacity-0 xl:group-hover:opacity-100 transition-opacity" />
+              </div>
+              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0" title="Email">
                 <LuMail className="size-4 text-blue-500" />
               </div>
               <div className="flex-1">
