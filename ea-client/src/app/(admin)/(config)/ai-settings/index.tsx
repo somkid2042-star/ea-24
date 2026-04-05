@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuBrain, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -16,7 +16,6 @@ const AiSettings = () => {
   const [showKeysSection, setShowKeysSection] = useState(false);
   const [keyStatus, setKeyStatus] = useState<Record<number, { valid: boolean; name: string; checking: boolean }>>({});
   const [selectedModel, setSelectedModel] = useState('');
-  const [aiEnabled, setAiEnabled] = useState(false);
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
@@ -77,7 +76,6 @@ const AiSettings = () => {
             setActiveIndex(0); // The first key is always the active one based on our save logic
           }
           if (c.gemini_model) setSelectedModel(c.gemini_model);
-          if (c.ai_enabled !== undefined) setAiEnabled(c.ai_enabled === 'true');
         }
         if (data.type === 'ai_models') {
           setModels(data.models || []);
@@ -273,22 +271,6 @@ const AiSettings = () => {
             {testResult.success ? <><LuCheck className="size-4" /> ✅ AI ตอบกลับ: {testResult.message}</> : <><LuX className="size-4" /> ❌ {testResult.message}</>}
           </div>
         )}
-
-        {/* AI Enable Toggle */}
-        <div className="flex items-center justify-between p-3 rounded-xl bg-default-50 dark:bg-default-200/5">
-          <div className="flex items-center gap-3">
-            <div className="size-8 rounded-lg bg-violet-500/10 flex items-center justify-center text-violet-500"><LuBrain className="size-4" /></div>
-            <div>
-              <p className="text-sm font-semibold text-default-900">เปิดใช้งาน AI ช่วยตัดสินใจ</p>
-              <p className="text-xs text-default-500">AI จะวิเคราะห์กราฟก่อนเปิดออเดอร์ (ต้องมี API Key)</p>
-            </div>
-          </div>
-          <button
-            onClick={() => setAiEnabled(!aiEnabled)}
-            className={`relative w-11 h-6 rounded-full transition-colors ${aiEnabled ? 'bg-violet-600' : 'bg-default-300 dark:bg-default-200/30'}`}>
-            <span className={`absolute top-0.5 left-0.5 size-5 rounded-full bg-white shadow transition-transform ${aiEnabled ? 'translate-x-5' : ''}`} />
-          </button>
-        </div>
       </div>
 
     </main>
