@@ -841,7 +841,7 @@ pub async fn analyze_market(
     let candle_str: String = recent.iter().map(|c| format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)).collect::<Vec<_>>().join("\n");
     let trend = if candles.len() >= 10 { let s=candles[candles.len()-10].close; let e=candles[candles.len()-1].close; if e>s*1.001{"UPTREND"}else if e<s*0.999{"DOWNTREND"}else{"SIDEWAYS"} } else { "UNKNOWN" };
     let pc = if candles.len()>=2 { ((candles[candles.len()-1].close - candles[candles.len()-2].close)/candles[candles.len()-2].close)*100.0 } else { 0.0 };
-    let prompt = format!("You are an expert trading analyst.\nSymbol: {symbol} | TF: {timeframe} | Price: {current_price:.5} | Change: {pc:.4}% | Trend: {trend} | Strategy: {strategy}\n\nOHLC:\n{candle_str}\n\nRespond:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [concise]");
+    let prompt = format!("คุณเป็นนักวิเคราะห์การเทรดมืออาชีพ ตอบเป็นภาษาไทยเท่านั้น\nSymbol: {symbol} | TF: {timeframe} | ราคา: {current_price:.5} | เปลี่ยนแปลง: {pc:.4}% | แนวโน้ม: {trend} | กลยุทธ์: {strategy}\n\nOHLC:\n{candle_str}\n\nวิเคราะห์ price action, แนวรับ/แนวต้าน, รูปแบบแท่งเทียน แล้วตอบ:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [สรุปเหตุผลสั้นๆ เป็นภาษาไทย]");
     let text = call_gemini(api_key, model, &prompt, 0.3, 500).await?;
     let mut rec="HOLD".to_string(); let mut conf=50.0; let mut reason=String::new();
     for line in text.lines() { let l=line.trim();
