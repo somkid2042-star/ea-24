@@ -19,7 +19,7 @@ mkdir -p ${INSTALL_DIR}
 
 # ── Step 2: Download latest ea-server binary from GitHub Releases ──
 echo "📥 Downloading latest ea-server binary..."
-LATEST_URL=$(curl -s https://api.github.com/repos/${REPO}/releases \
+LATEST_URL=$(curl -s https://api.github.com/repos/${REPO}/releases/latest \
   | grep "browser_download_url.*ea-server\"" \
   | head -n 1 \
   | cut -d '"' -f 4)
