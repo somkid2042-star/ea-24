@@ -339,7 +339,8 @@ impl Database {
     /// Fast non-blocking tick logger (sends to Async Batch channel)
     pub fn log_tick(&self, symbol: &str, bid: f64, ask: f64, spread: f64) {
         let sym_upper = symbol.to_uppercase();
-        let is_crypto = sym_upper.contains("BTC") || sym_upper.contains("ETH") || sym_upper.contains("CRYPTO") || sym_upper.contains("XRP");
+        let crypto_keywords = ["BTC", "ETH", "XRP", "SOL", "ADA", "DOGE", "LTC", "BNB", "DOT", "AVAX", "MATIC", "LINK", "BCH", "UNI", "XLM", "XMR", "TRX", "CRYPTO"];
+        let is_crypto = crypto_keywords.iter().any(|&k| sym_upper.contains(k));
         
         if !is_crypto {
             use chrono::{Datelike, Timelike, Weekday};
