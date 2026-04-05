@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
-import { LuBot, LuTerminal, LuPlay, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuChevronDown, LuZap, LuTrendingUp, LuTrendingDown, LuMinus } from 'react-icons/lu';
+import { LuBot, LuTerminal, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuChevronDown, LuZap, LuTrendingUp, LuTrendingDown, LuMinus } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 type AiLog = { timestamp: number; agent: string; status: string; message: string; };
