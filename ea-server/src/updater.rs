@@ -33,24 +33,24 @@ struct Asset {
     browser_download_url: String,
 }
 
-/// Check for new version on GitHub and auto-update if available.
-/// Supports Ubuntu/Linux with systemd restart.
-pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
+/// Check for new version on GitHub. If `do_download` is true, it auto-updates if available.
+pub async fn check_and_update(tx: Option<broadcast::Sender<String>>, do_download: bool) {
     let current_version = env!("CARGO_PKG_VERSION");
     
-    let send_status = |status: &str, msg: &str| {
+    let send_status = |status: &str, msg: &str, latest: &str| {
         if let Some(ref tx) = tx {
             let json = serde_json::json!({
                 "type": "update_status",
                 "status": status,
                 "message": msg,
                 "current_version": current_version,
+                "latest_version": latest,
             });
             let _ = tx.send(json.to_string());
         }
     };
 
-    send_status("checking", &format!("Checking for updates... (Current: v{})", current_version));
+    send_status("checking", &format!("Checking for updates... (Current: v{})", current_version), "");
     info!("🔄 Checking for server updates on GitHub... (Current: v{})", current_version);
 
     let github_token = load_github_token();
@@ -69,13 +69,13 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
             Ok(json) => json,
             Err(e) => {
                 error!("❌ Failed to parse GitHub release JSON: {}", e);
-                send_status("error", "Failed to parse release data.");
+                send_status("error", "Failed to parse release data.", "");
                 return;
             }
         },
         Err(e) => {
             error!("❌ Failed to fetch GitHub release: {}", e);
-            send_status("error", "Failed to fetch release from GitHub.");
+            send_status("error", "Failed to fetch release from GitHub.", "");
             return;
         }
     };
@@ -86,11 +86,17 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
     // Semantic version comparison
     if !is_newer_version(current_version, latest_version) {
         info!("✅ You are running the latest version! No update needed.");
-        send_status("up_to_date", &format!("Running latest version (v{}).", current_version));
+        send_status("up_to_date", &format!("Running latest version (v{}).", current_version), latest_version);
         return;
     }
 
-    send_status("downloading", &format!("New version found! v{} → v{}. Downloading...", current_version, latest_version));
+    if !do_download {
+        info!("🔥 New version found! v{} → v{}. Waiting for manual trigger.", current_version, latest_version);
+        send_status("update_available", &format!("New version available: v{}", latest_version), latest_version);
+        return;
+    }
+
+    send_status("downloading", &format!("New version found! v{} → v{}. Downloading...", current_version, latest_version), latest_version);
     info!("🔥 New version found! v{} → v{}. Downloading...", current_version, latest_version);
 
     // Look for Linux binary (no .exe extension)
@@ -99,7 +105,7 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
         let download_url = &asset.browser_download_url;
         match download_and_install(download_url, client, github_token.as_deref()).await {
             Ok(_) => {
-                send_status("restarting", &format!("Update to v{} successful! Restarting server...", latest_version));
+                send_status("restarting", &format!("Update to v{} successful! Restarting server...", latest_version), latest_version);
                 info!("🚀 Update to v{} successful! Restarting...", latest_version);
                 tokio::time::sleep(tokio::time::Duration::from_secs(2)).await;
                 
@@ -107,13 +113,13 @@ pub async fn check_and_update(tx: Option<broadcast::Sender<String>>) {
             }
             Err(e) => {
                 error!("❌ Update failed: {}", e);
-                send_status("error", &format!("Update failed: {}", e));
+                send_status("error", &format!("Update failed: {}", e), latest_version);
             }
         }
     } else {
         let asset_names: Vec<&str> = release.assets.iter().map(|a| a.name.as_str()).collect();
         error!("❌ 'ea-server' binary not found in release assets. Available: {:?}", asset_names);
-        send_status("error", "Release asset 'ea-server' not found.");
+        send_status("error", "Release asset 'ea-server' not found.", latest_version);
     }
 }
 

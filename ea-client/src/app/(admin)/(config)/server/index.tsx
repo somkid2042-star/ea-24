@@ -54,6 +54,7 @@ const ServerSettings = () => {
   const [config, setConfig] = useState<ServerConfig>({});
   const [inputUrl, setInputUrl] = useState(WS_URL);
   const [serverVersion, setServerVersion] = useState<string>('Unknown');
+  const [latestVersion, setLatestVersion] = useState<string | null>(null);
   const [updateStatus, setUpdateStatus] = useState<string>('');
   const wsRef = useRef<WebSocket | null>(null);
   // Server uptime: base seconds from server + local timestamp when received
@@ -103,6 +104,9 @@ const ServerSettings = () => {
         }
         if (data.type === 'update_status') {
           setUpdateStatus(data.message || data.status);
+          if (data.latest_version) {
+              setLatestVersion(data.latest_version);
+          }
         }
         if (data.type === 'ea_info') {
           setEaConnected(true);
@@ -197,6 +201,13 @@ const ServerSettings = () => {
     if (wsRef.current?.readyState === 1) {
       setUpdateStatus('Checking GitHub...');
       wsRef.current.send(JSON.stringify({ action: 'check_update' }));
+    }
+  };
+
+  const handleDoUpdate = () => {
+    if (wsRef.current?.readyState === 1) {
+      setUpdateStatus('Starting Update...');
+      wsRef.current.send(JSON.stringify({ action: 'do_update' }));
     }
   };
 
@@ -340,23 +351,43 @@ const ServerSettings = () => {
         </div>
 
         {/* Server Version */}
-        <div className="card">
+        <div className={`card ${latestVersion && latestVersion !== serverVersion ? 'border-primary shadow-[0_0_15px_rgba(var(--color-primary),0.15)] ring-1 ring-primary/20' : ''}`}>
           <div className="p-4">
             <div className="mb-2 flex items-center justify-between">
               <div className="flex items-center gap-2">
-                <LuActivity className="size-4 text-primary" />
-                <span className="text-xs font-medium uppercase text-default-500">Server Version</span>
+                <LuActivity className={`size-4 ${latestVersion && latestVersion !== serverVersion ? 'text-primary' : 'text-default-500'}`} />
+                <span className={`text-xs font-medium uppercase ${latestVersion && latestVersion !== serverVersion ? 'text-primary font-bold' : 'text-default-500'}`}>Server Version</span>
               </div>
               <button 
                 onClick={handleCheckUpdate} 
-                disabled={!wsConnected || updateStatus === 'Checking GitHub...'}
+                disabled={!wsConnected || updateStatus === 'Checking GitHub...' || updateStatus === 'Starting Update...'}
                 className="text-[10px] font-medium text-primary hover:underline disabled:opacity-50"
               >
                 Check Update
               </button>
             </div>
-            <p className="text-lg font-bold text-default-900">v{serverVersion}</p>
-            {updateStatus && <p className="mt-1 text-xs text-default-400">{updateStatus}</p>}
+            <div className="flex flex-col gap-2">
+              <div className="flex items-end justify-between">
+                <p className="text-lg font-bold text-default-900">v{serverVersion}</p>
+                {latestVersion && latestVersion !== serverVersion && (
+                  <button
+                    onClick={handleDoUpdate}
+                    disabled={updateStatus === 'Starting Update...'}
+                    className="btn bg-primary text-white hover:bg-primary/90 text-[10px] px-3 py-1 shadow-md shadow-primary/20 disabled:opacity-50"
+                  >
+                    Install v{latestVersion}
+                  </button>
+                )}
+              </div>
+              {updateStatus && (
+                <p className={`text-[10px] font-medium ${
+                  updateStatus.includes('failed') || updateStatus.includes('error') ? 'text-danger' : 
+                  updateStatus.includes('successful') ? 'text-success' : 'text-default-500'
+                }`}>
+                  {updateStatus}
+                </p>
+              )}
+            </div>
           </div>
         </div>
 

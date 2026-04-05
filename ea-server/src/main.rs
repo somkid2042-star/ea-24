@@ -219,13 +219,7 @@ async fn run_server() {
 
     let server_start = std::time::Instant::now();
 
-    // Call updater asynchronously in a background loop every 2 hours
-    tokio::spawn(async {
-        loop {
-            crate::updater::check_and_update(None).await;
-            tokio::time::sleep(tokio::time::Duration::from_secs(7200)).await;
-        }
-    });
+    // Auto-update loop removed: Updater is now triggered manually via Dashboard UI
 
     // Automatically run React development server
     if std::path::Path::new("../ea-client").exists() {
@@ -959,12 +953,25 @@ async fn handle_ws_connection(
                                         info!("🔄 [UI] Manual update check triggered.");
                                         let check_tx = tx.clone();
                                         tokio::spawn(async move {
-                                            crate::updater::check_and_update(Some(check_tx)).await;
+                                            crate::updater::check_and_update(Some(check_tx), false).await;
                                         });
                                         let resp = serde_json::json!({
                                             "type": "update_status",
                                             "status": "checking",
                                             "message": "Checking GitHub for updates..."
+                                        });
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "do_update" => {
+                                        info!("🚀 [UI] Update DO_UPDATE triggered!");
+                                        let do_tx = tx.clone();
+                                        tokio::spawn(async move {
+                                            crate::updater::check_and_update(Some(do_tx), true).await;
+                                        });
+                                        let resp = serde_json::json!({
+                                            "type": "update_status",
+                                            "status": "downloading",
+                                            "message": "Starting download process..."
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
