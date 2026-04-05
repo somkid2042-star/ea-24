@@ -260,10 +260,57 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 }
 
 // ──────────────────────────────────────────────
-//  Agent 1: News Hunter (Tavily + Gemini)
+//  Agent 1: News Hunter (Google News RSS + Tavily fallback)
 // ──────────────────────────────────────────────
 
-async fn search_news(tavily_key: &str, symbol: &str) -> Result<Vec<TavilyResult>, String> {
+async fn search_news_google_rss(symbol: &str) -> Result<Vec<TavilyResult>, String> {
+    let query = match symbol.to_uppercase().as_str() {
+        s if s.contains("XAU") || s.contains("GOLD") => "gold+XAUUSD+price+forecast".to_string(),
+        s if s.contains("EUR") => format!("{}+forex+news", symbol),
+        s if s.contains("GBP") => format!("{}+forex+news", symbol),
+        s if s.contains("JPY") => format!("{}+forex+news", symbol),
+        s if s.contains("BTC") => "Bitcoin+BTC+crypto+price".to_string(),
+        s if s.contains("ETH") => "Ethereum+ETH+crypto+price".to_string(),
+        _ => format!("{}+trading+price+news", symbol),
+    };
+
+    let url = format!("https://news.google.com/rss/search?q={}&hl=en&gl=US&ceid=US:en", query);
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build().map_err(|e| format!("HTTP error: {}", e))?;
+
+    let resp = client.get(&url)
+        .header("User-Agent", "Mozilla/5.0")
+        .send().await
+        .map_err(|e| format!("Google News request failed: {}", e))?;
+
+    let body = resp.text().await.map_err(|e| format!("Read error: {}", e))?;
+
+    // Parse RSS XML — extract <item><title> and <description>
+    let mut results = Vec::new();
+    for item in body.split("<item>").skip(1).take(8) {
+        let title = item.split("<title>").nth(1)
+            .and_then(|s| s.split("</title>").next())
+            .map(|s| s.replace("<![CDATA[", "").replace("]]>", "").trim().to_string());
+        let desc = item.split("<description>").nth(1)
+            .and_then(|s| s.split("</description>").next())
+            .map(|s| s.replace("<![CDATA[", "").replace("]]>", "").trim().to_string());
+        let link = item.split("<link>").nth(1)
+            .and_then(|s| s.split("</link>").next())
+            .map(|s| s.trim().to_string());
+
+        if title.is_some() {
+            results.push(TavilyResult {
+                title,
+                content: desc,
+                url: link,
+            });
+        }
+    }
+    Ok(results)
+}
+
+async fn search_news_tavily(tavily_key: &str, symbol: &str) -> Result<Vec<TavilyResult>, String> {
     if tavily_key.is_empty() {
         return Err("Tavily API Key is empty".to_string());
     }
@@ -316,27 +363,53 @@ pub async fn run_news_hunter(
         "message": format!("กำลังค้นหาข่าว {}...", symbol)
     }).to_string());
 
-    // Step 1: Search news via Tavily
-    let articles = match search_news(tavily_key, symbol).await {
-        Ok(results) => {
-            info!("{} Found {} articles", agent, results.len());
+    // Try Google News RSS first (free, no API key), then Tavily as fallback
+    let articles = match search_news_google_rss(symbol).await {
+        Ok(results) if !results.is_empty() => {
+            info!("{} Found {} articles via Google News", agent, results.len());
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "agent": "news_hunter", "status": "running",
-                "message": format!("พบข่าว {} รายการ — กำลังวิเคราะห์ sentiment...", results.len())
+                "message": format!("พบข่าว {} รายการ (Google News) — กำลังวิเคราะห์ sentiment...", results.len())
             }).to_string());
             results
         }
-        Err(e) => {
-            warn!("{} Search failed: {}", agent, e);
-            let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "agent": "news_hunter", "status": "error",
-                "message": format!("ค้นข่าวไม่สำเร็จ: {}", e)
-            }).to_string());
-            return NewsResult {
-                sentiment: "NEUTRAL".to_string(),
-                summary: format!("ไม่สามารถค้นข่าวได้: {}", e),
-                headlines: vec![], source_count: 0,
-            };
+        _ => {
+            // Fallback to Tavily if available
+            if !tavily_key.is_empty() {
+                match search_news_tavily(tavily_key, symbol).await {
+                    Ok(results) => {
+                        info!("{} Found {} articles via Tavily", agent, results.len());
+                        let _ = log_tx.send(serde_json::json!({
+                            "type": "agent_log", "agent": "news_hunter", "status": "running",
+                            "message": format!("พบข่าว {} รายการ (Tavily) — กำลังวิเคราะห์ sentiment...", results.len())
+                        }).to_string());
+                        results
+                    }
+                    Err(e) => {
+                        warn!("{} All search methods failed: {}", agent, e);
+                        let _ = log_tx.send(serde_json::json!({
+                            "type": "agent_log", "agent": "news_hunter", "status": "error",
+                            "message": format!("ค้นข่าวไม่สำเร็จ: {}", e)
+                        }).to_string());
+                        return NewsResult {
+                            sentiment: "NEUTRAL".to_string(),
+                            summary: format!("ไม่สามารถค้นข่าวได้: {}", e),
+                            headlines: vec![], source_count: 0,
+                        };
+                    }
+                }
+            } else {
+                warn!("{} Google News failed and no Tavily key", agent);
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "agent": "news_hunter", "status": "error",
+                    "message": "ค้นข่าวไม่สำเร็จ — ไม่มี Tavily Key สำรอง"
+                }).to_string());
+                return NewsResult {
+                    sentiment: "NEUTRAL".to_string(),
+                    summary: "ไม่สามารถค้นข่าวได้".to_string(),
+                    headlines: vec![], source_count: 0,
+                };
+            }
         }
     };
 
