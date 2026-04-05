@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuSave, LuExternalLink } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuExternalLink } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -320,6 +320,7 @@ const AiSettings = () => {
               <div className="size-8 rounded-lg bg-blue-500/10 flex items-center justify-center"><LuMail className="size-4 text-blue-500" /></div>
               บันทึกบัญชี Email สำหรับเข้าสู่ระบบ
               <span className="text-xs font-normal text-default-400">({emails.filter(e => e.address.trim() || e.password.trim()).length} บัญชี)</span>
+              {emailSaved && <span className="text-xs font-semibold text-green-500 ml-2 animate-in fade-in">บันทึกสำเร็จ ✅</span>}
             </h5>
             <p className="text-xs text-default-500">
               สมุดจดบันทึก Username และ Password สำหรับล็อกอินผ่านเบราว์เซอร์อย่างรวดเร็ว (ไม่ได้ใช้ส่งการแจ้งเตือน)
@@ -350,6 +351,7 @@ const AiSettings = () => {
                     next[i].address = e.target.value;
                     setEmails(next);
                   }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
                   placeholder="name@gmail.com"
                   className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
                 />
@@ -369,22 +371,32 @@ const AiSettings = () => {
                       next[i].password = e.target.value;
                       setEmails(next);
                     }}
+                    onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
                     placeholder="password1234"
                     className="w-full px-3 py-2 rounded-lg bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
                   />
                 </div>
               </div>
 
-              {emails.length > 1 && (
-                <div className="flex items-end">
+              <div className="flex items-end gap-2">
+                <a
+                  href={`https://accounts.google.com/AccountChooser/signinchooser?Email=${encodeURIComponent(acc.address)}`}
+                  target="_blank"
+                  rel="noopener noreferrer"
+                  className="h-[38px] px-3 rounded-lg bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-medium text-xs flex items-center justify-center shrink-0 transition-colors gap-1.5"
+                  title="ล็อกอินบัญชีนี้ในเบราว์เซอร์"
+                >
+                  <LuExternalLink className="size-3.5" /> Login
+                </a>
+                {emails.length > 1 && (
                   <button
                     onClick={() => setEmails(emails.filter((_, j) => j !== i))}
-                    className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                    className="h-[38px] w-[38px] rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
                   >
                     <LuTrash2 className="size-4" />
                   </button>
-                </div>
-              )}
+                )}
+              </div>
             </div>
           ))}
           <button
@@ -398,27 +410,8 @@ const AiSettings = () => {
           </button>
         </div>
         )}
-
-        <div className="pt-2 flex flex-wrap items-center gap-3">
-          <button
-            onClick={saveEmailConfig}
-            className="px-6 py-2.5 rounded-xl font-bold text-sm text-white shadow-lg bg-blue-600 hover:bg-blue-700 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <LuSave className="size-4" />
-            {emailSaved ? 'บันทึกสำเร็จ ✅' : 'บันทึกข้อมูลบัญชี'}
-          </button>
-          
-          <a
-            href="https://mail.google.com"
-            target="_blank"
-            rel="noopener noreferrer"
-            className="px-6 py-2.5 rounded-xl font-bold text-sm bg-default-100 dark:bg-default-200/10 text-default-700 hover:bg-default-200 active:scale-95 transition-all flex items-center gap-2"
-          >
-            <LuExternalLink className="size-4" />
-            เปิดเบราว์เซอร์เข้าสู่ระบบ
-          </a>
-        </div>
       </div>
+
     </main>
   );
 };
