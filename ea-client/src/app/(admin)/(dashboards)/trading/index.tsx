@@ -28,7 +28,7 @@ const NotificationsPage = lazy(() => import('@/app/(admin)/(config)/notification
 const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-management/index'));
 const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
 const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
-const OpenClawPage = lazy(() => import('@/app/(admin)/(dashboards)/openclaw/index'));
+const DashboardAiPage = lazy(() => import('@/app/(admin)/(dashboards)/dashboard-ai/index'));
 const AiSettingsPage = lazy(() => import('@/app/(admin)/(config)/ai-settings/index'));
 
 /* ── Types ── */
@@ -57,7 +57,7 @@ const tfToSeconds = (tf: string): number => {
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'openclaw' | 'ai';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'notify' | 'risk' | 'journal' | 'multichart' | 'dashboard-ai' | 'ai';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
 /* ── Grouped Navigation ── */
@@ -89,7 +89,7 @@ const NAV_GROUPS: NavGroup[] = [
     label: 'AI & เครื่องมือ',
     items: [
       { key: 'ai', icon: <LuBrain size={18} />, label: '🤖 AI Engine' },
-      { key: 'openclaw', icon: <LuBot size={18} />, label: 'OpenClaw AI' },
+      { key: 'dashboard-ai', icon: <LuBot size={18} />, label: 'Dashboard AI' },
     ],
   },
 ];
@@ -115,7 +115,7 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   risk: RiskManagementPage,
   journal: JournalPage,
   multichart: MultiChartPage,
-  openclaw: OpenClawPage,
+  'dashboard-ai': DashboardAiPage,
   ai: AiSettingsPage,
 };
 

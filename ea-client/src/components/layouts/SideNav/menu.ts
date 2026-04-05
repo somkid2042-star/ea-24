@@ -28,10 +28,10 @@ export const menuItemsData: MenuItemType[] = [
     href: '/',
   },
   {
-    key: 'OpenClaw Monitor',
-    label: 'OpenClaw AI',
+    key: 'Dashboard AI',
+    label: 'Dashboard AI',
     icon: LuBot,
-    href: '/ai/openclaw',
+    href: '/ai/dashboard',
   },
   {
     key: 'Config Server',

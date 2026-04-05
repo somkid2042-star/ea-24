@@ -13,7 +13,7 @@ type AgentStatusMap = {
   orchestrator: AgentStatus;
 };
 
-const OpenClawDashboard = () => {
+const DashboardAi = () => {
   const [logs, setLogs] = useState<AiLog[]>([]);
   const [connected, setConnected] = useState(false);
   const [symbol, setSymbol] = useState("XAUUSD");
@@ -360,7 +360,7 @@ const OpenClawDashboard = () => {
             {logs.map((log, i) => (
               <div key={i} className="flex gap-2 hover:bg-white/[0.02] px-2 py-0.5 rounded">
                 <span className="text-gray-600 shrink-0 select-none">{new Date(log.timestamp).toLocaleTimeString()}</span>
-                <span className={`shrink-0 w-[90px] text-right font-semibold ${
+                <span className={`shrink-0 w-[120px] whitespace-nowrap text-right font-semibold ${
                   log.agent === 'orchestrator' ? 'text-blue-400' :
                   log.agent === 'chart_analyst' ? 'text-purple-400' :
                   log.agent === 'news_hunter' ? 'text-cyan-400' :
@@ -444,4 +444,4 @@ const OpenClawDashboard = () => {
   );
 };
 
-export default OpenClawDashboard;
+export default DashboardAi;
