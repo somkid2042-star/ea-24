@@ -250,25 +250,6 @@ const AiSettings = () => {
                 />
               </div>
 
-              <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0 ml-1" title="Password">
-                <LuKey className="size-4 text-orange-500" />
-              </div>
-              <div className="flex-1 relative">
-                <input
-                  type="text"
-                  value={acc.password}
-                  onChange={(e) => {
-                    resetEmailHideTimer();
-                    const next = [...emails];
-                    next[i].password = e.target.value;
-                    setEmails(next);
-                  }}
-                  onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
-                  placeholder={`Password #${i + 1}`}
-                  className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
-                />
-              </div>
-
               <div className="w-8 h-8 rounded-full bg-violet-500/10 flex items-center justify-center shrink-0 ml-1" title="API Key">
                 <LuKey className="size-4 text-violet-500" />
               </div>
