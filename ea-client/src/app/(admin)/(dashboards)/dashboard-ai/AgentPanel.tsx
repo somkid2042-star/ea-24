@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { LuBot, LuTerminal, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuZap, LuMonitorOff } from 'react-icons/lu';
+import { LuBot, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuZap, LuMonitorOff } from 'react-icons/lu';
 
 export type AiLog = { timestamp: number; agent: string; status: string; message: string; };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
@@ -19,6 +19,8 @@ interface AgentPanelProps {
   logs: AiLog[];
   agentStatus: AgentStatusMap;
   finalResult: any;
+  disabledAgents?: string[];
+  onToggleAgent?: (agentKey: string) => void;
 }
 
 const agentConfig = [
@@ -41,7 +43,7 @@ const parseTfData = (reasoning: string) => {
   ];
 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed, logs, agentStatus, finalResult }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed, logs, agentStatus, finalResult, disabledAgents = [], onToggleAgent }) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -116,71 +118,57 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed,
       </div>
 
       {/* Body Area */}
-      <div className="card-body p-0 grid grid-cols-1 lg:grid-cols-12 relative z-10">
+      <div className="card-body p-0 grid grid-cols-1 lg:grid-cols-12 relative z-10 bg-white dark:bg-[#0A0A0A]">
         
-        {/* Left Column: AI Pipeline Visualizer */}
-        <div className="lg:col-span-4 lg:border-r border-default-200 dark:border-default-300/10 flex flex-col h-[400px] bg-default-50/30 dark:bg-default-50/5 p-4">
-            <h3 className="text-xs font-bold flex items-center gap-2 mb-4 text-default-600 px-2 lg:px-4">
+        {/* Left Column: AI Pipeline Visualizer (Clean Style) */}
+        <div className="lg:col-span-4 flex flex-col bg-default-50/50 dark:bg-[#0A0A0A] p-4 h-full">
+            <h3 className="text-xs font-bold flex items-center gap-2 mb-4 text-default-500 px-2 lg:px-4">
               <LuBrainCircuit className="text-primary size-4" />
               AI PIPELINE
             </h3>
 
-            <div className="overflow-y-auto px-2 lg:px-4 pb-4 custom-scrollbar relative flex-1 space-y-3">
+            <div className="px-2 lg:px-4 pb-4 relative flex-1 space-y-4 h-full">
               {/* Connecting line behind items */}
-              <div className="absolute left-[28px] lg:left-[36px] top-4 bottom-4 w-px bg-default-200 dark:bg-default-300/20 z-0"></div>
+              <div className="absolute left-[28px] lg:left-[36px] top-4 bottom-4 w-px bg-default-200 dark:bg-default-800 z-0"></div>
 
               {agentConfig.map((agent) => {
+                const isDisabled = disabledAgents.includes(agent.key);
                 const status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
-                const latestLog = [...logs].reverse().find(l => l.agent === agent.key)?.message || '';
-                
-                const isActive = status === 'running';
-                const isDone = status === 'done';
-                const isError = status === 'error';
+                const isActive = !isDisabled && status === 'running';
+                const isDone = !isDisabled && status === 'done';
+                const isError = !isDisabled && status === 'error';
 
                 return (
-                  <div key={agent.key} className="relative z-10 flex gap-3 group">
+                  <div 
+                     key={agent.key} 
+                     onClick={() => onToggleAgent && onToggleAgent(agent.key)}
+                     className={`relative z-10 flex gap-4 group items-center cursor-pointer transition-all duration-300 ${!isDisabled ? 'hover:opacity-80' : ''}`}
+                  >
                     {/* Status Node */}
                     <div className="relative flex flex-col items-center">
-                       <div className={`size-10 rounded-xl flex items-center justify-center shadow-sm transition-all duration-300 z-10 ${
-                         isActive ? `bg-primary/10 border border-primary/30 text-primary transform scale-105` : 
-                         isDone ? 'bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-300/10' : 
-                         isError ? 'bg-red-500/10 border border-red-500/30 text-red-500' : 
-                         'bg-default-50 dark:bg-default-50/50 border border-default-200 dark:border-default-300/10 border-dashed text-default-400'
+                       <div className={`size-10 rounded-full flex items-center justify-center shadow-sm transition-all duration-300 z-10 border ${
+                         isDisabled ? 'border-dashed border-default-300 dark:border-white text-default-400 dark:text-white bg-white dark:bg-[#0A0A0A]' :
+                         isActive ? `bg-white dark:bg-black border-primary text-primary transform scale-105 shadow-primary/20` : 
+                         isDone ? 'bg-white dark:bg-black border-emerald-500 text-emerald-500' : 
+                         isError ? 'bg-white dark:bg-black border-red-500/50 text-red-500' : 
+                         'bg-white dark:bg-black border-emerald-500 text-emerald-500' // Default Active (Green)
                        }`}>
-                          {isActive ? <LuLoader className="animate-spin size-5" /> : 
-                           isDone ? <LuCheck className="text-primary size-5 opacity-80" /> :
+                          {isDisabled ? <div className="scale-75">{agent.icon}</div> :
+                           isActive ? <LuLoader className="animate-spin size-5" /> : 
+                           isDone ? <LuCheck className="size-5" /> :
                            isError ? <LuX className="size-5" /> :
                            <div className="scale-75">{agent.icon}</div>}
                        </div>
                     </div>
 
-                    {/* Agent Details Card */}
-                    <div className={`flex-1 rounded-lg p-2.5 border transition-all duration-300 overflow-hidden relative ${
-                      isActive ? 'bg-primary/5 border-primary/20 shadow-sm shadow-primary/5' :
-                      isDone ? 'bg-default-50/50 dark:bg-transparent border-default-200/50 dark:border-default-300/10' :
-                      isError ? 'bg-red-50 dark:bg-red-500/5 border-red-200 dark:border-red-500/20' :
-                      'bg-transparent border-transparent'
-                    }`}>
-                      <div className="relative z-10">
-                         <div className="flex justify-between items-start mb-0.5">
-                           <span className={`font-semibold text-xs ${isActive ? 'text-primary' : isError ? 'text-red-500' : 'text-default-800'}`}>{agent.name}</span>
-                           <span className={`text-[9px] font-bold uppercase px-1.5 py-0.5 rounded ${
-                              isActive ? 'bg-primary/10 text-primary' :
-                              isDone ? 'bg-emerald-500/10 text-emerald-600' :
-                              isError ? 'bg-red-500/10 text-red-600' : 'hidden'
-                           }`}>{status}</span>
-                         </div>
-                         <p className="text-[10px] text-default-500 leading-tight mb-1">{agent.desc}</p>
-                         
-                         {/* Output Snippet */}
-                         {latestLog && (
-                           <div className={`mt-1 text-[9px] font-mono p-1.5 rounded border ${
-                             isActive ? 'bg-default-100 dark:bg-default-50 border-default-200 dark:border-default-300/20 text-primary' : 'bg-default-100/50 dark:bg-default-50/50 border-default-200/50 dark:border-default-300/10 text-default-500'
-                           } whitespace-nowrap overflow-hidden text-ellipsis`}>
-                             <span className="opacity-50 mr-1">&gt;</span>{latestLog}
-                           </div>
-                         )}
-                      </div>
+                    {/* Agent Details */}
+                    <div className="flex-1 overflow-hidden relative">
+                       <div className="flex justify-between items-center mb-0.5">
+                         <span className={`font-bold text-sm ${isDisabled ? 'text-default-500 dark:text-default-500' : isActive ? 'text-primary' : isError ? 'text-red-500' : 'text-default-700'}`}>
+                            {agent.name} {isDisabled && <span className="text-[9px] uppercase ml-2 px-1.5 py-0.5 rounded shadow-sm bg-default-100 dark:bg-white/5 border border-default-200 dark:border-white/10 text-default-500 dark:text-default-500 font-semibold tracking-wider">OFF</span>}
+                         </span>
+                       </div>
+                       <p className={`text-[10px] leading-tight ${isDisabled ? 'text-default-400 dark:text-default-600' : 'text-default-500'}`}>{agent.desc}</p>
                     </div>
                   </div>
                 );
@@ -188,86 +176,88 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed,
             </div>
         </div>
 
-        {/* Right Column: Premium Hacker Console */}
-        <div className="lg:col-span-8 bg-zinc-950 dark:bg-[#070707] flex flex-col h-[400px] relative overflow-hidden">
-          {/* Subtle glow behind console */}
-          <div className="absolute inset-0 bg-primary/5 pointer-events-none"></div>
+        {/* Right Column: Minimalist Reasoning UI */}
+        <div className="lg:col-span-8 p-6 flex flex-col space-y-4 relative z-10 h-full">
+          {logs.length === 0 && (
+              <div className="flex items-center justify-center py-10 h-full text-default-400 flex-col">
+                <LuBot className="size-10 opacity-20 mb-4" />
+                <p className="font-semibold text-sm">System Standing By</p>
+                <p className="text-xs mt-1 max-w-xs text-center opacity-70">Waiting for triggers to begin the AI analytical sequence.</p>
+              </div>
+          )}
 
-          {/* Terminal Header */}
-          <div className="bg-zinc-900/80 border-b border-zinc-800 px-4 py-2 relative z-10 flex items-center justify-between">
-            <div className="flex items-center gap-3">
-              <div className="flex gap-1.5 group">
-                <div className="size-2.5 rounded-full bg-red-500/80 hover:bg-red-400 transition-colors cursor-pointer" />
-                <div className="size-2.5 rounded-full bg-amber-500/80 hover:bg-amber-400 transition-colors cursor-pointer" />
-                <div className="size-2.5 rounded-full bg-emerald-500/80 hover:bg-emerald-400 transition-colors cursor-pointer" />
-              </div>
-              <div className="h-3 w-px bg-zinc-700"></div>
-              <div className="flex items-center gap-1.5">
-                <LuTerminal className="text-zinc-500 size-3" />
-                <span className="font-mono text-[10px] text-zinc-400 font-bold tracking-widest">AGENT_CONSOLE v3.1</span>
-              </div>
-            </div>
-            <span className="flex items-center gap-1.5 text-[9px] font-mono text-zinc-400 bg-zinc-950 px-1.5 py-0.5 rounded border border-zinc-800">
-              <span className={`size-1.5 rounded-full ${agentStatus.orchestrator === 'running' ? 'bg-emerald-500 animate-pulse outline outline-1 outline-emerald-500/50' : 'bg-zinc-600'}`}></span>
-              {agentStatus.orchestrator === 'running' ? 'LIVE SYNC' : 'DISCONNECTED'}
-            </span>
-          </div>
-          
-          <div className="overflow-y-auto px-4 py-3 font-mono text-[10px] leading-relaxed space-y-0.5 custom-scrollbar relative z-10 flex-1">
-            {logs.length === 0 && (
-              <div className="flex items-center justify-center h-full text-zinc-500 text-center flex-col">
-                <div className="size-12 rounded-xl bg-zinc-900 flex items-center justify-center mb-3">
-                  <LuTerminal className="size-5 opacity-30" />
-                </div>
-                <p className="font-bold text-zinc-400">System Standing By</p>
-                <p className="text-zinc-600 mt-1 max-w-xs">Waiting for triggers to begin the AI multi-agent analytical sequence.</p>
-              </div>
-            )}
+          {/* Render Contiguous Groups of Logs */}
+          {(() => {
+            const groups: { id: string; agent: string; logs: AiLog[] }[] = [];
+            let currentGroup: any = null;
+            logs.forEach(log => {
+              if (log.agent === 'system' || !log.agent) {
+                if (currentGroup) groups.push(currentGroup);
+                currentGroup = null;
+                groups.push({ id: Math.random().toString(), agent: 'system', logs: [log] });
+              } else {
+                if (!currentGroup || currentGroup.agent !== log.agent) {
+                  if (currentGroup) groups.push(currentGroup);
+                  currentGroup = { id: Math.random().toString(), agent: log.agent, logs: [log] };
+                } else {
+                  currentGroup.logs.push(log);
+                }
+              }
+            });
+            if (currentGroup) groups.push(currentGroup);
 
-            {logs.map((log, i) => {
-              const isError = log.status === 'error' || log.message.includes('❌');
-              const isSuccess = log.status === 'done' || log.message.includes('✅');
-              const isWarning = log.message.includes('⚠️');
-              
+            return groups.map((group, idx) => {
+              const isLast = idx === groups.length - 1;
+              const isRunning = isLast && agentStatus[group.agent as keyof AgentStatusMap] === 'running';
+
+              if (group.agent === 'system') {
+                return (
+                  <div key={group.id} className="text-sm font-medium text-default-600 px-2 flex items-center gap-2">
+                     <span className="size-1.5 rounded-full bg-default-300"></span>
+                     {group.logs[0].message}
+                  </div>
+                );
+              }
+
+              const agentInfo = agentConfig.find(a => a.key === group.agent) || { name: group.agent?.toUpperCase() || 'AGENT' };
+
               return (
-                <div key={i} className="flex gap-4 hover:bg-zinc-900/50 px-3 py-1 rounded-lg transition-colors group">
-                  <span className="text-zinc-600 shrink-0 select-none font-semibold">
-                    {new Date(log.timestamp).toLocaleTimeString('en-US', { hour12: false, hour: '2-digit', minute: '2-digit', second: '2-digit' })}
-                  </span>
-                  <span className={`shrink-0 w-[120px] whitespace-nowrap text-right font-bold tracking-tight ${
-                    log.agent === 'orchestrator' ? 'text-blue-400' :
-                    log.agent === 'chart_analyst' ? 'text-purple-400' :
-                    log.agent === 'news_hunter' ? 'text-cyan-400' :
-                    log.agent === 'decision_maker' ? 'text-rose-400' :
-                    log.agent === 'risk_manager' ? 'text-emerald-400' :
-                    log.agent === 'calendar' ? 'text-amber-400' : 'text-zinc-400'
-                  }`}>
-                    [{log.agent?.toUpperCase() || 'SYSTEM'}]
-                  </span>
-                  <span className={`flex-1 break-words font-medium ${
-                    isSuccess ? 'text-emerald-400' : 
-                    isError ? 'text-red-400' : 
-                    isWarning ? 'text-amber-300' : 'text-zinc-300'
-                  }`}>
-                    {log.message}
-                  </span>
+                <div key={group.id} className="flex flex-col space-y-2">
+                  <details className="group/accordion" open={isLast}>
+                    <summary className="inline-flex items-center gap-2 px-3 py-1.5 bg-default-100/80 dark:bg-default-50 hover:bg-default-200/80 dark:hover:bg-default-100 rounded-full cursor-pointer transition-colors select-none text-xs font-bold text-default-700 list-none [&::-webkit-details-marker]:hidden">
+                       <span className="group-open/accordion:rotate-90 transition-transform duration-200">
+                         <svg width="12" height="12" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2.5" strokeLinecap="round" strokeLinejoin="round"><path d="m9 18 6-6-6-6"/></svg>
+                       </span>
+                       {isRunning ? (
+                         <span className="flex items-center gap-2">
+                           <LuLoader className="animate-spin text-primary size-3.5" />
+                           Thinking as {agentInfo.name}...
+                         </span>
+                       ) : (
+                         <span className="flex items-center gap-1.5">
+                           Thought process of {agentInfo.name}
+                         </span>
+                       )}
+                    </summary>
+                    <div className="pl-[22px] pt-3 pb-1 border-l-2 border-default-100 dark:border-default-800 ml-[11px] mt-1 space-y-2">
+                       {group.logs.map((log, i) => {
+                          const isError = log.status === 'error' || log.message.includes('❌');
+                          const isSuccess = log.status === 'done' || log.message.includes('✅');
+                          return (
+                            <div key={i} className={`text-[13px] leading-relaxed font-mono ${
+                              isError ? 'text-red-500' : isSuccess ? 'text-emerald-500 dark:text-emerald-400' : 'text-default-600 dark:text-default-400'
+                            }`}>
+                               {log.message}
+                            </div>
+                          );
+                       })}
+                    </div>
+                  </details>
                 </div>
               );
-            })}
-            
-            {agentStatus.orchestrator === 'running' && (
-              <div className="flex gap-4 px-3 py-1">
-                <span className="text-zinc-700 shrink-0 font-medium">... ... ..</span>
-                <span className="shrink-0 w-[120px]"></span>
-                <span className="flex-1 flex gap-2 items-center">
-                   <div className="size-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '0ms' }}></div>
-                   <div className="size-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '150ms' }}></div>
-                   <div className="size-1 bg-white rounded-full animate-bounce" style={{ animationDelay: '300ms' }}></div>
-                </span>
-              </div>
-            )}
-            <div ref={logsEndRef} className="h-4" />
-          </div>
+            });
+          })()}
+          <div ref={logsEndRef} className="h-4" />
         </div>
       </div>
     </div>

@@ -356,6 +356,10 @@ async fn run_server() {
                         };
                         
                         let job_ai_mode = job["ai_mode"].as_str().unwrap_or(&ai_mode).to_string();
+                        let disabled_agents: Vec<String> = job["disabled_agents"]
+                            .as_array()
+                            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
+                            .unwrap_or_default();
                         
                         let result = ai_engine::run_all_agents_multi_tf(
                             &gemini_key, &gemini_model, &tavily_key,
@@ -364,6 +368,7 @@ async fn run_server() {
                             if eq > 0.0 { eq } else { 10000.0 }, 
                             open_pos, 5, 10.0, false, 
                             &job_ai_mode,
+                            &disabled_agents,
                             &tx_ai
                         ).await;
                         
@@ -1614,6 +1619,7 @@ async fn handle_ws_connection(
                                                 &sym, &multi_tf_candles,
                                                 balance, equity, open_pos, max_pos, max_dd, estop,
                                                 &ai_mode,
+                                                &[], // Manual runs don't disable agents by default
                                                 &tx_agents
                                             ).await;
                                             

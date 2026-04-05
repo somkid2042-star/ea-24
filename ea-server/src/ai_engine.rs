@@ -919,6 +919,7 @@ pub async fn run_all_agents_multi_tf(
     open_positions: usize, max_positions: usize,
     max_drawdown_pct: f64, emergency_stop: bool,
     ai_mode: &str,
+    disabled_agents: &[String],
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> MultiAgentResult {
     info!("🤖 [Multi-Agent] Starting Multi-TF analysis for {}...", symbol);
@@ -929,13 +930,36 @@ pub async fn run_all_agents_multi_tf(
     }).to_string());
 
     // Run Agent 1 (News) in parallel with multi-timeframe Chart analysis
-    let news_fut = run_news_hunter(gemini_key, model, tavily_key, symbol, log_tx);
+    let news_fut = async {
+        if disabled_agents.contains(&"news_hunter".to_string()) {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
+                "message": "⏸️ SKIPPED (Disabled by User)"
+            }).to_string());
+            NewsResult { sentiment: "NEUTRAL".to_string(), summary: "SKIPPED".to_string(), headlines: vec![], source_count: 0 }
+        } else {
+            run_news_hunter(gemini_key, model, tavily_key, symbol, log_tx).await
+        }
+    };
 
     // Run Chart Analyst on all timeframes
-    let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "running",
-        "message": "📊 วิเคราะห์หลาย Timeframe พร้อมกัน: M5, M15, H1, H4..."
-    }).to_string());
+    let chart_fut = async {
+        if disabled_agents.contains(&"chart_analyst".to_string()) {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
+                "message": "⏸️ SKIPPED (Disabled by User)"
+            }).to_string());
+            return ChartResult {
+                recommendation: "HOLD".to_string(),
+                confidence: 50.0,
+                reasoning: "SKIPPED".to_string(),
+            };
+        }
+
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "running",
+            "message": "📊 วิเคราะห์หลาย Timeframe พร้อมกัน: M5, M15, H1, H4..."
+        }).to_string());
 
     // Build multi-TF chart summary for AI
     let mut tf_summaries = Vec::new();
@@ -1006,7 +1030,6 @@ TF_H1: [BUY/SELL/HOLD]
 TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
 
     // Run chart analysis via Gemini
-    let chart_fut = async {
         match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600).await {
             Ok(text) => {
                 let mut rec = "HOLD".to_string();
@@ -1064,18 +1087,43 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
     let (news_result, chart_result) = tokio::join!(news_fut, chart_fut);
 
     // Run Calendar + Risk
-    let calendar_result = run_calendar_watcher(symbol, log_tx).await;
-    let risk_result = run_risk_manager(
-        symbol, balance, equity, open_positions, max_positions,
-        max_drawdown_pct, emergency_stop, log_tx,
-    );
+    let calendar_result = if disabled_agents.contains(&"calendar".to_string()) {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": symbol, "agent": "calendar", "status": "done",
+            "message": "⏸️ SKIPPED (Disabled by User)"
+        }).to_string());
+        CalendarResult { high_impact_soon: false, warning: "SKIPPED".to_string(), events: vec![] }
+    } else {
+        run_calendar_watcher(symbol, log_tx).await
+    };
+    
+    let risk_result = if disabled_agents.contains(&"risk_manager".to_string()) {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "done",
+            "message": "⏸️ SKIPPED (Disabled by User)"
+        }).to_string());
+        RiskResult { approved: true, reason: "SKIPPED".to_string(), current_drawdown: 0.0, open_positions: 0, max_positions: 0 }
+    } else {
+        run_risk_manager(
+            symbol, balance, equity, open_positions, max_positions,
+            max_drawdown_pct, emergency_stop, log_tx,
+        )
+    };
 
     // Run Decision Maker
-    let (decision, confidence, reasoning) = run_decision_maker(
-        gemini_key, model, symbol,
-        &news_result, &chart_result, &calendar_result, &risk_result,
-        log_tx,
-    ).await;
+    let (decision, confidence, reasoning) = if disabled_agents.contains(&"decision_maker".to_string()) {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "done",
+            "message": "⏸️ SKIPPED (Disabled by User)"
+        }).to_string());
+        ("HOLD".to_string(), 0.0, "Decision Maker agent disabled by user. Defaulting to HOLD.".to_string())
+    } else {
+        run_decision_maker(
+            gemini_key, model, symbol,
+            &news_result, &chart_result, &calendar_result, &risk_result,
+            log_tx,
+        ).await
+    };
 
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
 

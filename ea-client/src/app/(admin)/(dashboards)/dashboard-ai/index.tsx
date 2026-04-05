@@ -4,7 +4,7 @@ import { getWsUrl } from '@/utils/config';
 import { AgentPanel } from './AgentPanel';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
 
-type AutoPilotJob = { symbol: string; interval: number; auto_trade: boolean; lot_size: number; ai_mode?: string; };
+type AutoPilotJob = { symbol: string; interval: number; auto_trade: boolean; lot_size: number; ai_mode?: string; disabled_agents?: string[]; };
 
 const CustomSelect = ({ value, options, onChange, icon, minWidth = '120px', className, containerClassName }: { value: string | number, options: {label: string, value: string | number}[], onChange: (val: any) => void, icon?: React.ReactNode, minWidth?: string, className?: string, containerClassName?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -188,7 +188,20 @@ const DashboardAi = () => {
      updateConfig('ai_autopilot_jobs', JSON.stringify(newJobs));
   };
 
-
+  const handleToggleAgent = (jobIndex: number, agentKey: string) => {
+    const newJobs = [...autoPilotJobs];
+    const job = { ...newJobs[jobIndex] };
+    const disabled = job.disabled_agents || [];
+    
+    if (disabled.includes(agentKey)) {
+      job.disabled_agents = disabled.filter(a => a !== agentKey);
+    } else {
+      job.disabled_agents = [...disabled, agentKey];
+    }
+    
+    newJobs[jobIndex] = job;
+    saveJobsToDb(newJobs);
+  };
 
   const acceptProposal = () => {
     if (!wsRef.current || wsRef.current.readyState !== WebSocket.OPEN || !tradeProposal) return;
@@ -365,6 +378,8 @@ const DashboardAi = () => {
               risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle',
             }}
             finalResult={finalResultBySymbol[job.symbol]}
+            disabledAgents={job.disabled_agents || []}
+            onToggleAgent={(agentKey) => handleToggleAgent(idx, agentKey)}
          />
       ))}
 
