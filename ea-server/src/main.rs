@@ -312,13 +312,11 @@ async fn run_server() {
                     let auto_trade = job["auto_trade"].as_bool().unwrap_or(false);
                     let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
 
-                    let last = *last_runs.entry(sym.clone()).or_insert_with(|| {
-                        std::time::Instant::now()
-                            .checked_sub(std::time::Duration::from_secs(interval_min * 60))
-                            .unwrap_or_else(std::time::Instant::now)
-                    });
+                    let should_run = last_runs.get(&sym)
+                        .map(|last| last.elapsed().as_secs() >= interval_min * 60)
+                        .unwrap_or(true); // First run is always true!
 
-                    if last.elapsed().as_secs() >= interval_min * 60 {
+                    if should_run {
                         last_runs.insert(sym.clone(), std::time::Instant::now());
 
                         let latest_tick = db_ai.get_latest_tick_timestamp(&sym).await;
