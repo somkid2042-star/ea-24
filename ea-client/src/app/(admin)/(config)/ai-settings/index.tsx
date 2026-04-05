@@ -270,8 +270,13 @@ const AiSettings = () => {
                 </button>
                 {emails.length > 1 && (
                   <button
-                    onClick={() => setEmails(emails.filter((_, j) => j !== i))}
+                    onClick={() => {
+                      if (window.confirm('ยืนยัน: คุณต้องการลบบัญชีนี้ออกจากระบบใช่หรือไม่?')) {
+                        setEmails(emails.filter((_, j) => j !== i));
+                      }
+                    }}
                     className="h-10 w-10 rounded-xl bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                    title="ลบบัญชีนี้"
                   >
                     <LuTrash2 className="size-4" />
                   </button>
