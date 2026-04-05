@@ -4,7 +4,7 @@ import { createChart, ColorType, CandlestickSeries, createSeriesMarkers } from '
 import type { IChartApi, ISeriesApi } from 'lightweight-charts';
 import {
   LuServer, LuShieldCheck,
-  LuWorkflow, LuBriefcase, LuHistory,
+  LuWorkflow, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
   LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuKey,

@@ -370,9 +370,10 @@ const TradeSetup = () => {
               <button onClick={saveSetup} disabled={!wsConnected || !f.symbol} className="text-white border-0 btn text-nowrap bg-primary disabled:opacity-50">
                 <LuSave className="size-4 me-1" />
                 {editId ? 'Update Setup' : 'Save to Server'}
+              </button>
             </div>
           </div>
-        </div>
+          </div>
         </div>
       )}
 
