@@ -70,6 +70,7 @@ const DashboardAi = () => {
   // Auto-Pilot States
   const [autoAnalyze, setAutoAnalyze] = useState(false);
   const [autoPilotJobs, setAutoPilotJobs] = useState<AutoPilotJob[]>([]);
+  const [closedMap, setClosedMap] = useState<Record<string, boolean>>({});
   
   const wsRef = useRef<WebSocket | null>(null);
 
@@ -79,6 +80,9 @@ const DashboardAi = () => {
     wsRef.current = ws;
 
     ws.onopen = () => {
+      ws.send(JSON.stringify({ action: 'get_server_config' }));
+      ws.send(JSON.stringify({ action: 'get_tracked_symbols' }));
+    };
     ws.onclose = () => {};
 
     ws.onmessage = (evt) => {
@@ -103,9 +107,15 @@ const DashboardAi = () => {
 
         if (data.type === 'tracked_symbols') {
           setTrackedSymbols(data.symbols || []);
+          if (data.closed_map) setClosedMap(data.closed_map);
           if (data.symbols?.length > 0 && !data.symbols.includes(globalSymbol)) {
             setGlobalSymbol(data.symbols[0]);
           }
+        }
+
+        if (data.type === 'market_closed') {
+          const sym = data.symbol || globalSymbol;
+          setClosedMap(prev => ({ ...prev, [sym]: true }));
         }
 
         if (data.type === 'agent_log') {
@@ -194,7 +204,9 @@ const DashboardAi = () => {
   const rejectProposal = () => setTradeProposal(null);
 
   // Symbol options for our CustomSelect
-  const trackedSymbolOptions = trackedSymbols.map(s => ({ label: s, value: s }));
+  const trackedSymbolOptions = trackedSymbols
+    .filter(s => !closedMap[s])
+    .map(s => ({ label: s, value: s }));
   
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
@@ -356,6 +368,7 @@ const DashboardAi = () => {
             key={`job-${idx}-${job.symbol}`}
             title={`Auto-Pilot Job: ${job.symbol}`}
             symbol={job.symbol}
+            isClosed={closedMap[job.symbol] || false}
             logs={logsBySymbol[job.symbol] || []}
             agentStatus={agentStatusBySymbol[job.symbol] || {
               news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',

@@ -320,6 +320,20 @@ async fn run_server() {
 
                     if last.elapsed().as_secs() >= interval_min * 60 {
                         last_runs.insert(sym.clone(), std::time::Instant::now());
+
+                        let latest_tick = db_ai.get_latest_tick_timestamp(&sym).await;
+                        let now_ts = chrono::Utc::now().timestamp();
+                        // 300 seconds (5 minutes) without ticks = Market Closed
+                        if now_ts - latest_tick > 300 && latest_tick > 0 {
+                            info!("🤖 [Auto-Pilot] Skipping {} because market is closed (last tick {}s ago)", sym, now_ts - latest_tick);
+                            let closed_msg = serde_json::json!({
+                                "type": "market_closed",
+                                "symbol": sym,
+                                "message": "ตลาดปิดหยุดการคำนวณจาก AI"
+                            }).to_string();
+                            let _ = tx_ai.send(closed_msg);
+                            continue;
+                        }
                         
                         info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
                         
@@ -1617,9 +1631,16 @@ async fn handle_ws_connection(
                                     }
                                     "get_tracked_symbols" => {
                                         let symbols = db.get_tracked_symbols().await;
+                                        let mut closed_map = serde_json::Map::new();
+                                        let now_ts = chrono::Utc::now().timestamp();
+                                        for sym in &symbols {
+                                            let lt = db.get_latest_tick_timestamp(sym).await;
+                                            closed_map.insert(sym.clone(), serde_json::Value::Bool(now_ts - lt > 300 && lt > 0));
+                                        }
                                         let resp = serde_json::json!({
                                             "type": "tracked_symbols",
-                                            "symbols": symbols
+                                            "symbols": symbols,
+                                            "closed_map": closed_map
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }

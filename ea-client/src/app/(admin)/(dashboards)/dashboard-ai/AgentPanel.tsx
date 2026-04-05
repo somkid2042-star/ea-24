@@ -1,5 +1,5 @@
 import React, { useRef, useEffect } from 'react';
-import { LuBot, LuTerminal, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuZap } from 'react-icons/lu';
+import { LuBot, LuTerminal, LuCheck, LuX, LuLoader, LuShield, LuCalendar, LuGlobe, LuActivity, LuBrainCircuit, LuZap, LuMonitorOff } from 'react-icons/lu';
 
 export type AiLog = { timestamp: number; agent: string; status: string; message: string; };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
@@ -15,6 +15,7 @@ export type AgentStatusMap = {
 interface AgentPanelProps {
   title: string;
   symbol: string;
+  isClosed?: boolean;
   logs: AiLog[];
   agentStatus: AgentStatusMap;
   finalResult: any;
@@ -40,7 +41,7 @@ const parseTfData = (reasoning: string) => {
   ];
 };
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, logs, agentStatus, finalResult }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, isClosed, logs, agentStatus, finalResult }) => {
   const logsEndRef = useRef<HTMLDivElement>(null);
   
   useEffect(() => {
@@ -48,7 +49,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ title, symbol, logs, age
   }, [logs]);
 
   return (
-    <div className="flex flex-col gap-6 mt-8 relative">
+    <div className="flex flex-col gap-6 mt-8 relative rounded-2xl overflow-hidden">
+      {isClosed && (
+        <div className="absolute inset-0 z-50 bg-black/60 backdrop-blur-[2px] flex items-center justify-center p-6 text-center rounded-2xl">
+           <div className="bg-[#090C15] border border-red-500/30 p-6 rounded-2xl shadow-[0_0_40px_rgba(239,68,68,0.2)] max-w-sm w-full relative overflow-hidden group">
+               <div className="absolute inset-0 bg-gradient-to-br from-red-500/10 flex-transparent opacity-0 group-hover:opacity-100 transition-opacity"></div>
+               <LuMonitorOff className="size-10 text-red-500 mx-auto mb-4 drop-shadow-[0_0_10px_rgba(239,68,68,0.5)]" />
+               <h3 className="text-xl font-black text-white tracking-tight mb-2 uppercase">Market Closed</h3>
+               <p className="text-red-400 text-sm font-bold opacity-90">ตลาดปิดหยุดการคำนวณจาก AI</p>
+           </div>
+        </div>
+      )}
       {/* Decorative Blur */}
       <div className="absolute -top-10 -left-10 w-40 h-40 bg-primary/10 rounded-full blur-3xl pointer-events-none"></div>
 
