@@ -502,17 +502,18 @@ pub async fn run_chart_analyst(
         "message": format!("กำลังวิเคราะห์กราฟ {} {} ({} candles)...", symbol, timeframe, candles.len())
     }).to_string());
 
-    if candles.len() < 20 {
+    if candles.is_empty() {
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "agent": "chart_analyst", "status": "error",
-            "message": format!("ข้อมูลไม่เพียงพอ ({}/20 candles)", candles.len())
+            "message": "ไม่มีข้อมูล candle — รอ MT5 เชื่อมต่อ"
         }).to_string());
         return ChartResult {
-            recommendation: "HOLD".to_string(), confidence: 30.0,
-            reasoning: "ข้อมูล candle ไม่เพียงพอสำหรับการวิเคราะห์".to_string(),
+            recommendation: "HOLD".to_string(), confidence: 20.0,
+            reasoning: "ไม่มีข้อมูล candle ในระบบ — รอ MT5 เชื่อมต่อ".to_string(),
         };
     }
 
+    let limited_data = candles.len() < 10;
     let recent = &candles[candles.len().saturating_sub(20)..];
     let candle_str: String = recent.iter().map(|c| {
         format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
@@ -525,13 +526,17 @@ pub async fn run_chart_analyst(
         if e > s * 1.001 { "UPTREND" } else if e < s * 0.999 { "DOWNTREND" } else { "SIDEWAYS" }
     } else { "UNKNOWN" };
 
+    let data_note = if limited_data {
+        format!("\n\nNote: Limited data ({} candles only). Adjust confidence accordingly and be conservative.", candles.len())
+    } else { String::new() };
+
     let prompt = format!(
 r#"You are a professional technical analyst. Analyze the chart data below.
 
 Symbol: {symbol} | Timeframe: {timeframe} | Price: {price:.5} | Trend: {trend}
 
 OHLC ({} candles):
-{candle_str}
+{candle_str}{data_note}
 
 Analyze price action, candlestick patterns, support/resistance levels then respond:
 RECOMMENDATION: [BUY/SELL/HOLD]
