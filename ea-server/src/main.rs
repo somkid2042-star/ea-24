@@ -1528,12 +1528,22 @@ async fn handle_ws_connection(
                                     }
                                     "run_agents" => {
                                         let sym = client_msg.symbol.unwrap_or_else(|| "XAUUSD".to_string());
-                                        let balance = client_msg.balance.unwrap_or(10000.0);
-                                        let equity = client_msg.equity.unwrap_or(10000.0);
-                                        let open_pos = client_msg.open_positions.unwrap_or(0);
-                                        let max_pos = client_msg.max_positions.unwrap_or(5);
-                                        let max_dd = client_msg.max_drawdown_pct.unwrap_or(10.0);
-                                        let estop = client_msg.emergency_stop.unwrap_or(false);
+                                        
+                                        let (state_bal, state_eq, state_open_pos) = {
+                                            let st = ea_state.read().await;
+                                            (st.balance, st.equity, st.open_positions)
+                                        };
+                                        
+                                        let balance = client_msg.balance.unwrap_or_else(|| if state_bal > 0.0 { state_bal } else { 10000.0 });
+                                        let equity = client_msg.equity.unwrap_or_else(|| if state_eq > 0.0 { state_eq } else { 10000.0 });
+                                        let open_pos = client_msg.open_positions.unwrap_or(state_open_pos);
+                                        let db_max_pos = db.get_config("max_positions").await.unwrap_or_else(|| "5".to_string()).parse::<usize>().unwrap_or(5);
+                                        let db_max_dd = db.get_config("max_drawdown_pct").await.unwrap_or_else(|| "10.0".to_string()).parse::<f64>().unwrap_or(10.0);
+                                        let db_estop = db.get_config("emergency_stop").await.unwrap_or_else(|| "false".to_string()) == "true";
+
+                                        let max_pos = client_msg.max_positions.unwrap_or(db_max_pos);
+                                        let max_dd = client_msg.max_drawdown_pct.unwrap_or(db_max_dd);
+                                        let estop = client_msg.emergency_stop.unwrap_or(db_estop);
                                         
                                         info!("🤖 [UI] Run Multi-Agents (Multi-TF) requested for {}", sym);
                                         
