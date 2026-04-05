@@ -330,7 +330,7 @@ async fn run_server() {
                                 "message": "ตลาดปิดหยุดการคำนวณจาก AI"
                             }).to_string();
                             let _ = tx_ai.send(closed_msg);
-                            continue;
+                            // continue; // Temporarily removed for weekend testing!
                         }
                         
                         info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
