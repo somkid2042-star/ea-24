@@ -189,8 +189,8 @@ const AiSettings = () => {
                       if (key.trim().length > 10) validateKey(i, key.trim());
                     }}
                     placeholder={`API Key #${i + 1}`}
-                    className={`w-full px-4 py-2.5 rounded-xl bg-background border focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono text-sm ${
-                      keyStatus[i]?.valid === true ? 'border-green-500/50' : keyStatus[i]?.valid === false ? 'border-red-500/50' : 'border-default-200'
+                    className={`w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono text-sm ${
+                      keyStatus[i]?.valid === true ? 'border-green-500/50' : keyStatus[i]?.valid === false ? 'border-red-500/50' : 'border-default-200 dark:border-default-300/10'
                     }`}
                   />
                 </div>

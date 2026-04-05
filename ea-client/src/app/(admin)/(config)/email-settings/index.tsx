@@ -71,7 +71,7 @@ const EmailSettings = () => {
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               placeholder="example@gmail.com"
-              className="w-full px-4 py-2.5 rounded-xl bg-background border border-default-200 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
+              className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-blue-500/50 transition-all font-medium"
             />
           </div>
 
@@ -86,7 +86,7 @@ const EmailSettings = () => {
                 value={appPassword}
                 onChange={(e) => setAppPassword(e.target.value)}
                 placeholder="xxxx xxxx xxxx xxxx"
-                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-background border border-default-200 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+                className="w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
               />
               <button 
                 type="button"
