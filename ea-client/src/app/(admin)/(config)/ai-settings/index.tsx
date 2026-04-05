@@ -379,7 +379,7 @@ const AiSettings = () => {
 
               <div className="flex items-center gap-2 ml-1">
                 <button
-                  onClick={() => tauriOpen(`https://accounts.google.com/v3/signin/identifier?authuser=0&continue=https%3A%2F%2Fmyaccount.google.com%2F%3Futm_source%3Dsign_in_no_continue%26pli%3D1&ec=GAlAwAE&flowEntry=AddSession&flowName=GlifWebSignIn&hl=th&service=accountsettings&login_hint=${encodeURIComponent(acc.address)}`)}
+                  onClick={() => tauriOpen(`https://accounts.google.com/v3/signin/identifier?authuser=0&continue=https%3A%2F%2Fmyaccount.google.com%2F%3Futm_source%3Dsign_in_no_continue%26pli%3D1&ec=GAlAwAE&flowEntry=AddSession&flowName=GlifWebSignIn&hl=th&service=accountsettings&Email=${encodeURIComponent(acc.address)}`)}
                   className="h-10 px-4 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0 transition-colors gap-2"
                   title="ล็อกอินบัญชีนี้ในเบราว์เซอร์"
                 >
