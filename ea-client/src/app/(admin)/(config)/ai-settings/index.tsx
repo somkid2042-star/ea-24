@@ -1,5 +1,5 @@
 import { useState, useEffect, useRef, useCallback } from 'react';
-import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuBot, LuShield, LuEye, LuEyeOff, LuPlus, LuTrash2 } from 'react-icons/lu';
+import { LuBrain, LuSend, LuSave, LuCheck, LuX, LuSparkles, LuKey, LuZap, LuMessageCircle, LuChevronDown, LuChevronUp, LuBot, LuShield, LuEye, LuEyeOff, LuPlus, LuTrash2, LuLoader } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -31,6 +31,8 @@ const AiSettings = () => {
   const [wsConnected, setWsConnected] = useState(false);
   const [apiKeys, setApiKeys] = useState<string[]>(['']);
   const [keyVisible, setKeyVisible] = useState<boolean[]>([false]);
+  const [showKeysSection, setShowKeysSection] = useState(true);
+  const [keyStatus, setKeyStatus] = useState<Record<number, { valid: boolean; name: string; checking: boolean }>>({});
   const [selectedModel, setSelectedModel] = useState('');
   const [aiEnabled, setAiEnabled] = useState(false);
   const [models, setModels] = useState<AiModel[]>([]);
@@ -57,6 +59,27 @@ const AiSettings = () => {
 
   const wsRef = useRef<WebSocket | null>(null);
   const chatEndRef = useRef<HTMLDivElement>(null);
+
+  // Validate API key by calling Google's API
+  const validateKey = async (index: number, key: string) => {
+    setKeyStatus(prev => ({ ...prev, [index]: { valid: false, name: '', checking: true } }));
+    try {
+      const res = await fetch(`https://generativelanguage.googleapis.com/v1beta/models?key=${key}`);
+      if (res.ok) {
+        // Key is valid - extract project info from key format
+        const data = await res.json();
+        const modelCount = data.models?.length || 0;
+        const keyPreview = `${key.slice(0, 8)}...${key.slice(-4)}`;
+        setKeyStatus(prev => ({ ...prev, [index]: { valid: true, name: `ใช้งานได้ (${modelCount} โมเดล) • ${keyPreview}`, checking: false } }));
+      } else {
+        const err = await res.json().catch(() => null);
+        const msg = err?.error?.message || `HTTP ${res.status}`;
+        setKeyStatus(prev => ({ ...prev, [index]: { valid: false, name: msg, checking: false } }));
+      }
+    } catch (e) {
+      setKeyStatus(prev => ({ ...prev, [index]: { valid: false, name: `เชื่อมต่อไม่ได้: ${e}`, checking: false } }));
+    }
+  };
 
   const connectWs = useCallback(() => {
     const ws = new WebSocket(WS_URL);
@@ -186,56 +209,91 @@ const AiSettings = () => {
 
       {/* API Key Setup */}
       <div className="card !p-6 space-y-4">
-        <div>
-          <h5 className="text-sm font-semibold text-default-900 mb-2 flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-violet-500/10 flex items-center justify-center"><LuKey className="size-4 text-violet-500" /></div>
-            Google AI Studio API Key
-          </h5>
-          <p className="text-xs text-default-500 mb-2">
-            ไปที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-violet-500 underline">aistudio.google.com/apikey</a> 
-            {' '}เพื่อสร้าง API Key ฟรี (ไม่ต้องใช้บัตรเครดิต)
-          </p>
+        <div className="flex items-center justify-between">
+          <div>
+            <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-violet-500/10 flex items-center justify-center"><LuKey className="size-4 text-violet-500" /></div>
+              Google AI Studio API Key
+              <span className="text-xs font-normal text-default-400">({apiKeys.filter(k => k.trim()).length} คีย์)</span>
+            </h5>
+            <p className="text-xs text-default-500">
+              ไปที่ <a href="https://aistudio.google.com/apikey" target="_blank" rel="noreferrer" className="text-violet-500 underline">aistudio.google.com/apikey</a> 
+              {' '}เพื่อสร้าง API Key ฟรี
+            </p>
+          </div>
+          <button
+            onClick={() => setShowKeysSection(!showKeysSection)}
+            className="flex items-center gap-1.5 text-xs font-medium text-violet-500 hover:text-violet-600 px-3 py-1.5 rounded-lg hover:bg-violet-500/10 transition-colors"
+          >
+            {showKeysSection ? <><LuChevronUp className="size-4" /> ซ่อน</> : <><LuChevronDown className="size-4" /> แสดง</>}
+          </button>
         </div>
 
-        <div className="space-y-2">
+        {showKeysSection && (
+        <div className="space-y-2 animate-in fade-in slide-in-from-top-2">
           {apiKeys.map((key, i) => (
-            <div key={i} className="flex gap-2 items-center">
-              <span className="text-xs text-default-400 w-5 text-center shrink-0">#{i + 1}</span>
-              <div className="relative flex-1">
-                <input
-                  type={keyVisible[i] ? 'text' : 'password'}
-                  value={key}
-                  onChange={(e) => {
-                    const next = [...apiKeys];
-                    next[i] = e.target.value;
-                    setApiKeys(next);
-                  }}
-                  placeholder={`API Key #${i + 1}`}
-                  className="w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border border-default-200 dark:border-default-300/10 focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono"
-                />
-                <button
-                  onClick={() => {
-                    const next = [...keyVisible];
-                    next[i] = !next[i];
-                    setKeyVisible(next);
-                  }}
-                  className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-600"
-                  title={keyVisible[i] ? 'ซ่อน' : 'แสดง'}
-                >
-                  {keyVisible[i] ? <LuEyeOff className="size-4" /> : <LuEye className="size-4" />}
-                </button>
+            <div key={i} className="space-y-1">
+              <div className="flex gap-2 items-center">
+                <span className="text-xs text-default-400 w-5 text-center shrink-0">#{i + 1}</span>
+                <div className="relative flex-1">
+                  <input
+                    type={keyVisible[i] ? 'text' : 'password'}
+                    value={key}
+                    onChange={(e) => {
+                      const next = [...apiKeys];
+                      next[i] = e.target.value;
+                      setApiKeys(next);
+                      // Clear status when key changes
+                      setKeyStatus(prev => { const n = {...prev}; delete n[i]; return n; });
+                    }}
+                    onBlur={() => {
+                      // Auto-validate when user leaves the field
+                      if (key.trim().length > 10) validateKey(i, key.trim());
+                    }}
+                    placeholder={`API Key #${i + 1}`}
+                    className={`w-full px-4 py-2.5 pr-10 rounded-xl bg-default-100 dark:bg-default-200/10 text-sm text-default-900 border focus:outline-none focus:ring-2 focus:ring-violet-500/30 font-mono ${
+                      keyStatus[i]?.valid === true ? 'border-green-500/50' : keyStatus[i]?.valid === false ? 'border-red-500/50' : 'border-default-200 dark:border-default-300/10'
+                    }`}
+                  />
+                  <button
+                    onClick={() => {
+                      const next = [...keyVisible];
+                      next[i] = !next[i];
+                      setKeyVisible(next);
+                    }}
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-default-400 hover:text-default-600"
+                    title={keyVisible[i] ? 'ซ่อน' : 'แสดง'}
+                  >
+                    {keyVisible[i] ? <LuEyeOff className="size-4" /> : <LuEye className="size-4" />}
+                  </button>
+                </div>
+                {apiKeys.length > 1 && (
+                  <button
+                    onClick={() => {
+                      setApiKeys(apiKeys.filter((_, j) => j !== i));
+                      setKeyVisible(keyVisible.filter((_, j) => j !== i));
+                      setKeyStatus(prev => { const n = {...prev}; delete n[i]; return n; });
+                    }}
+                    className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
+                    title="ลบคีย์นี้"
+                  >
+                    <LuTrash2 className="size-4" />
+                  </button>
+                )}
               </div>
-              {apiKeys.length > 1 && (
-                <button
-                  onClick={() => {
-                    setApiKeys(apiKeys.filter((_, j) => j !== i));
-                    setKeyVisible(keyVisible.filter((_, j) => j !== i));
-                  }}
-                  className="size-9 rounded-lg bg-red-500/10 hover:bg-red-500/20 text-red-500 flex items-center justify-center shrink-0 transition-colors"
-                  title="ลบคีย์นี้"
-                >
-                  <LuTrash2 className="size-4" />
-                </button>
+              {/* Key status badge */}
+              {keyStatus[i] && (
+                <div className={`ml-7 flex items-center gap-1.5 text-xs ${
+                  keyStatus[i].checking ? 'text-default-400' : keyStatus[i].valid ? 'text-green-500' : 'text-red-500'
+                }`}>
+                  {keyStatus[i].checking ? (
+                    <><LuLoader className="size-3 animate-spin" /> กำลังตรวจสอบ...</>
+                  ) : keyStatus[i].valid ? (
+                    <><LuCheck className="size-3" /> ✅ {keyStatus[i].name}</>
+                  ) : (
+                    <><LuX className="size-3" /> ❌ {keyStatus[i].name}</>
+                  )}
+                </div>
               )}
             </div>
           ))}
@@ -249,6 +307,7 @@ const AiSettings = () => {
             <LuPlus className="size-3.5" /> เพิ่ม API Key
           </button>
         </div>
+        )}
 
         {/* Model Selection */}
         <div className="flex gap-2 items-center">
