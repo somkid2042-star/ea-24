@@ -24,6 +24,7 @@
     "@tailwindcss/typography": "^0.5.16",
     "@tailwindcss/vite": "^4.1.13",
     "@tauri-apps/api": "^2.10.1",
+    "@tauri-apps/plugin-shell": "^2.3.5",
     "flatpickr": "^4.6.13",
     "fullcalendar": "^6.1.19",
     "lightweight-charts": "^5.1.0",

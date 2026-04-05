@@ -1,5 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuExternalLink } from 'react-icons/lu';
+import { open as tauriOpen } from '@tauri-apps/plugin-shell';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
@@ -378,7 +379,7 @@ const AiSettings = () => {
 
               <div className="flex items-center gap-2 ml-1">
                 <button
-                  onClick={() => window.open(`https://accounts.google.com/AccountChooser/signinchooser?Email=${encodeURIComponent(acc.address)}`, '_blank')}
+                  onClick={() => tauriOpen(`https://accounts.google.com/AccountChooser/signinchooser?Email=${encodeURIComponent(acc.address)}`)}
                   className="h-10 px-4 rounded-xl bg-blue-500/10 hover:bg-blue-500/20 text-blue-600 font-bold text-xs flex items-center justify-center shrink-0 transition-colors gap-2"
                   title="ล็อกอินบัญชีนี้ในเบราว์เซอร์"
                 >
