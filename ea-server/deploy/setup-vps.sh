@@ -19,7 +19,7 @@ mkdir -p ${INSTALL_DIR}
 
 # ── Step 2: Download latest ea-server binary from GitHub Releases ──
 echo "📥 Downloading latest ea-server binary..."
-LATEST_TAG=$(curl -sI "https://github.com/${REPO}/releases/latest" | grep -i "location:" | awk -F '/' '{print $NF}' | tr -d '\r')
+LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/tags" | grep '"name": "v' | head -n 1 | cut -d '"' -f 4)
 if [ -z "$LATEST_TAG" ]; then
     echo "❌ Could not determine latest tag. GitHub might be blocking the request."
     echo "   Try: https://github.com/${REPO}/releases/latest"
