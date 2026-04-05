@@ -221,141 +221,131 @@ const DashboardAi = () => {
       </div>
 
       {/* Auto-Pilot Task Configuration Box */}
-      <div className="bg-background dark:bg-white/[0.02] border border-primary/20 dark:border-primary/10 rounded-2xl p-6 shadow-xl shadow-primary/5 relative overflow-hidden backdrop-blur-xl">
-         {/* Decorative Background Element */}
-         <div className="absolute top-0 right-0 w-64 h-64 bg-primary/10 blur-[80px] rounded-full transform translate-x-1/2 -translate-y-1/2 pointer-events-none"></div>
-
-         <div className="flex flex-col md:flex-row items-start md:items-center justify-between mb-6 border-b border-primary/10 pb-5 relative z-10">
-            <div className="flex items-center gap-4">
-              <div className="size-12 rounded-2xl bg-gradient-to-br from-primary to-indigo-600 flex items-center justify-center shadow-lg shadow-primary/20">
-                <LuBot className="size-6 text-white" />
-              </div>
-              <div>
-                <h3 className="font-black text-default-900 text-xl tracking-tight">Auto-Pilot Background Tasks</h3>
-                <p className="text-xs font-semibold text-default-500 mt-1">คิวการทำงานของ AI แยกรันแต่ละคู่เงินแบบอิสระ ไม่ดึงโควต้าตีกัน</p>
-              </div>
-            </div>
-            
-            <div className="flex items-center gap-3 bg-white dark:bg-[#090C15] border border-default-200 dark:border-white/10 px-5 py-2.5 rounded-2xl shadow-sm mt-4 md:mt-0">
-               <span className="text-sm font-black tracking-tight text-default-700">Master Switch: <span className={autoAnalyze ? 'text-primary' : 'text-default-400'}>{autoAnalyze ? 'ON' : 'OFF'}</span></span>
+      <div className="card">
+         <div className="card-header">
+            <h4 className="card-title flex items-center gap-2">
+               <LuBot className="size-5 text-primary" />
+               Auto-Pilot Background Tasks
+            </h4>
+            <div className="flex items-center gap-3">
+               <span className="text-sm font-semibold text-default-700">Master Switch: </span>
                <button
                  onClick={() => {
                    const next = !autoAnalyze;
                    setAutoAnalyze(next);
                    updateConfig('ai_auto_analyze', next.toString());
                  }}
-                 className={`relative inline-flex h-7 w-12 items-center rounded-full transition-all duration-300 shadow-inner ${autoAnalyze ? 'bg-primary' : 'bg-default-300 dark:bg-slate-700'}`}
+                 className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${autoAnalyze ? 'bg-primary' : 'bg-default-300 dark:bg-default-700'}`}
                >
-                 <span className={`inline-block size-5 transform rounded-full bg-white shadow-md transition-transform duration-300 ${autoAnalyze ? 'translate-x-6' : 'translate-x-1'}`} />
+                 <span className={`inline-block size-4 transform rounded-full bg-white transition-transform ${autoAnalyze ? 'translate-x-5' : 'translate-x-1'}`} />
                </button>
-             </div>
+            </div>
          </div>
          
-         {/* Config List */}
-         <div className="space-y-4 relative z-10">
-            {autoPilotJobs.map((job, idx) => (
-                <div key={idx} className="flex flex-wrap lg:flex-nowrap items-center gap-4 p-2 rounded-2xl transition-all">
-                    
-                    <CustomSelect
-                        value={job.symbol}
-                        options={trackedSymbolOptions}
-                        onChange={(val) => {
-                            const newJobs = [...autoPilotJobs];
-                            newJobs[idx].symbol = val;
-                            saveJobsToDb(newJobs);
-                        }}
-                        minWidth="110px"
-                        className="flex items-center gap-2 px-3 py-2 rounded-xl bg-[#0b0c10] border border-white/5 hover:border-white/10 transition-colors text-xs font-bold justify-between shadow-sm text-white/90 focus:outline-none focus:border-white/20"
-                    />
-
-                    <div className="flex items-center gap-2 bg-[#0b0c10] border border-transparent px-1 py-1 rounded-xl">
-                       <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest pl-2 pr-1">Interval</span>
+         <div className="card-body">
+            <p className="text-sm text-default-500 mb-5">คิวการทำงานของ AI แยกรันแต่ละคู่เงินแบบอิสระ ไม่ดึงโควต้าตีกัน</p>
+            <div className="space-y-4">
+               {autoPilotJobs.map((job, idx) => (
+                   <div key={idx} className="flex flex-wrap lg:flex-nowrap items-center gap-4 p-4 border border-default-200 dark:border-default-200/50 rounded-xl hover:bg-default-50/50 dark:hover:bg-default-300/5 transition-colors">
                        <CustomSelect
-                           value={job.interval}
-                           options={[
-                             { label: '5 นาที', value: 5 },
-                             { label: '15 นาที', value: 15 },
-                             { label: '30 นาที', value: 30 },
-                             { label: '1 ชั่วโมง', value: 60 },
-                             { label: '4 ชั่วโมง', value: 240 },
-                           ]}
+                           value={job.symbol}
+                           options={trackedSymbolOptions}
                            onChange={(val) => {
                                const newJobs = [...autoPilotJobs];
-                               newJobs[idx].interval = Number(val);
+                               newJobs[idx].symbol = val;
                                saveJobsToDb(newJobs);
                            }}
-                           icon={<LuZap className="text-white/30 size-3" />}
-                           minWidth="100px"
-                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#13151b] border border-white/5 hover:bg-[#181a22] transition-colors text-xs font-bold justify-between shadow-none text-white/90 focus:outline-none"
+                           minWidth="110px"
+                           className="flex items-center gap-2 px-3 py-2 rounded-lg bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-200/50 hover:border-primary/30 transition-colors text-sm font-semibold justify-between shadow-sm focus:outline-none focus:border-primary"
                        />
-                    </div>
 
-                    <div className="flex items-center gap-2 bg-[#0b0c10] border border-transparent px-1 py-1 rounded-xl">
-                       <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest pl-2 pr-1">Mode</span>
-                       <CustomSelect
-                           value={job.ai_mode || 'auto'}
-                           options={[
-                             { label: '💡 AI หาให้', value: 'auto' },
-                             { label: '⚙️ 10 กลยุทธ์', value: 'eval_10_strategies' },
-                           ]}
-                           onChange={(val) => {
+                       <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-bold text-default-400 uppercase tracking-widest">Interval</span>
+                           <CustomSelect
+                               value={job.interval}
+                               options={[
+                                 { label: '5 นาที', value: 5 },
+                                 { label: '15 นาที', value: 15 },
+                                 { label: '30 นาที', value: 30 },
+                                 { label: '1 ชั่วโมง', value: 60 },
+                                 { label: '4 ชั่วโมง', value: 240 },
+                               ]}
+                               onChange={(val) => {
+                                   const newJobs = [...autoPilotJobs];
+                                   newJobs[idx].interval = Number(val);
+                                   saveJobsToDb(newJobs);
+                               }}
+                               icon={<LuZap className="text-default-400 size-3" />}
+                               minWidth="100px"
+                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-200/50 hover:bg-default-200 dark:hover:bg-default-100 transition-colors text-sm font-semibold justify-between shadow-sm focus:outline-none"
+                           />
+                       </div>
+
+                       <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-bold text-default-400 uppercase tracking-widest">Mode</span>
+                           <CustomSelect
+                               value={job.ai_mode || 'auto'}
+                               options={[
+                                 { label: '💡 AI หาให้', value: 'auto' },
+                                 { label: '⚙️ 10 กลยุทธ์', value: 'eval_10_strategies' },
+                               ]}
+                               onChange={(val) => {
+                                   const newJobs = [...autoPilotJobs];
+                                   newJobs[idx].ai_mode = val;
+                                   saveJobsToDb(newJobs);
+                               }}
+                               icon={null}
+                               minWidth="110px"
+                               className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-200/50 hover:bg-default-200 dark:hover:bg-default-100 transition-colors text-sm font-semibold justify-between shadow-sm focus:outline-none"
+                           />
+                       </div>
+
+                       <div className="flex items-center gap-2">
+                           <span className="text-[10px] font-bold text-default-400 uppercase tracking-widest">Lot Target</span>
+                           <input
+                               type="number"
+                               min="0.01" step="0.01"
+                               value={job.lot_size}
+                               onChange={(e) => {
+                                   const newJobs = [...autoPilotJobs];
+                                   newJobs[idx].lot_size = parseFloat(e.target.value) || 0.01;
+                                   saveJobsToDb(newJobs);
+                               }}
+                               className="w-20 px-3 py-1.5 text-sm font-semibold rounded-lg bg-default-100 dark:bg-default-50 border border-default-200 dark:border-default-200/50 hover:border-primary/30 outline-none focus:border-primary transition-all font-mono"
+                           />
+                       </div>
+
+                       <button
+                           onClick={() => {
                                const newJobs = [...autoPilotJobs];
-                               newJobs[idx].ai_mode = val;
+                               newJobs[idx].auto_trade = !newJobs[idx].auto_trade;
                                saveJobsToDb(newJobs);
                            }}
-                           icon={null}
-                           minWidth="100px"
-                           className="flex items-center gap-1.5 px-3 py-1.5 rounded-lg bg-[#13151b] border border-white/5 hover:bg-[#181a22] transition-colors text-xs font-bold justify-between shadow-none text-white/90 focus:outline-none"
-                       />
-                    </div>
+                           className={`ml-auto px-4 py-2 min-w-[170px] rounded-lg text-[11px] font-bold transition-all duration-300 ${job.auto_trade ? 'bg-amber-500 text-white shadow-md shadow-amber-500/20 hover:bg-amber-600' : 'bg-default-100 text-default-600 border border-default-200 hover:bg-default-200 dark:bg-default-50 dark:border-default-200/50 dark:text-default-400 dark:hover:text-default-300'}`}
+                       >
+                           {job.auto_trade ? '⚡ EXECUTE AUTO-TRADE' : '🔔 SIGNAL NOTIFY ONLY'}
+                       </button>
+                       
+                       <button 
+                           onClick={() => {
+                               const newJobs = autoPilotJobs.filter((_, i) => i !== idx);
+                               saveJobsToDb(newJobs);
+                           }}
+                           className="p-2 ml-1 text-red-500 hover:bg-red-500 hover:text-white rounded-lg transition-all border border-transparent hover:shadow-md bg-default-100 dark:bg-default-50 lg:bg-transparent"
+                       >
+                            <LuTrash className="size-4" />
+                       </button>
+                   </div>
+               ))}
 
-                    <div className="flex items-center gap-2 bg-[#0b0c10] border border-transparent pl-3 pr-1 py-1 rounded-xl">
-                        <span className="text-[9px] font-bold text-white/40 uppercase tracking-widest mr-1">Lot Target</span>
-                        <input
-                            type="number"
-                            min="0.01" step="0.01"
-                            value={job.lot_size}
-                            onChange={(e) => {
-                                const newJobs = [...autoPilotJobs];
-                                newJobs[idx].lot_size = parseFloat(e.target.value) || 0.01;
-                                saveJobsToDb(newJobs);
-                            }}
-                            className="w-20 px-3 py-1.5 text-xs font-bold text-white/90 rounded-lg bg-[#13151b] border border-white/5 outline-none focus:bg-[#181a22] focus:border-white/10 transition-all font-mono"
-                        />
-                    </div>
-
-                    <button
-                        onClick={() => {
-                            const newJobs = [...autoPilotJobs];
-                            newJobs[idx].auto_trade = !newJobs[idx].auto_trade;
-                            saveJobsToDb(newJobs);
-                        }}
-                        className={`ml-auto px-4 py-2 min-w-[160px] rounded-xl text-[11px] font-black border transition-all duration-300 shadow-sm ${job.auto_trade ? 'bg-amber-500 text-white border-amber-600 shadow-amber-500/20' : 'bg-[#090C15] text-white/60 border-white/10 hover:bg-white/5 hover:text-white'}`}
-                    >
-                        {job.auto_trade ? '⚡ EXECUTE AUTO-TRADE' : '🔔 SIGNAL NOTIFY ONLY'}
-                    </button>
-                    
-                    <button 
-                        onClick={() => {
-                            const newJobs = autoPilotJobs.filter((_, i) => i !== idx);
-                            saveJobsToDb(newJobs);
-                        }}
-                        className="p-2 ml-1 text-red-500 hover:bg-red-500 hover:text-white rounded-xl transition-all border border-transparent hover:border-red-600 hover:shadow-lg hover:shadow-red-500/20 bg-[#090C15] lg:bg-transparent"
-                    >
-                         <LuTrash className="size-4" />
-                    </button>
-                </div>
-            ))}
-
-            <button 
-                onClick={() => saveJobsToDb([...autoPilotJobs, { symbol: trackedSymbols[0] || 'XAUUSD', interval: 15, auto_trade: false, lot_size: 0.01, ai_mode: 'auto' }])}
-                className="w-full py-5 bg-[#090C15] border-2 border-dashed border-[#1E3A8A] rounded-2xl text-[#3B82F6] font-black text-sm hover:bg-[#1E3A8A]/20 transition-all flex items-center justify-center gap-2 group shadow-inner"
-            >
-                <div className="bg-[#3B82F6] p-1 rounded-full text-white group-hover:scale-110 transition-transform shadow-[0_0_15px_rgba(59,130,246,0.5)]">
-                   <LuPlus className="size-4" />
-                </div>
-                ADD ANALYSIS ENGINE THREAD
-            </button>
+               <button 
+                   onClick={() => saveJobsToDb([...autoPilotJobs, { symbol: trackedSymbols[0] || 'XAUUSD', interval: 15, auto_trade: false, lot_size: 0.01, ai_mode: 'auto' }])}
+                   className="w-full py-4 mt-2 bg-primary/5 hover:bg-primary/10 border-2 border-dashed border-primary/30 rounded-xl text-primary font-bold text-sm transition-all flex items-center justify-center gap-2 group"
+               >
+                   <LuPlus className="size-4 group-hover:scale-110 transition-transform" />
+                   ADD ANALYSIS ENGINE THREAD
+               </button>
+            </div>
          </div>
       </div>
 
