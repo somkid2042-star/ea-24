@@ -1,6 +1,6 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
 import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuLoader, LuMail, LuExternalLink } from 'react-icons/lu';
-import { open as tauriOpen } from '@tauri-apps/plugin-shell';
+import { openUrl as tauriOpen } from '@tauri-apps/plugin-opener';
 import { getWsUrl } from '@/utils/config';
 
 const WS_URL = getWsUrl();
