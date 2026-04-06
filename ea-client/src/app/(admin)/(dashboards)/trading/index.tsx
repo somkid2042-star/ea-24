@@ -761,7 +761,12 @@ const TradingDashboard = () => {
           if (data.data.last_updated) setGlobalAiUpdated(data.data.last_updated);
         }
         if (data.type === 'telemetry') {
-          setTelemetry({ cpu: data.cpu_usage, total_ram_mb: data.total_ram_mb, ram_mb: data.ram_usage_mb, db_pool: data.db_pool });
+          setTelemetry({ 
+            cpu: data.cpu !== undefined ? data.cpu : 0, 
+            total_ram_mb: data.total_ram_mb || 0, 
+            ram_mb: data.ram_mb || 0, 
+            db_pool: data.db_pool || 0 
+          });
         }
       } catch { /* */ }
     };
