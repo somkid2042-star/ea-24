@@ -813,7 +813,7 @@ pub async fn run_calendar_watcher(
         Ok(resp) if resp.status().is_success() => {
             match resp.json::<Vec<ForexCalendarEvent>>().await {
                 Ok(all_events) => {
-                    // Filter high-impact events within next 4 hours
+                    // Filter high-impact events within the next 1 hour
                     let now = chrono::Utc::now();
                     let relevant: Vec<_> = all_events.into_iter().filter(|e| {
                         let is_high = e.impact.as_deref() == Some("High");
@@ -821,7 +821,7 @@ pub async fn run_calendar_watcher(
                             chrono::DateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S%z")
                                 .map(|dt| {
                                     let diff = dt.signed_duration_since(now);
-                                    diff.num_hours() >= -1 && diff.num_hours() <= 4
+                                    diff.num_minutes() >= -30 && diff.num_minutes() <= 60
                                 }).unwrap_or(false)
                         }).unwrap_or(false);
                         // Also filter by currency relevance
@@ -839,7 +839,7 @@ pub async fn run_calendar_watcher(
                                 _ => false,
                             }
                         }).unwrap_or(false);
-                        is_high && (is_soon || currency_match)
+                        is_high && is_soon && currency_match
                     }).collect();
                     relevant
                 }
