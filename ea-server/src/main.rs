@@ -476,10 +476,11 @@ async fn run_server() {
                 }).to_string();
                 let _ = global_ai_tx.send(msg);
                 info!("🤖 [Global-AI] Successfully updated Global News and Calendar. Next fetch in 1 hour.");
+                tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+            } else {
+                // If keys are not set, check again quickly
+                tokio::time::sleep(tokio::time::Duration::from_secs(15)).await;
             }
-            
-            // Sleep for 1 hour (3600 seconds)
-            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
         }
     });
 
