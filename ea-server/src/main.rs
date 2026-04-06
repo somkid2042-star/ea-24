@@ -360,7 +360,25 @@ async fn run_server() {
                     
                     let interval_min = job["interval"].as_u64().unwrap_or(5);
                     let auto_trade = job["auto_trade"].as_bool().unwrap_or(false);
-                    let auto_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
+                    let fallback_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
+                    let auto_lot = job["lot_size"].as_f64().unwrap_or(fallback_lot);
+                    
+                    let telegram_alert = job["telegram_alert"].as_bool().unwrap_or(false);
+                    let tp_sl_mode = job["tp_sl_mode"].as_str().unwrap_or("none");
+                    let tp_value = job["tp_value"].as_f64().unwrap_or(0.0);
+                    let sl_value = job["sl_value"].as_f64().unwrap_or(0.0);
+                    let ts_value = job["ts_value"].as_f64().unwrap_or(0.0);
+
+                    // Sync risk config to MT5 instantly anytime auto_analyze loops for this symbol
+                    let risk_cmd = serde_json::json!({
+                        "action": "set_risk_config",
+                        "symbol": sym,
+                        "risk_mode": tp_sl_mode,
+                        "tp_value": tp_value,
+                        "sl_value": sl_value,
+                        "ts_value": ts_value
+                    }).to_string();
+                    let _ = tx_ai.send(risk_cmd);
 
                     let should_run = last_runs.get(&sym)
                         .map(|last| last.elapsed().as_secs() >= interval_min * 60)
@@ -449,6 +467,14 @@ async fn run_server() {
                                     "comment": format!("EA24-{}", job_ai_mode)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
+                                
+                                if telegram_alert {
+                                    let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                    let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                    if !tg_token.is_empty() && !tg_chat.is_empty() {
+                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🔥 AI Auto-Execute: {} {}\nLot Size: {}\nConfidence: {}%\nMode: {}", result.final_decision, sym, auto_lot, result.confidence, tp_sl_mode)).await;
+                                    }
+                                }
                             } else {
                                 info!("🤖 [Auto-Pilot] Proposing {} order on {}, awaiting user confirmation", result.final_decision, sym);
                                 let proposal = serde_json::json!({

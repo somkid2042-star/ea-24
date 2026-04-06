@@ -29,6 +29,15 @@ struct QueuedRequest {
 };
 QueuedRequest candleQueue[];
 
+struct SymbolRisk {
+   string symbol;
+   string risk_mode;
+   double tp_value;
+   double sl_value;
+   double ts_value;
+};
+SymbolRisk activeRisks[];
+
 //+------------------------------------------------------------------+
 //| Simple JSON value extractor                                      |
 //+------------------------------------------------------------------+
@@ -295,6 +304,9 @@ void OnTimer()
       SendTradeHistory();
       lastHistorySend = TimeCurrent();
      }
+     
+   // Run Advanced Risk Management globally (every 500ms since OnTimer triggers)
+   HandleAdvancedRiskManagement();
    
    // Read commands from server
    uint len = SocketIsReadable(socket);
@@ -361,6 +373,13 @@ void ProcessCommand(const string msg)
    if(StringFind(msg, "\"request_candles\"") >= 0)
      {
       HandleRequestCandles(msg);
+      return;
+     }
+
+   // Set Risk Config (USD / Pips / Trailing)
+   if(StringFind(msg, "\"set_risk_config\"") >= 0)
+     {
+      HandleSetRiskConfig(msg);
       return;
      }
   }
@@ -472,6 +491,143 @@ void HandleModifySL(const string msg)
      Print("SL modified: #", ticket, " -> ", newSL);
    else
      Print("SL modify FAILED: #", ticket, " error ", GetLastError());
+  }
+
+//+------------------------------------------------------------------+
+//| Handle set_risk_config command                                    |
+//+------------------------------------------------------------------+
+void HandleSetRiskConfig(const string msg)
+  {
+   string sym = JsonGetString(msg, "symbol");
+   string mode = JsonGetString(msg, "risk_mode");
+   double tp_val = JsonGetDouble(msg, "tp_value");
+   double sl_val = JsonGetDouble(msg, "sl_value");
+   double ts_val = JsonGetDouble(msg, "ts_value");
+   
+   if(StringLen(sym) == 0) return;
+   
+   int total = ArraySize(activeRisks);
+   int rIdx = -1;
+   for(int i = 0; i < total; i++)
+     {
+      if(activeRisks[i].symbol == sym) { rIdx = i; break; }
+     }
+     
+   if(rIdx < 0)
+     {
+      rIdx = total;
+      ArrayResize(activeRisks, total + 1);
+      activeRisks[rIdx].symbol = sym;
+     }
+     
+   activeRisks[rIdx].risk_mode = mode;
+   activeRisks[rIdx].tp_value = tp_val;
+   activeRisks[rIdx].sl_value = sl_val;
+   activeRisks[rIdx].ts_value = ts_val;
+  }
+
+//+------------------------------------------------------------------+
+//| Advanced Risk Management Engine (Trailing Stop, USD Targets)      |
+//+------------------------------------------------------------------+
+void HandleAdvancedRiskManagement()
+  {
+   int total = PositionsTotal();
+   for(int i = total - 1; i >= 0; i--)
+     {
+      ulong ticket = PositionGetTicket(i);
+      if(ticket <= 0) continue;
+      
+      string sym = PositionGetString(POSITION_SYMBOL);
+      int rIdx = -1;
+      for(int r = 0; r < ArraySize(activeRisks); r++)
+        {
+         if(activeRisks[r].symbol == sym) { rIdx = r; break; }
+        }
+      
+      if(rIdx < 0) continue;
+      
+      string mode = activeRisks[rIdx].risk_mode;
+      double tp_val = activeRisks[rIdx].tp_value;
+      double ts_val = activeRisks[rIdx].ts_value;
+      
+      if(mode == "none" || mode == "") continue;
+      
+      // We only apply this to EA24 AI triggered trades
+      string comment = PositionGetString(POSITION_COMMENT);
+      if(StringFind(comment, "EA24") < 0) continue;
+      
+      double profit = PositionGetDouble(POSITION_PROFIT);
+      double current_sl = PositionGetDouble(POSITION_SL);
+      double current_price = PositionGetDouble(POSITION_PRICE_CURRENT);
+      double open_price = PositionGetDouble(POSITION_PRICE_OPEN);
+      long type = PositionGetInteger(POSITION_TYPE);
+      int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
+      double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+      
+      // 1. USD Mode: Wait until profit hits target
+      if(mode == "usd" && tp_val > 0 && profit >= tp_val)
+        {
+         if(ts_val <= 0)
+           {
+            // Close immediately if no Trailing Stop
+            trade.PositionClose(ticket);
+            Print("🔥 USD Target Reached! Closed Position #", ticket);
+            continue;
+           }
+         else
+           {
+            // Activate Trailing target lock once target is reached!
+            double distance = ts_val * point * 10;
+            double new_sl = 0;
+            if(type == POSITION_TYPE_BUY)
+              {
+               new_sl = NormalizeDouble(current_price - distance, digits);
+               if(current_sl == 0 || new_sl > current_sl)
+                 {
+                  trade.PositionModify(ticket, new_sl, PositionGetDouble(POSITION_TP));
+                 }
+              }
+            else if(type == POSITION_TYPE_SELL)
+              {
+               new_sl = NormalizeDouble(current_price + distance, digits);
+               if(current_sl == 0 || new_sl < current_sl) // For SELL, lower is better
+                 {
+                  trade.PositionModify(ticket, new_sl, PositionGetDouble(POSITION_TP));
+                 }
+              }
+           }
+        }
+        
+      // 2. PIPS Mode: Conventional Trailing Stop activation
+      if(mode == "pips" && ts_val > 0)
+        {
+         double distance = ts_val * point * 10;
+         double new_sl = 0;
+         
+         if(type == POSITION_TYPE_BUY)
+           {
+            if(current_price - open_price > distance)
+              {
+               new_sl = NormalizeDouble(current_price - distance, digits);
+               if(current_sl == 0 || new_sl > current_sl)
+                 {
+                  trade.PositionModify(ticket, new_sl, PositionGetDouble(POSITION_TP));
+                 }
+              }
+           }
+         else if(type == POSITION_TYPE_SELL)
+           {
+            if(open_price - current_price > distance)
+              {
+               new_sl = NormalizeDouble(current_price + distance, digits);
+               if(current_sl == 0 || new_sl < current_sl)
+                 {
+                  trade.PositionModify(ticket, new_sl, PositionGetDouble(POSITION_TP));
+                 }
+              }
+           }
+        }
+     }
   }
 
 //+------------------------------------------------------------------+

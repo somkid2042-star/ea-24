@@ -1,10 +1,24 @@
 import { useState, useEffect, useRef } from 'react';
-import { LuBot, LuCheck, LuX, LuBrainCircuit, LuChevronDown, LuPlus, LuClock } from 'react-icons/lu';
+import { LuBot, LuCheck, LuX, LuBrainCircuit, LuChevronDown, LuPlus, LuClock, LuBell } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { AgentPanel } from './AgentPanel';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
 
-type AutoPilotJob = { symbol: string; interval: number; auto_trade: boolean; lot_size: number; ai_mode?: string; disabled_agents?: string[]; enabled?: boolean; is_draft?: boolean; };
+type AutoPilotJob = { 
+  symbol: string; 
+  interval: number; 
+  auto_trade: boolean; 
+  lot_size: number; 
+  ai_mode?: string; 
+  disabled_agents?: string[]; 
+  enabled?: boolean; 
+  is_draft?: boolean; 
+  telegram_alert?: boolean;
+  tp_sl_mode?: 'pips' | 'usd' | 'none';
+  tp_value?: number;
+  sl_value?: number;
+  ts_value?: number;
+};
 
 const CustomSelect = ({ value, options, onChange, icon, minWidth = '120px', className, containerClassName }: { value: string | number, options: {label: string, value: string | number}[], onChange: (val: any) => void, icon?: React.ReactNode, minWidth?: string, className?: string, containerClassName?: string }) => {
   const [isOpen, setIsOpen] = useState(false);
@@ -303,7 +317,75 @@ const DashboardAi = () => {
                                   className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 focus:border-blue-500 outline-none transition-all shadow-sm"
                               />
                           </div>
-                          <div className="flex flex-col gap-1.5 justify-center">
+                      </div>
+
+                      <div className="grid grid-cols-2 gap-3 mb-5 pb-5 border-b border-default-200 dark:border-white/5">
+                          <div className="flex items-center justify-between col-span-2 p-3 rounded-xl bg-default-100/50 dark:bg-white/5 border border-default-200 dark:border-white/5">
+                              <div className="flex items-center gap-2">
+                                  <LuBell className="size-4 text-blue-500" />
+                                  <div>
+                                      <p className="text-[11px] font-bold text-default-700 dark:text-gray-200">Telegram Alerts</p>
+                                      <p className="text-[9px] text-gray-500">Notify when order opens/closes</p>
+                                  </div>
+                              </div>
+                              <button onClick={() => {
+                                  const newJobs = [...autoPilotJobs];
+                                  newJobs[idx].telegram_alert = !newJobs[idx].telegram_alert;
+                                  saveJobsToDb(newJobs);
+                              }} className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors ${job.telegram_alert ? 'bg-blue-500 shadow-[0_0_10px_rgba(59,130,246,0.3)]' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                                  <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${job.telegram_alert ? 'translate-x-2 bg-white' : '-translate-x-2 bg-gray-100 dark:bg-gray-400'}`} />
+                              </button>
+                          </div>
+
+                          <div className="flex flex-col gap-1.5 col-span-2">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Target Mode (TP/SL)</label>
+                              <div className="flex rounded-xl overflow-hidden border border-default-200 dark:border-white/5 p-1 bg-default-100/50 dark:bg-[#131826]">
+                                  {['usd', 'pips', 'none'].map((mode) => (
+                                      <button key={mode} onClick={() => {
+                                          const newJobs = [...autoPilotJobs];
+                                          newJobs[idx].tp_sl_mode = mode as any;
+                                          saveJobsToDb(newJobs);
+                                      }} className={`flex-1 text-[10px] font-bold uppercase py-1.5 rounded-lg transition-all ${job.tp_sl_mode === mode || (!job.tp_sl_mode && mode==='none') ? 'bg-primary text-white shadow-sm' : 'text-gray-500 hover:text-default-700 dark:hover:text-gray-300'}`}>
+                                          {mode}
+                                      </button>
+                                  ))}
+                              </div>
+                          </div>
+
+                          {(job.tp_sl_mode && job.tp_sl_mode !== 'none') && (
+                              <>
+                                  <div className="flex flex-col gap-1.5">
+                                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{job.tp_sl_mode === 'usd' ? 'TP ($)' : 'TP (Pips)'}</label>
+                                      <input
+                                          type="number"
+                                          min="0" step="1"
+                                          value={job.tp_value || 0}
+                                          onChange={(e) => {
+                                          const newJobs = [...autoPilotJobs];
+                                          newJobs[idx].tp_value = parseFloat(e.target.value) || 0;
+                                          saveJobsToDb(newJobs);
+                                          }}
+                                          className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-emerald-500/50 focus:border-emerald-500 outline-none transition-all text-emerald-600 dark:text-emerald-400"
+                                      />
+                                  </div>
+                                  <div className="flex flex-col gap-1.5">
+                                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Trailing Step (Pips)</label>
+                                      <input
+                                          type="number"
+                                          min="0" step="1"
+                                          value={job.ts_value || 0}
+                                          onChange={(e) => {
+                                          const newJobs = [...autoPilotJobs];
+                                          newJobs[idx].ts_value = parseFloat(e.target.value) || 0;
+                                          saveJobsToDb(newJobs);
+                                          }}
+                                          className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 focus:border-blue-500 outline-none transition-all text-blue-600 dark:text-blue-400"
+                                      />
+                                  </div>
+                              </>
+                          )}
+
+                          <div className="flex flex-col gap-1.5 justify-center mt-2">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Auto-Execute</label>
                               <button onClick={() => {
                                   const newJobs = [...autoPilotJobs];
@@ -313,7 +395,7 @@ const DashboardAi = () => {
                                   <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-md ring-0 transition duration-200 ease-in-out ${job.auto_trade ? 'translate-x-2.5 bg-white' : '-translate-x-2.5 bg-gray-400 dark:bg-gray-500'}`} />
                               </button>
                           </div>
-                          <div className="flex flex-col gap-1.5 justify-center">
+                          <div className="flex flex-col gap-1.5 justify-center mt-2">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest"><LuClock className="inline size-3 mr-1" />Scan Every (min)</label>
                               <input
                                   type="number"
