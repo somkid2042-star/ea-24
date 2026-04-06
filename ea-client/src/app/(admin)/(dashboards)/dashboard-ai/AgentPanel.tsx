@@ -87,8 +87,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       {/* Header Section */}
       <div className="border-b border-gray-100 dark:border-white/5 p-4 flex items-center justify-between bg-white dark:bg-[#0A0D14] z-40 relative">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-2xl bg-blue-50/80 dark:bg-blue-500/10 border-2 border-blue-100/50 dark:border-blue-500/20 text-blue-500 flex items-center justify-center shrink-0 shadow-sm">
-            {jobEnabled ? <LuZap className="size-5" /> : <LuMonitorOff className="size-5" />}
+          <div className="size-10 rounded-full bg-[#EFF6FF] text-[#3B82F6] flex items-center justify-center shrink-0">
+            {jobEnabled ? <LuZap className="size-[22px] fill-[#3B82F6]/20" /> : <LuMonitorOff className="size-[22px]" />}
           </div>
           <div className="flex items-center gap-2">
             <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 font-mono tracking-tight">
@@ -138,7 +138,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
             {/* The Vertical Line Connecting Icons */}
             <div className="absolute left-[20px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
 
-            <div className="space-y-6 relative z-10 w-full">
+            <div className="space-y-7 relative z-10 w-full pl-2">
               {agentConfig.map((agent) => {
                 let isDisabled = disabledAgents.includes(agent.key);
                 let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
@@ -153,36 +153,13 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                 }
                 
                 const isActive = !isDisabled && status === 'running';
-                const isDone = !isDisabled && status === 'done';
                 const isError = !isDisabled && status === 'error';
                 
-                const agentLogs = logs.filter(l => l.agent === agent.key && l.message);
-                let latestAgentLog = agentLogs.length > 0 ? agentLogs[agentLogs.length - 1] : null;
-
-                if (agent.key === 'order_executor' && (!latestAgentLog || !latestAgentLog.timestamp)) {
-                    let msg = 'รอการประมวลผล (Standby)';
-                    if (status === 'done' && finalResult && autoTrade) {
-                        if (finalResult.final_decision === 'HOLD') {
-                            msg = 'ไม่มีการออกออเดอร์ (HOLD)';
-                        } else {
-                            msg = `ส่งคำสั่งเรียบร้อย (${finalResult.final_decision})`;
-                        }
-                    } else if (status === 'done' && finalResult && !autoTrade) {
-                        msg = `ไม่ได้ส่งคำสั่งเนื่องจากปิดการทำงานไว้`;
-                    }
-                    latestAgentLog = { timestamp: Date.now(), symbol: '', type: 'log', agent: 'order_executor', message: msg };
-                }
-
-                // Color Themes Based on Status
-                const boxTheme = isDisabled ? 'bg-gray-50 dark:bg-[#131826] border-gray-100 dark:border-white/5 text-gray-400' 
-                               : isError ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-500'
-                               : isActive ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
-                               : isDone ? 'bg-emerald-50/30 dark:bg-emerald-500/10 border-emerald-200/60 dark:border-emerald-500/20 text-emerald-600'
-                               : 'bg-white dark:bg-[#0A0D14] border-gray-200 dark:border-white/10 text-gray-400';
-                               
-                const logTextColor = isError ? 'text-red-500' 
-                                   : isDone ? 'text-emerald-500/90 dark:text-emerald-400' 
-                                   : 'text-gray-400 dark:text-gray-500';
+                // Keep the circular minimalistic look matching the screenshot
+                const circleTheme = isDisabled ? 'bg-gray-50 border-gray-100 text-gray-300 scale-95 dark:bg-[#0B101E] dark:border-white/5 dark:text-gray-600' 
+                               : isError ? 'bg-red-50 border-red-200 text-red-500'
+                               : isActive ? 'bg-blue-50 border-blue-300 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.3)] ring-4 ring-blue-50 dark:bg-blue-500/10 dark:ring-blue-500/10'
+                               : 'bg-white border-gray-200 text-gray-400 dark:bg-[#0A0D14] dark:border-white/10 dark:text-gray-500';
 
                 return (
                   <div 
@@ -194,30 +171,18 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                              if (onToggleAgent) onToggleAgent(agent.key);
                          }
                      }}
-                     className="flex items-start gap-5 cursor-pointer group"
+                     className="flex items-center gap-6 cursor-pointer group"
                   >
-                    {/* Icon Bubble */}
-                    <div className={`size-10 rounded-2xl flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${boxTheme}`}>
+                    {/* Circle Icon */}
+                    <div className={`size-[42px] rounded-full flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${circleTheme}`}>
                         {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
                     </div>
 
-                    {/* Text Area */}
-                    <div className="flex flex-col pt-0.5 flex-1 min-w-0">
-                       <div className="flex items-center gap-2">
-                         <span className={`font-bold text-[14px] font-mono tracking-tight ${isDisabled ? 'text-gray-400 line-through' : 'text-slate-700 dark:text-gray-200 group-hover:text-blue-600 transition-colors'}`}>
+                    {/* Text Title only */}
+                    <div className="flex-1 min-w-0">
+                         <span className={`font-bold text-[14px] font-mono tracking-tight ${isDisabled ? 'text-gray-300 dark:text-gray-600' : 'text-slate-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors'}`}>
                             {agent.name}
                          </span>
-                         {!isDisabled && isActive && <span className="text-[10px] text-blue-500 animate-pulse font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Running...</span>}
-                       </div>
-
-                       {!isDisabled && latestAgentLog && (
-                          <div className="mt-[2px]">
-                             <p className={`text-[13px] font-mono leading-relaxed line-clamp-2 pr-2 ${logTextColor}`}>
-                               <span className="opacity-50 mr-1.5 font-bold">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
-                               {stripEmojis(latestAgentLog.message)}
-                             </p>
-                          </div>
-                       )}
                     </div>
                   </div>
                 );
@@ -228,23 +193,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       
       {/* Final Operation Result */}
       <div className="p-5 pb-6">
-        <div className={`p-4 rounded-[16px] border-[1.5px] transition-all ${
-            agentStatus.orchestrator === 'running' ? 'bg-blue-50/80 dark:bg-blue-500/5 border-blue-200 dark:border-blue-500/20 shadow-sm' : 'bg-blue-50/40 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/30'
-        }`}>
-           <div className="flex items-center gap-2.5 mb-2">
-             <LuBot className={`size-5 ${agentStatus.orchestrator === 'running' ? 'text-blue-500 animate-pulse' : 'text-blue-500'}`} />
-             <span className="text-[13px] font-extrabold text-blue-700 dark:text-blue-300 uppercase tracking-widest leading-none mt-0.5">Operation Result</span>
+        <div className={`p-4 rounded-[16px] border-[1.5px] transition-all bg-[#FAFBFF] dark:bg-[#0B101E] border-blue-100 dark:border-blue-900/30`}>
+           <div className="flex items-center gap-2 mb-2">
+             <LuBot className={`size-4 text-[#3B82F6] ${agentStatus.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
+             <span className="text-[12px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">Operation Result</span>
            </div>
-           <div className="ml-8 text-[13px] font-mono text-blue-600 dark:text-blue-300">
-              {logs.length > 0 ? (
-                 <div className="flex flex-col gap-0.5">
-                   <div className="flex gap-2">
-                     <span className="opacity-40 shrink-0 font-bold">[{new Date(logs[logs.length-1].timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
-                     <span className={`break-words font-medium ${agentStatus.orchestrator === 'running' ? 'text-blue-600' : ''}`}>
-                       {stripEmojis(logs[logs.length - 1].message)}
-                     </span>
-                   </div>
-                 </div>
+           
+           <div className="ml-6 text-[13px] font-mono text-[#3B82F6] dark:text-blue-400">
+              {agentStatus.orchestrator === 'running' ? (
+                  <span className="animate-pulse">Processing...</span>
+              ) : finalResult && finalResult.final_decision ? (
+                  <span className="font-bold">{finalResult.final_decision}</span>
+              ) : logs.length > 0 ? (
+                  <span className="break-words font-medium opacity-80 text-sm">
+                    {stripEmojis(logs[logs.length - 1].message)}
+                  </span>
               ) : 'Standby...'}
            </div>
         </div>

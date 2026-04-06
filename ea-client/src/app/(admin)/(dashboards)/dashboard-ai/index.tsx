@@ -535,14 +535,14 @@ const DashboardAi = () => {
         {/* Add Setup Button / Placeholder */}
         <button 
              onClick={() => saveJobsToDb([...autoPilotJobs, { symbol: trackedSymbols.includes('ETHUSD') ? 'ETHUSD' : (trackedSymbols[0] || 'ETHUSD'), interval: 15, auto_trade: false, lot_size: 0.01, ai_mode: 'eval_10_strategies', is_draft: true }])}
-             className="w-full min-h-[300px] border-[2px] border-dashed border-default-300 dark:border-white/10 rounded-3xl flex flex-col items-center justify-center gap-4 text-default-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all group shadow-sm hover:shadow-xl hover:shadow-blue-500/10"
+             className="w-full h-full min-h-[500px] border-2 border-dashed border-default-200 dark:border-white/10 rounded-[24px] flex flex-col items-center justify-center gap-6 text-default-400 dark:text-gray-500 hover:border-blue-400 hover:text-blue-500 hover:bg-blue-50/30 transition-all group"
         >
-             <div className="size-16 rounded-2xl bg-white dark:bg-[#0B101E] border-[2px] border-default-300 dark:border-white/10 flex items-center justify-center group-hover:bg-blue-500 group-hover:border-blue-500 group-hover:text-white transition-all shadow-sm">
-                 <LuPlus className="size-7 transition-transform group-hover:scale-125" />
+             <div className="size-[60px] rounded-[16px] bg-white dark:bg-[#0B101E] border-[2px] border-default-200 dark:border-white/10 flex items-center justify-center shadow-sm group-hover:border-blue-400 group-hover:bg-blue-50 transition-all">
+                 <LuPlus className="size-6 text-default-400 group-hover:text-blue-500 transition-colors" />
              </div>
-             <div className="flex flex-col items-center">
-                 <span className="text-[12px] font-black tracking-widest uppercase mb-1">New AI Agent Setup</span>
-                 <span className="text-[10px] opacity-70">Initialize a new algorithmic trading bot</span>
+             <div className="flex flex-col items-center gap-1.5">
+                 <span className="text-[11px] font-black tracking-[0.1em] text-default-400 dark:text-gray-500 group-hover:text-blue-500">NEW AI AGENT SETUP</span>
+                 <span className="text-[10px] text-default-300 dark:text-gray-600 font-mono">Initialize a new algorithmic trading bot</span>
              </div>
         </button>
       </div>
