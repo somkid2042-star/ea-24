@@ -541,8 +541,8 @@ const DashboardAi = () => {
                  <LuPlus className="size-6 text-default-400 group-hover:text-blue-500 transition-colors" />
              </div>
              <div className="flex flex-col items-center gap-1.5">
-                 <span className="text-[11px] font-black tracking-[0.1em] text-default-400 dark:text-gray-500 group-hover:text-blue-500">NEW AI AGENT SETUP</span>
-                 <span className="text-[10px] text-default-300 dark:text-gray-600 font-mono">Initialize a new algorithmic trading bot</span>
+                 <span className="text-[12px] font-black tracking-wider text-default-400 dark:text-gray-500 group-hover:text-blue-500">สร้างบอท AI ตัวใหม่</span>
+                 <span className="text-[10px] text-default-300 dark:text-gray-600 font-mono">เพิ่มสกุลเงินสำหรับวิเคราะห์อัตโนมัติ</span>
              </div>
         </button>
       </div>

@@ -36,11 +36,11 @@ const stripEmojis = (msg: string) => {
 };
 
 const agentConfig = [
-  { key: 'news_hunter', name: 'News Hunter', icon: <LuGlobe size={16} /> },
-  { key: 'chart_analyst', name: 'Chart Analyst', icon: <LuActivity size={16} /> },
-  { key: 'calendar', name: 'Calendar Watcher', icon: <LuCalendar size={16} /> },
-  { key: 'risk_manager', name: 'Risk Manager', icon: <LuShield size={16} /> },
-  { key: 'decision_maker', name: 'Decision Maker', icon: <LuBrainCircuit size={16} /> },
+  { key: 'news_hunter', name: 'วิเคราะห์ข่าวกรอง (News)', icon: <LuGlobe size={16} /> },
+  { key: 'chart_analyst', name: 'วิเคราะห์เทคนิค (Chart)', icon: <LuActivity size={16} /> },
+  { key: 'calendar', name: 'ติดตามปฏิทินศก. (Calendar)', icon: <LuCalendar size={16} /> },
+  { key: 'risk_manager', name: 'บริหารความเสี่ยง (Risk)', icon: <LuShield size={16} /> },
+  { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
 ];
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
@@ -97,11 +97,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
             {jobEnabled && agentStatus.orchestrator === 'running' && (
               <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
                 <span className="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                Running
+                กำลังทำงาน
               </span>
             )}
             {!jobEnabled && (
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase border border-gray-200 dark:border-gray-700">PAUSED</span>
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase border border-gray-200 dark:border-gray-700">ระงับการใช้งาน</span>
             )}
             {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
                <span className="inline-flex items-center rounded-full bg-blue-50/80 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
@@ -196,19 +196,19 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         <div className={`p-4 rounded-[16px] border-[1.5px] transition-all bg-[#FAFBFF] dark:bg-[#0B101E] border-blue-100 dark:border-blue-900/30`}>
            <div className="flex items-center gap-2 mb-2">
              <LuBot className={`size-4 text-[#3B82F6] ${agentStatus.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
-             <span className="text-[12px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">Operation Result</span>
+             <span className="text-[12px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">ผลสรุปการวิเคราะห์</span>
            </div>
            
            <div className="ml-6 text-[13px] font-mono text-[#3B82F6] dark:text-blue-400">
               {agentStatus.orchestrator === 'running' ? (
-                  <span className="animate-pulse">Processing...</span>
+                  <span className="animate-pulse">กำลังประมวลผลข้อมูล...</span>
               ) : finalResult && finalResult.final_decision ? (
                   <span className="font-bold">{finalResult.final_decision}</span>
               ) : logs.length > 0 ? (
                   <span className="break-words font-medium opacity-80 text-sm">
                     {stripEmojis(logs[logs.length - 1].message)}
                   </span>
-              ) : 'Standby...'}
+              ) : 'สแตนด์บาย รอรับคำสั่ง...'}
            </div>
         </div>
       </div>
