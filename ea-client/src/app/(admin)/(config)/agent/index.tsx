@@ -25,6 +25,7 @@ const AgentSettings = () => {
   // States: News
   const [centralizedInfo, setCentralizedInfo] = useState<boolean>(true);
   const [newsKeyword, setNewsKeyword] = useState<string>('Global Forex Market');
+  const [showHeadlines, setShowHeadlines] = useState<boolean>(false);
 
   // States: Calendar
   const [calendarEnabled, setCalendarEnabled] = useState<boolean>(false);
@@ -459,32 +460,42 @@ const AgentSettings = () => {
                     
                     {globalNews.headlines && globalNews.headlines.length > 0 && (
                       <div className="mt-4 border-t border-default-200 dark:border-gray-700 pt-4">
-                        <h4 className="text-xs font-semibold text-default-500 dark:text-gray-400 mb-3 uppercase">Headlines</h4>
-                        <div className="space-y-2">
-                          {globalNews.headlines.slice(0, 5).map((h: string, idx: number) => {
-                            const parts = h.split('||');
-                            const title = parts[0]?.trim() || h;
-                            const content = parts[1]?.trim() || '';
-                            
-                            return (
-                              <details key={idx} className="group border border-default-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden mb-3">
-                                <summary className="flex items-start justify-between cursor-pointer p-4 font-semibold text-default-800 dark:text-gray-200 list-none outline-none hover:bg-default-50 dark:hover:bg-gray-700/50 transition-colors">
-                                  <div className="flex-1 pr-4">
-                                    <span className="block text-left text-sm md:text-base leading-snug line-clamp-2 md:line-clamp-none text-balance">{title}</span>
-                                  </div>
-                                  <div className="bg-default-100 dark:bg-gray-700 rounded-full p-1 mt-0.5 flex-shrink-0">
-                                    <LuChevronDown className="w-4 h-4 text-default-500 transition-transform group-open:rotate-180" />
-                                  </div>
-                                </summary>
-                                {content && (
-                                  <div className="px-4 pb-4 text-sm text-default-600 dark:text-gray-400 bg-default-50 dark:bg-gray-800 leading-relaxed border-t border-default-100 dark:border-gray-700 pt-3">
-                                    <div className="pt-1 italic">{content}</div>
-                                  </div>
-                                )}
-                              </details>
-                            );
-                          })}
+                        <div className="flex items-center justify-between mb-3">
+                          <h4 className="text-xs font-semibold text-default-500 dark:text-gray-400 uppercase">Headlines</h4>
+                          <button 
+                            onClick={() => setShowHeadlines(!showHeadlines)}
+                            className="text-xs px-3 py-1 rounded-full bg-default-100 hover:bg-default-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-default-600 dark:text-gray-300 transition-colors flex items-center gap-1"
+                          >
+                            {showHeadlines ? <><LuEyeOff size={14} /> ซ่อนข่าว</> : <><LuEye size={14} /> แสดงข่าว ({globalNews.headlines.length})</>}
+                          </button>
                         </div>
+                        {showHeadlines && (
+                          <div className="space-y-2">
+                            {globalNews.headlines.slice(0, 5).map((h: string, idx: number) => {
+                              const parts = h.split('||');
+                              const title = parts[0]?.trim() || h;
+                              const content = parts[1]?.trim() || '';
+                              
+                              return (
+                                <details key={idx} className="group border border-default-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden mb-3">
+                                  <summary className="flex items-start justify-between cursor-pointer p-4 font-semibold text-default-800 dark:text-gray-200 list-none outline-none hover:bg-default-50 dark:hover:bg-gray-700/50 transition-colors">
+                                    <div className="flex-1 pr-4">
+                                      <span className="block text-left text-sm md:text-base leading-snug line-clamp-2 md:line-clamp-none text-balance">{title}</span>
+                                    </div>
+                                    <div className="bg-default-100 dark:bg-gray-700 rounded-full p-1 mt-0.5 flex-shrink-0">
+                                      <LuChevronDown className="w-4 h-4 text-default-500 transition-transform group-open:rotate-180" />
+                                    </div>
+                                  </summary>
+                                  {content && (
+                                    <div className="px-4 pb-4 text-sm text-default-600 dark:text-gray-400 bg-default-50 dark:bg-gray-800 leading-relaxed border-t border-default-100 dark:border-gray-700 pt-3">
+                                      <div className="pt-1 italic">{content}</div>
+                                    </div>
+                                  )}
+                                </details>
+                              );
+                            })}
+                          </div>
+                        )}
                       </div>
                     )}
                   </div>
