@@ -7,7 +7,7 @@ import {
   LuWorkflow, LuHistory,
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
-  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuKey,
+  LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot,
   LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart, LuShare2
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
@@ -26,10 +26,8 @@ const TradeHistoryPage = lazy(() => import('@/app/(admin)/(config)/trade-history
 const PnlReportPage = lazy(() => import('@/app/(admin)/(config)/pnl-report/index'));
 const JournalPage = lazy(() => import('@/app/(admin)/(config)/journal/index'));
 const NotificationsPage = lazy(() => import('@/app/(admin)/(config)/notifications/index'));
-const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-management/index'));
 const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
 const DashboardAiPage = lazy(() => import('@/app/(admin)/(dashboards)/dashboard-ai/index'));
-const AiSettingsPage = lazy(() => import('@/app/(admin)/(config)/ai-settings/index'));
 const AgentConfigPage = lazy(() => import('@/app/(admin)/(config)/agent/index'));
 
 /* ── Types ── */
@@ -61,7 +59,7 @@ const tfToSeconds = (tf: string): number => {
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'journal' | 'notify' | 'risk' | 'multichart' | 'dashboard-ai' | 'ai' | 'agent';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'journal' | 'notify' | 'multichart' | 'dashboard-ai' | 'agent';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
 /* ── Grouped Navigation ── */
@@ -96,9 +94,7 @@ const SETTINGS_ITEMS: NavItem[] = [
   { key: 'mt5', icon: <LuChartCandlestick size={20} strokeWidth={1} />, label: 'MT5 Connection' },
   { key: 'server', icon: <LuServer size={20} strokeWidth={1} />, label: 'Server' },
   { key: 'security', icon: <LuShieldCheck size={20} strokeWidth={1} />, label: 'Security & License' },
-  { key: 'risk', icon: <LuShieldAlert size={20} strokeWidth={1} />, label: 'Risk Management' },
   { key: 'notify', icon: <LuBell size={20} strokeWidth={1} />, label: 'Notifications' },
-  { key: 'ai', icon: <LuKey size={20} strokeWidth={1} />, label: 'API Keys' },
 ];
 
 const REPORT_ITEMS: NavItem[] = [
@@ -124,10 +120,8 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   report: PnlReportPage,
   journal: JournalPage,
   notify: NotificationsPage,
-  risk: RiskManagementPage,
   multichart: MultiChartPage,
   'dashboard-ai': DashboardAiPage,
-  ai: AiSettingsPage,
   agent: AgentConfigPage,
 };
 
