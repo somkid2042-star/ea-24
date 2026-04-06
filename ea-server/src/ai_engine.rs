@@ -528,7 +528,7 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
   ]
 }}"#);
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 2048, true).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 8192, true).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
