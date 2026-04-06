@@ -174,13 +174,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
                  <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
              </div>
-             <div className="flex items-center gap-2">
-                 {!autoScrollM1 && (
-                     <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
-                        Scroll to Latest
-                     </button>
-                 )}
-             </div>
            </div>
            
            <div 
@@ -190,6 +183,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
                    setAutoScrollM1(isAtBottom);
                }}
+               onMouseLeave={() => setAutoScrollM1(true)}
                className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
            >
               <div className="space-y-4 pb-4 relative min-h-full">
@@ -241,13 +235,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
                  <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
              </div>
-             <div className="flex items-center gap-2">
-                 {!autoScrollAI && (
-                     <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
-                        Scroll to Latest
-                     </button>
-                 )}
-             </div>
            </div>
            
            <div 
@@ -257,6 +244,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
                    setAutoScrollAI(isAtBottom);
                }}
+               onMouseLeave={() => setAutoScrollAI(true)}
                className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
            >
               <div className="space-y-4 pb-4 relative min-h-full">
