@@ -386,9 +386,14 @@ const AgentSettings = () => {
                       <LuRefreshCw className="w-3.5 h-3.5" />
                     </button>
                     {newsLastUpdated > 0 && nextFetchSeconds > 0 && (
-                      <span className="text-xs text-default-500 font-mono">
-                        อัปเดตอัติโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}
-                      </span>
+                      <div className="flex flex-col items-end">
+                        <span className="text-xs text-default-500 font-mono">
+                          อัปเดตอัติโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}
+                        </span>
+                        <span className="text-[10.5px] text-default-400 font-mono mt-0.5">
+                          ดึงล่าสุดเมื่อ: {new Date(newsLastUpdated * 1000).toLocaleTimeString('th-TH')} น.
+                        </span>
+                      </div>
                     )}
                     {newsLastUpdated > 0 && nextFetchSeconds === 0 && (
                       <span className="text-xs text-blue-500 font-mono animate-pulse">

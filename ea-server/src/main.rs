@@ -266,10 +266,30 @@ async fn run_server() {
         open_positions: 0,
     }));
 
+    let mut initial_news = None;
+    let mut initial_calendar = None;
+    let mut initial_last_updated = 0;
+    
+    if let Some(news_str) = database.get_config("global_news_cache").await {
+        if let Ok(news) = serde_json::from_str::<NewsResult>(&news_str) {
+            initial_news = Some(news);
+        }
+    }
+    if let Some(cal_str) = database.get_config("global_calendar_cache").await {
+        if let Ok(cal) = serde_json::from_str::<CalendarResult>(&cal_str) {
+            initial_calendar = Some(cal);
+        }
+    }
+    if let Some(lu_str) = database.get_config("global_news_last_updated").await {
+        if let Ok(last) = lu_str.parse::<i64>() {
+            initial_last_updated = last;
+        }
+    }
+
     let global_ai_data = Arc::new(RwLock::new(GlobalAiData {
-        news: None,
-        calendar: None,
-        last_updated: 0,
+        news: initial_news,
+        calendar: initial_calendar,
+        last_updated: initial_last_updated,
     }));
 
     let (tx, _rx) = broadcast::channel::<String>(100);
@@ -476,6 +496,15 @@ async fn run_server() {
                     st.calendar = Some(cal_result.clone());
                     st.last_updated = update_ts;
                 }
+                
+                // Save to DB
+                if let Ok(n_str) = serde_json::to_string(&news_result) {
+                    global_ai_db.set_config("global_news_cache", &n_str).await;
+                }
+                if let Ok(c_str) = serde_json::to_string(&cal_result) {
+                    global_ai_db.set_config("global_calendar_cache", &c_str).await;
+                }
+                global_ai_db.set_config("global_news_last_updated", &update_ts.to_string()).await;
                 
                 let msg = serde_json::json!({
                     "type": "global_ai_data",
@@ -1205,6 +1234,15 @@ async fn handle_ws_connection(
                                                     st.calendar = Some(cal_result.clone());
                                                     st.last_updated = update_ts;
                                                 }
+                                                // Save to DB
+                                                if let Ok(n_str) = serde_json::to_string(&news_result) {
+                                                    db_clone.set_config("global_news_cache", &n_str).await;
+                                                }
+                                                if let Ok(c_str) = serde_json::to_string(&cal_result) {
+                                                    db_clone.set_config("global_calendar_cache", &c_str).await;
+                                                }
+                                                db_clone.set_config("global_news_last_updated", &update_ts.to_string()).await;
+
                                                 let msg = serde_json::json!({
                                                     "type": "global_ai_data",
                                                     "data": { "news": news_result, "calendar": cal_result, "last_updated": update_ts }
