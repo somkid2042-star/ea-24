@@ -383,7 +383,10 @@ const AgentSettings = () => {
                     <button 
                       onClick={() => {
                         setIsFetchingNews(true);
-                        send({ action: 'force_fetch_news' });
+                        handleSave();
+                        setTimeout(() => {
+                          send({ action: 'force_fetch_news' });
+                        }, 500);
                       }}
                       disabled={isFetchingNews}
                       className={`p-1.5 rounded-md transition-colors focus:outline-none ${
