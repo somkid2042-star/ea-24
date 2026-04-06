@@ -3,7 +3,7 @@ import {
   LuSave, LuNetwork, LuNewspaper, LuCalendar, 
   LuActivity, LuShieldAlert, LuGitMerge, LuFileText,
   LuKey, LuCheck, LuX, LuSparkles, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuSearch, LuOctagon, LuCircleCheck, LuCircleX, LuTrendingDown, LuLayers, LuGauge, LuDollarSign,
-  LuChevronRight, LuEye, LuEyeOff, LuRefreshCw
+  LuChevronRight, LuEye, LuEyeOff, LuRefreshCw, LuCopy
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
@@ -814,10 +814,30 @@ const AgentSettings = () => {
                             <div className={`text-default-400 transition-transform duration-200 ${expandedKeys.includes(i) ? 'rotate-90' : ''}`}>
                               <LuChevronRight className="size-4" />
                             </div>
-                            <div className="flex flex-col">
-                              <span className={`text-sm font-medium ${expandedKeys.includes(i) ? 'text-blue-600 dark:text-blue-400' : 'text-default-900 dark:text-gray-200'}`}>
-                                {acc.address || `บัญชีใหม่ (ไม่มีอีเมล ${i + 1})`}
-                              </span>
+                            <div className="flex flex-col items-start min-w-0">
+                              <div className="flex items-center gap-2">
+                                <span className={`truncate text-sm font-medium ${expandedKeys.includes(i) ? 'text-blue-600 dark:text-blue-400' : 'text-default-900 dark:text-gray-200'}`}>
+                                  {acc.address || `บัญชีใหม่ (ไม่มีอีเมล ${i + 1})`}
+                                </span>
+                                {acc.address && (
+                                  <button onClick={(e) => {
+                                    e.stopPropagation();
+                                    navigator.clipboard.writeText(acc.address);
+                                    setSuccessMsg('คัดลอกอีเมลแล้ว');
+                                    setTimeout(() => setSuccessMsg(''), 2000);
+                                  }} className="p-1 hover:bg-default-200 dark:hover:bg-gray-700 rounded text-default-400 hover:text-blue-500 transition-colors" title="คัดลอกอีเมล">
+                                    <LuCopy className="size-3.5" />
+                                  </button>
+                                )}
+                              </div>
+                              <div className="flex items-center gap-1.5 mt-0.5">
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${acc.apiKey.trim() ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border border-green-200 dark:border-green-500/30' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 border border-red-200 dark:border-red-500/30'}`}>
+                                  Gemini
+                                </span>
+                                <span className={`text-[9px] px-1.5 py-0.5 rounded font-bold uppercase tracking-wider ${acc.tavilyKey.trim() ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400 border border-green-200 dark:border-green-500/30' : 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400 border border-red-200 dark:border-red-500/30'}`}>
+                                  Tavily
+                                </span>
+                              </div>
                             </div>
                           </div>
                           <div className="flex items-center gap-1">
