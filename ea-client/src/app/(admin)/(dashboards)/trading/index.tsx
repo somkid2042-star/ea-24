@@ -8,7 +8,7 @@ import {
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
   LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot, LuKey,
-  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart
+  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart, LuShare2
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -30,6 +30,7 @@ const RiskManagementPage = lazy(() => import('@/app/(admin)/(config)/risk-manage
 const MultiChartPage = lazy(() => import('@/app/(admin)/(config)/multi-chart/index'));
 const DashboardAiPage = lazy(() => import('@/app/(admin)/(dashboards)/dashboard-ai/index'));
 const AiSettingsPage = lazy(() => import('@/app/(admin)/(config)/ai-settings/index'));
+const AgentConfigPage = lazy(() => import('@/app/(admin)/(config)/agent/index'));
 
 /* ── Types ── */
 type Position = { ticket: number; symbol: string; type: string; volume: number; open_price: number; current_price: number; pnl: number; swap: number; sl: number; tp: number; magic: number; open_time: string; comment: string; };
@@ -60,7 +61,7 @@ const tfToSeconds = (tf: string): number => {
 const WS_URL = getWsUrl();
 
 /* ── Panel definitions ── */
-type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'journal' | 'notify' | 'risk' | 'multichart' | 'dashboard-ai' | 'ai';
+type PanelKey = 'chart' | 'mt5' | 'server' | 'security' | 'strategies' | 'trades' | 'setup' | 'history' | 'report' | 'journal' | 'notify' | 'risk' | 'multichart' | 'dashboard-ai' | 'ai' | 'agent';
 type NavItem = { key: PanelKey; icon: ReactNode; label: string; badge?: boolean };
 
 /* ── Grouped Navigation ── */
@@ -79,6 +80,13 @@ const NAV_GROUPS: NavGroup[] = [
     label: '',
     items: [
       { key: 'trades', icon: <LuChartCandlestick size={20} strokeWidth={1} />, label: 'ออเดอร์' },
+    ],
+  },
+  {
+    id: 'agent',
+    label: '',
+    items: [
+      { key: 'agent', icon: <LuShare2 size={20} strokeWidth={1} />, label: 'Agent Config' },
     ],
   },
 ];
@@ -120,6 +128,7 @@ const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticCompo
   multichart: MultiChartPage,
   'dashboard-ai': DashboardAiPage,
   ai: AiSettingsPage,
+  agent: AgentConfigPage,
 };
 
 /* ── Chart Colors (MT5 style) ── */
