@@ -43,11 +43,6 @@ const agentConfig = [
   { key: 'decision_maker', name: 'Decision Maker', icon: <LuBrainCircuit size={16} /> },
 ];
 
-const extendedAgentConfig = [
-  ...agentConfig,
-  { key: 'order_executor', name: 'Order Execution', icon: <LuZap size={16} /> },
-];
-
 export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   
@@ -144,7 +139,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
             <div className="absolute left-[20px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
 
             <div className="space-y-6 relative z-10 w-full">
-              {extendedAgentConfig.map((agent) => {
+              {agentConfig.map((agent) => {
                 let isDisabled = disabledAgents.includes(agent.key);
                 let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
                 
