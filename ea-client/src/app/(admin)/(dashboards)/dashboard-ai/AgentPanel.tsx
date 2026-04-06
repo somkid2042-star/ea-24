@@ -27,6 +27,7 @@ interface AgentPanelProps {
   onEditJob?: () => void;
   agentStatusM1?: AgentStatusMap;
   logsM1?: AiLog[];
+  finalResult?: { decision: string; confidence?: number; [key: string]: any };
 }
 
 const stripEmojis = (msg: string) => {
@@ -42,7 +43,7 @@ const agentConfig = [
   { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1 }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, finalResult }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   const logsM1Ref = useRef<HTMLDivElement>(null);
   const logsAIRef = useRef<HTMLDivElement>(null);
@@ -123,6 +124,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
             {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
                <span className="inline-flex items-center rounded-full bg-blue-50/80 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
                  {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
+               </span>
+            )}
+            {jobEnabled && finalResult?.decision && (
+               <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-black tracking-widest uppercase border ${
+                 finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
+                 finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
+                 finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                 'bg-gray-50 text-gray-600 border-gray-200'
+               }`}>
+                 {finalResult.decision}
                </span>
             )}
           </div>
