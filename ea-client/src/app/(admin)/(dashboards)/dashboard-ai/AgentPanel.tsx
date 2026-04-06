@@ -36,16 +36,16 @@ const stripEmojis = (msg: string) => {
 };
 
 const agentConfig = [
-  { key: 'news_hunter', name: 'News Hunter', icon: <LuGlobe size={14} /> },
-  { key: 'chart_analyst', name: 'Chart Analyst', icon: <LuActivity size={14} /> },
-  { key: 'calendar', name: 'Calendar Watcher', icon: <LuCalendar size={14} /> },
-  { key: 'risk_manager', name: 'Risk Manager', icon: <LuShield size={14} /> },
-  { key: 'decision_maker', name: 'Decision Maker', icon: <LuBrainCircuit size={14} /> },
+  { key: 'news_hunter', name: 'News Hunter', icon: <LuGlobe size={16} /> },
+  { key: 'chart_analyst', name: 'Chart Analyst', icon: <LuActivity size={16} /> },
+  { key: 'calendar', name: 'Calendar Watcher', icon: <LuCalendar size={16} /> },
+  { key: 'risk_manager', name: 'Risk Manager', icon: <LuShield size={16} /> },
+  { key: 'decision_maker', name: 'Decision Maker', icon: <LuBrainCircuit size={16} /> },
 ];
 
 const extendedAgentConfig = [
   ...agentConfig,
-  { key: 'order_executor', name: 'Order Execution', icon: <LuZap size={14} /> },
+  { key: 'order_executor', name: 'Order Execution', icon: <LuZap size={16} /> },
 ];
 
 export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
@@ -66,7 +66,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         const totalSecs = Math.floor(remaining / 1000);
         setTimeLeft({ m: Math.floor(totalSecs / 60), s: totalSecs % 60 });
       } else {
-        // No lastRun yet — use modulo sync
         const totalSec = interval * 60;
         const now = Math.floor(Date.now() / 1000);
         const rem = totalSec - (now % totalSec);
@@ -80,63 +79,71 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
   }, [lastRunTime, interval, jobEnabled, agentStatus.orchestrator]);
 
   return (
-    <div className={`w-full h-full relative flex flex-col transition-all duration-300 bg-white dark:bg-[#0A0D14] ${!jobEnabled ? 'opacity-70 grayscale-[0.5]' : ''}`}>
+    <div className={`w-full h-full relative flex flex-col transition-all duration-300 bg-white dark:bg-[#0A0D14] rounded-[24px] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden min-h-[500px] ${!jobEnabled ? 'opacity-70 grayscale-[0.3]' : ''}`}>
       {isClosed && (
         <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4 text-center">
-           <div className="bg-white/90 dark:bg-zinc-950/90 w-[180px] border border-red-500/20 rounded-xl p-3 shadow-md">
-             <LuMonitorOff className="size-6 text-red-500 mx-auto mb-1 opacity-80" />
-             <h3 className="text-[11px] font-bold text-default-900 dark:text-white uppercase tracking-wider">Market Closed</h3>
+           <div className="bg-white/90 dark:bg-zinc-950/90 w-[180px] border border-red-500/20 rounded-2xl p-4 shadow-xl">
+             <LuMonitorOff className="size-8 text-red-500 mx-auto mb-2 opacity-90" />
+             <h3 className="text-xs font-black text-default-900 dark:text-white uppercase tracking-widest">Market Closed</h3>
            </div>
         </div>
       )}
 
-      {/* Header Section (Compact) */}
-      <div className="card-header border-b border-default-200 dark:border-white/5 p-3 flex flex-col sm:flex-row sm:items-center justify-between gap-3 bg-white dark:bg-[#080B10] relative z-[60]">
+      {/* Header Section */}
+      <div className="border-b border-gray-100 dark:border-white/5 p-4 flex items-center justify-between bg-white dark:bg-[#0A0D14] z-40 relative">
         <div className="flex items-center gap-3">
-          <div className={`size-8 rounded-lg flex items-center justify-center border shrink-0 ${jobEnabled ? 'bg-primary/5 border-primary/20 text-primary' : 'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10 text-default-400'}`}>
-            {jobEnabled ? <LuZap className="size-4" /> : <LuMonitorOff className="size-4" />}
+          <div className="size-10 rounded-2xl bg-blue-50/80 dark:bg-blue-500/10 border-2 border-blue-100/50 dark:border-blue-500/20 text-blue-500 flex items-center justify-center shrink-0 shadow-sm">
+            {jobEnabled ? <LuZap className="size-5" /> : <LuMonitorOff className="size-5" />}
           </div>
-          <div className="flex flex-col">
-            <h2 className="text-[13px] font-black text-default-900 dark:text-gray-100 uppercase tracking-tight flex items-center gap-1.5">
+          <div className="flex items-center gap-2">
+            <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 font-mono tracking-tight">
               {symbol}
-              {jobEnabled && agentStatus.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-amber-500 animate-pulse"></span>}
-              {!jobEnabled && <span className="text-[9px] bg-default-200 dark:bg-white/10 px-1 py-0.5 rounded text-default-500 font-bold ml-1">PAUSED</span>}
-              {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
-                 <span className="inline-flex items-center gap-1 rounded-full bg-sky-100 dark:bg-sky-500/20 px-1.5 py-0.5 text-[9px] font-mono font-bold text-sky-700 dark:text-sky-400 ml-1">
-                   {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
-                 </span>
-              )}
             </h2>
+            {jobEnabled && agentStatus.orchestrator === 'running' && (
+              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
+                <span className="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
+                Running
+              </span>
+            )}
+            {!jobEnabled && (
+              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase border border-gray-200 dark:border-gray-700">PAUSED</span>
+            )}
+            {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
+               <span className="inline-flex items-center rounded-full bg-blue-50/80 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
+                 {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
+               </span>
+            )}
           </div>
         </div>
 
-        <div className="flex flex-wrap items-center gap-2">
+        <div className="flex items-center gap-2">
           {onEditJob && (
              <button
                onClick={() => onEditJob()}
-               className="p-1 text-default-400 hover:text-default-900 dark:hover:text-white transition-colors"
-               title="Edit Setup"
+               className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors mr-1"
+               title="Settings"
              >
-               <LuSettings className="size-3.5" />
+               <LuSettings className="size-5" />
              </button>
           )}
           {onToggleJob && (
              <button
                onClick={() => onToggleJob()}
-               className={`relative inline-flex h-4 w-7 items-center rounded-full transition-colors ml-1 ${jobEnabled ? 'bg-primary' : 'bg-default-300 dark:bg-default-700'}`}
+               className={`relative inline-flex h-[26px] w-[46px] items-center rounded-full transition-colors ${jobEnabled ? 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' : 'bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}`}
              >
-               <span className={`inline-block size-2.5 transform rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-4' : 'translate-x-1'}`} />
+               <span className={`inline-block size-5 transform rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-[22px] shadow-sm' : 'translate-x-[2px] shadow-sm'}`} />
              </button>
           )}
         </div>
       </div>
 
-      {/* Body Area (Ultra Minimal List) */}
-      <div className={`card-body p-2 bg-default-50/50 dark:bg-[#0A0D14] flex-1 overflow-y-auto transition-opacity duration-300 ${!jobEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        
-        <div className="flex flex-col mx-auto w-full relative">
-            <div className="absolute left-6 top-6 bottom-4 w-px bg-default-200 dark:bg-white/10 z-0"></div>
-            <div className="space-y-1 relative z-10">
+      {/* Timeline Body Area */}
+      <div className={`px-6 py-6 flex-1 overflow-y-auto ${!jobEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
+        <div className="relative">
+            {/* The Vertical Line Connecting Icons */}
+            <div className="absolute left-[20px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
+
+            <div className="space-y-6 relative z-10 w-full">
               {extendedAgentConfig.map((agent) => {
                 let isDisabled = disabledAgents.includes(agent.key);
                 let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
@@ -158,7 +165,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                 let latestAgentLog = agentLogs.length > 0 ? agentLogs[agentLogs.length - 1] : null;
 
                 if (agent.key === 'order_executor' && (!latestAgentLog || !latestAgentLog.timestamp)) {
-                    let msg = 'รอการประมวลผล';
+                    let msg = 'รอการประมวลผล (Standby)';
                     if (status === 'done' && finalResult && autoTrade) {
                         if (finalResult.final_decision === 'HOLD') {
                             msg = 'ไม่มีการออกออเดอร์ (HOLD)';
@@ -166,10 +173,21 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                             msg = `ส่งคำสั่งเรียบร้อย (${finalResult.final_decision})`;
                         }
                     } else if (status === 'done' && finalResult && !autoTrade) {
-                        msg = `ไม่ได้ส่งคำสั่งเนืองจากปิดการทำงานไว้`;
+                        msg = `ไม่ได้ส่งคำสั่งเนื่องจากปิดการทำงานไว้`;
                     }
                     latestAgentLog = { timestamp: Date.now(), symbol: '', type: 'log', agent: 'order_executor', message: msg };
                 }
+
+                // Color Themes Based on Status
+                const boxTheme = isDisabled ? 'bg-gray-50 dark:bg-[#131826] border-gray-100 dark:border-white/5 text-gray-400' 
+                               : isError ? 'bg-red-50 dark:bg-red-500/10 border-red-200 dark:border-red-500/20 text-red-500'
+                               : isActive ? 'bg-blue-50 dark:bg-blue-500/10 border-blue-200 dark:border-blue-500/30 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.2)]'
+                               : isDone ? 'bg-emerald-50/30 dark:bg-emerald-500/10 border-emerald-200/60 dark:border-emerald-500/20 text-emerald-600'
+                               : 'bg-white dark:bg-[#0A0D14] border-gray-200 dark:border-white/10 text-gray-400';
+                               
+                const logTextColor = isError ? 'text-red-500' 
+                                   : isDone ? 'text-emerald-500/90 dark:text-emerald-400' 
+                                   : 'text-gray-400 dark:text-gray-500';
 
                 return (
                   <div 
@@ -181,77 +199,65 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                              if (onToggleAgent) onToggleAgent(agent.key);
                          }
                      }}
-                     className={`flex flex-col py-1.5 px-2 rounded-lg cursor-pointer transition-colors ${
-                       isActive ? 'bg-white dark:bg-white/5 border border-primary/20 shadow-sm' : 'hover:bg-default-100/50 dark:hover:bg-white/5 border border-transparent'
-                     }`}
+                     className="flex items-start gap-5 cursor-pointer group"
                   >
-                    <div className="flex items-center gap-2">
-                      <div className="size-8 rounded-lg relative flex items-center justify-center shrink-0 bg-default-50 dark:bg-[#0A0D14]">
-                        <div className={`absolute inset-0 rounded-lg border transition-all ${
-                          isDisabled ? 'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10 opacity-50' :
-                          isActive ? 'bg-primary/5 border-primary/20' :
-                          isDone ? 'bg-emerald-500/5 border-emerald-500/20' :
-                          isError ? 'bg-red-500/5 border-red-500/20' :
-                          'bg-default-100 dark:bg-white/5 border-default-200 dark:border-white/10'
-                        }`} />
-                        <div className={`relative z-10 transition-all ${
-                          isDisabled ? 'text-default-400' :
-                          isActive ? 'text-primary' :
-                          isDone ? 'text-emerald-500' :
-                          isError ? 'text-red-500' :
-                          'text-default-400'
-                        }`}>
-                           {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
-                        </div>
-                      </div>
-
-                      <div className="flex-1 flex justify-between items-center min-w-0 ml-1">
-                         <div className="flex items-center gap-1.5">
-                           <span className={`font-semibold text-[11px] ${isDisabled ? 'text-default-400 line-through' : 'text-default-700 dark:text-gray-200'}`}>
-                              {agent.name}
-                           </span>
-                         </div>
-                         {!isDisabled && isActive && <span className="text-[9px] text-primary animate-pulse font-medium">Running...</span>}
-                      </div>
+                    {/* Icon Bubble */}
+                    <div className={`size-10 rounded-2xl flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${boxTheme}`}>
+                        {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
                     </div>
 
-                    {!isDisabled && latestAgentLog && (
-                       <div className="ml-10 mt-0.5 relative group/log z-20">
-                          <p className={`text-[10px] font-mono leading-tight truncate ${
-                            isError ? 'text-red-500' : isDone ? 'text-emerald-600 dark:text-emerald-400/80' : 'text-default-500 dark:text-gray-400'
-                          }`}>
-                            <span className="opacity-40 mr-1.5">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
-                            {stripEmojis(latestAgentLog.message)}
-                          </p>
-                          <div className="absolute top-full left-0 mt-1 shadow-xl bg-white dark:bg-zinc-900 border border-default-200 dark:border-white/10 text-default-800 dark:text-white p-2 rounded-lg text-[10px] whitespace-pre-wrap max-w-[250px] sm:max-w-[280px] z-[60] hidden group-hover/log:block pointer-events-none">
-                              {stripEmojis(latestAgentLog.message)}
-                          </div>
+                    {/* Text Area */}
+                    <div className="flex flex-col pt-0.5 flex-1 min-w-0">
+                       <div className="flex items-center gap-2">
+                         <span className={`font-bold text-[14px] font-mono tracking-tight ${isDisabled ? 'text-gray-400 line-through' : 'text-slate-700 dark:text-gray-200 group-hover:text-blue-600 transition-colors'}`}>
+                            {agent.name}
+                         </span>
+                         {!isDisabled && isActive && <span className="text-[10px] text-blue-500 animate-pulse font-bold bg-blue-50 px-2 py-0.5 rounded-md border border-blue-100">Running...</span>}
                        </div>
-                    )}
+
+                       {!isDisabled && latestAgentLog && (
+                          <div className="mt-[2px] relative">
+                             <p className={`text-[13px] font-mono leading-relaxed truncate ${logTextColor}`}>
+                               <span className="opacity-40 mr-1.5 font-bold">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
+                               {stripEmojis(latestAgentLog.message)}
+                             </p>
+                             {/* Tooltip for long messages */}
+                             <div className="absolute top-full left-0 mt-1 shadow-xl bg-white dark:bg-zinc-900 border border-gray-100 dark:border-white/10 text-gray-700 dark:text-gray-200 p-3 rounded-xl text-[12px] whitespace-pre-wrap w-full z-[60] hidden group-hover:block pointer-events-none">
+                                 {stripEmojis(latestAgentLog.message)}
+                             </div>
+                          </div>
+                       )}
+                    </div>
                   </div>
                 );
               })}
             </div>
         </div>
-        
-        {/* Separator */}
-        <div className="h-px bg-default-200 dark:bg-white/5 mx-2 my-2"></div>
-
-        {/* Final Operation Result */}
-        <div className={`mx-2 p-2 rounded-lg border transition-all ${
-            agentStatus.orchestrator === 'running' ? 'bg-blue-500/10 border-blue-500/30 shadow-sm' : 'bg-blue-50 dark:bg-blue-900/10 border-blue-200 dark:border-blue-800/30'
+      </div>
+      
+      {/* Final Operation Result */}
+      <div className="p-5 pb-6">
+        <div className={`p-4 rounded-[16px] border-[1.5px] transition-all ${
+            agentStatus.orchestrator === 'running' ? 'bg-blue-50/80 dark:bg-blue-500/5 border-blue-200 dark:border-blue-500/20 shadow-sm' : 'bg-blue-50/40 dark:bg-blue-900/10 border-blue-100 dark:border-blue-800/30'
         }`}>
-           <div className="flex items-center gap-2 mb-1">
-             <LuBot className={`size-4 ${agentStatus.orchestrator === 'running' ? 'text-blue-500 animate-pulse' : 'text-blue-400'}`} />
-             <span className="text-[11px] font-bold text-blue-800 dark:text-blue-300 uppercase tracking-wide">Operation Result</span>
+           <div className="flex items-center gap-2.5 mb-2">
+             <LuBot className={`size-5 ${agentStatus.orchestrator === 'running' ? 'text-blue-500 animate-pulse' : 'text-blue-500'}`} />
+             <span className="text-[13px] font-extrabold text-blue-700 dark:text-blue-300 uppercase tracking-widest leading-none mt-0.5">Operation Result</span>
            </div>
-           <div className="ml-6 text-[10px] font-mono text-blue-700 dark:text-blue-200/80">
+           <div className="ml-8 text-[13px] font-mono text-blue-600 dark:text-blue-300">
               {logs.length > 0 ? (
-                 <div className="flex gap-2">
-                   <span className="opacity-40 shrink-0">[{new Date(logs[logs.length-1].timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
-                   <span className={`break-words ${agentStatus.orchestrator === 'running' ? 'text-blue-500' : ''}`}>
-                     {stripEmojis(logs[logs.length - 1].message)}
-                   </span>
+                 <div className="flex flex-col gap-0.5">
+                   <div className="flex gap-2">
+                     <span className="opacity-40 shrink-0 font-bold">[{new Date(logs[logs.length-1].timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
+                     <span className={`break-words font-medium ${agentStatus.orchestrator === 'running' ? 'text-blue-600' : ''}`}>
+                       {stripEmojis(logs[logs.length - 1].message)}
+                     </span>
+                   </div>
+                   {finalResult && (
+                      <span className="text-blue-500/70 ml-[82px] text-[12px] font-bold">
+                        (confidence {Math.round(finalResult.confidence)}%)
+                      </span>
+                   )}
                  </div>
               ) : 'Standby...'}
            </div>
