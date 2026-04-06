@@ -1209,7 +1209,7 @@ async fn handle_ws_connection(
                                         let gemini_model = db.get_config("gemini_model").await.unwrap_or_default();
                                         let tavily_key = db.get_config("tavily_api_key").await.unwrap_or_default();
                                         
-                                        if !gemini_key.is_empty() && !tavily_key.is_empty() {
+                                        if !gemini_key.is_empty() {
                                             let global_tx = tx.clone();
                                             let global_state = global_ai_data.clone();
                                             let db_clone = db.clone();
@@ -1251,7 +1251,21 @@ async fn handle_ws_connection(
                                                 info!("🤖 [UI] Manual fetch complete and broadcasted.");
                                             });
                                         } else {
-                                            info!("🤖 [UI] Cannot force fetch: missing API keys.");
+                                            info!("🤖 [UI] Cannot force fetch: missing Gemini API keys.");
+                                            let msg = serde_json::json!({
+                                                "type": "global_ai_data",
+                                                "data": {
+                                                    "news": {
+                                                        "sentiment": "NEUTRAL",
+                                                        "summary": "ไม่สามารถวิเคราะห์ข่าวได้ กรุณาเพิ่มที่อยู่ API Key สำหรับ Gemini",
+                                                        "headlines": [],
+                                                        "source_count": 0
+                                                    },
+                                                    "calendar": null,
+                                                    "last_updated": chrono::Utc::now().timestamp()
+                                                }
+                                            }).to_string();
+                                            let _ = tx.send(msg); // Send directly on normal broadcast channel
                                         }
                                     }
                                     _ => {}
