@@ -268,14 +268,14 @@ const DashboardAi = () => {
 
                {/* Setup Settings Block embedded at the top */}
                {job.is_draft && (
-                   <div className="p-4 border-b border-default-200 dark:border-white/5 bg-default-50 dark:bg-[#131826]/30">
-                      <h3 className="text-[10px] font-bold text-gray-400 flex items-center gap-1.5 mb-3 uppercase tracking-widest">
-                         <LuBot className="size-3 text-blue-500" />
-                         Setup Configuration
+                   <div className="p-5 border-b border-default-200 dark:border-white/5 bg-gradient-to-b from-default-50 to-white dark:from-[#131826]/80 dark:to-[#0B101E]">
+                      <h3 className="text-xs font-black text-default-700 dark:text-gray-300 flex items-center gap-2 mb-4 uppercase tracking-widest border-b border-default-200/50 dark:border-white/5 pb-3">
+                         <LuBot className="size-4 text-blue-500" />
+                         Trade Parameters
                       </h3>
-                      <div className="grid grid-cols-2 gap-2">
-                          <div className="flex flex-col gap-1">
-                              <label className="text-[9px] font-bold text-gray-500 uppercase">Symbol</label>
+                      <div className="grid grid-cols-2 gap-3 mb-5">
+                          <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Symbol</label>
                               <CustomSelect
                                   value={job.symbol}
                                   options={trackedSymbolOptions}
@@ -284,12 +284,12 @@ const DashboardAi = () => {
                                   newJobs[idx].symbol = val;
                                   saveJobsToDb(newJobs);
                                   }}
-                                  className="w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-[10px] font-semibold text-default-800 dark:text-gray-200 focus:outline-none shadow-inner"
+                                  className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 text-[11px] font-bold text-default-800 dark:text-gray-200 focus:outline-none shadow-sm transition-colors"
                                   minWidth="100%"
                               />
                           </div>
-                          <div className="flex flex-col gap-1">
-                              <label className="text-[9px] font-bold text-gray-500 uppercase">Strategy</label>
+                          <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Strategy</label>
                               <CustomSelect
                                   value={job.ai_mode || 'eval_10_strategies'}
                                   options={[{ label: '10 AI Strategies (วิเคราะห์กลยุทธ์)', value: 'eval_10_strategies' }, { label: 'Deep Data (AI ตัดสินใจเอง 100%)', value: 'deep_data' }]}
@@ -298,12 +298,12 @@ const DashboardAi = () => {
                                   newJobs[idx].ai_mode = val;
                                   saveJobsToDb(newJobs);
                                   }}
-                                  className="w-full flex items-center justify-between gap-1 px-2.5 py-1.5 rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-[10px] font-semibold text-default-800 dark:text-gray-200 focus:outline-none shadow-inner"
+                                  className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 text-[11px] font-bold text-default-800 dark:text-gray-200 focus:outline-none shadow-sm transition-colors"
                                   minWidth="100%"
                               />
                           </div>
-                          <div className="flex flex-col gap-1">
-                              <label className="text-[9px] font-bold text-gray-500 uppercase">Lot Size</label>
+                          <div className="flex flex-col gap-1.5">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Lot Size</label>
                               <input
                                   type="number"
                                   min="0.01" step="0.01"
@@ -313,21 +313,21 @@ const DashboardAi = () => {
                                   newJobs[idx].lot_size = parseFloat(e.target.value) || 0.01;
                                   saveJobsToDb(newJobs);
                                   }}
-                                  className="w-full px-2.5 py-1.5 text-[10px] font-semibold rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-default-800 dark:text-gray-200 focus:border-blue-500/50 outline-none transition-all shadow-inner"
+                                  className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 focus:border-blue-500 outline-none transition-all shadow-sm"
                               />
                           </div>
-                          <div className="flex flex-col gap-1 justify-center">
-                              <label className="text-[9px] font-bold text-gray-500 uppercase mb-1">Auto-Execute Orders</label>
+                          <div className="flex flex-col gap-1.5 justify-center">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Auto-Execute</label>
                               <button onClick={() => {
                                   const newJobs = [...autoPilotJobs];
                                   newJobs[idx].auto_trade = !newJobs[idx].auto_trade;
                                   saveJobsToDb(newJobs);
-                              }} className={`relative inline-flex h-5 w-10 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors ${job.auto_trade ? 'bg-emerald-500/20 shadow-[0_0_10px_rgba(16,185,129,0.2)]' : 'bg-gray-800'}`}>
-                                  <span className={`pointer-events-none inline-block h-3.5 w-3.5 transform rounded-full shadow ring-0 transition duration-200 ease-in-out ${job.auto_trade ? 'translate-x-2.5 bg-emerald-500' : '-translate-x-2.5 bg-gray-400'}`} />
+                              }} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors ${job.auto_trade ? 'bg-emerald-500 shadow-[0_0_15px_rgba(16,185,129,0.3)]' : 'bg-gray-200 dark:bg-gray-800'}`}>
+                                  <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-md ring-0 transition duration-200 ease-in-out ${job.auto_trade ? 'translate-x-2.5 bg-white' : '-translate-x-2.5 bg-gray-400 dark:bg-gray-500'}`} />
                               </button>
                           </div>
-                          <div className="col-span-2 flex flex-col gap-1">
-                              <label className="text-[9px] font-bold text-gray-500 uppercase"><LuClock className="inline size-2.5 mr-0.5" />Scan Every (min)</label>
+                          <div className="col-span-2 flex flex-col gap-1.5 mt-1">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest"><LuClock className="inline size-3 mr-1" />Scan Every (min)</label>
                               <input
                                   type="number"
                                   min="1" max="1440" step="1"
@@ -337,9 +337,45 @@ const DashboardAi = () => {
                                   newJobs[idx].interval = parseInt(e.target.value) || 5;
                                   saveJobsToDb(newJobs);
                                   }}
-                                  className="w-full px-2.5 py-1.5 text-[10px] font-semibold rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-default-300 dark:hover:border-white/10 text-default-800 dark:text-gray-200 focus:border-blue-500/50 outline-none transition-all shadow-inner"
+                                  className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 focus:border-blue-500 outline-none transition-all shadow-sm"
                               />
-                              <p className="text-[8px] text-gray-600">Bot จะวิเคราะห์ใหม่ทุก {job.interval} นาที</p>
+                          </div>
+                      </div>
+
+                      {/* AI Context Feeds Checkboxes/Badges */}
+                      <div className="mt-6 pt-4 border-t border-default-200 dark:border-white/5">
+                          <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
+                              <LuBrainCircuit className="size-3 text-purple-500" /> AI Context Feeds 
+                              <span className="text-[8px] px-1.5 py-0.5 rounded bg-blue-500/10 text-blue-600 dark:text-blue-400 font-bold ml-auto">LIVE</span>
+                          </h4>
+                          <div className="flex flex-col gap-2.5">
+                              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-gradient-to-r from-emerald-500/10 to-transparent border border-emerald-500/20 text-emerald-600 dark:text-emerald-400">
+                                  <div className="size-5 rounded-full bg-emerald-500/20 flex items-center justify-center shrink-0">
+                                      <LuCheck className="size-3" />
+                                  </div>
+                                  <div className="flex-1">
+                                      <p className="text-[11px] font-black tracking-wide">Algorithmic Extractor</p>
+                                      <p className="text-[9px] font-semibold opacity-80 mt-0.5">RSI, EMA (9/21/50), Bollinger Bands</p>
+                                  </div>
+                              </div>
+                              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-gradient-to-r from-blue-500/10 to-transparent border border-blue-500/20 text-blue-600 dark:text-blue-400">
+                                  <div className="size-5 rounded-full bg-blue-500/20 flex items-center justify-center shrink-0">
+                                      <LuCheck className="size-3" />
+                                  </div>
+                                  <div className="flex-1">
+                                      <p className="text-[11px] font-black tracking-wide">SMC / ICT Data</p>
+                                      <p className="text-[9px] font-semibold opacity-80 mt-0.5">Order Blocks, FVG (Fair Value Gaps)</p>
+                                  </div>
+                              </div>
+                              <div className="flex items-center gap-2.5 p-2.5 rounded-xl bg-gradient-to-r from-purple-500/10 to-transparent border border-purple-500/20 text-purple-600 dark:text-purple-400">
+                                  <div className="size-5 rounded-full bg-purple-500/20 flex items-center justify-center shrink-0">
+                                      <LuCheck className="size-3" />
+                                  </div>
+                                  <div className="flex-1">
+                                      <p className="text-[11px] font-black tracking-wide">Volume Profile Proxy</p>
+                                      <p className="text-[9px] font-semibold opacity-80 mt-0.5">High Volume Nodes (HVN), POC tracking</p>
+                                  </div>
+                              </div>
                           </div>
                       </div>
                    </div>
@@ -347,20 +383,20 @@ const DashboardAi = () => {
 
                {/* Agent Panel (Monitoring) */}
                {job.is_draft ? (
-                  <div className="p-4 bg-default-50/50 dark:bg-[#0A0D14] flex-1 flex flex-col justify-center items-center">
-                      <LuBot className="size-8 text-default-200 dark:text-white/5 mb-3" />
+                  <div className="p-5 bg-default-50/50 dark:bg-[#0A0D14] flex-1 flex flex-col justify-center items-center">
                       <button 
                          onClick={() => {
                             const newJobs = [...autoPilotJobs];
                             newJobs[idx].is_draft = false;
                             saveJobsToDb(newJobs);
                          }}
-                         className="w-full max-w-[200px] flex items-center justify-center gap-2 bg-blue-600 hover:bg-blue-500 text-white text-xs font-bold py-3 rounded-xl transition-all shadow-lg hover:shadow-blue-500/20 uppercase tracking-wide"
+                         className="w-full max-w-[220px] flex items-center justify-center gap-2 bg-gradient-to-r from-blue-600 to-indigo-600 hover:from-blue-500 hover:to-indigo-500 text-white text-[11px] font-black py-3.5 rounded-xl transition-all shadow-[0_10px_20px_rgba(37,99,235,0.2)] hover:shadow-[0_10px_25px_rgba(37,99,235,0.4)] hover:-translate-y-0.5 uppercase tracking-widest relative overflow-hidden group"
                       >
-                         <LuCheck className="size-4" /> Save Setup
+                         <div className="absolute inset-0 bg-white/20 translate-y-full group-hover:translate-y-0 transition-transform duration-300" />
+                         <LuCheck className="size-4 shrink-0 transition-transform group-hover:scale-110" /> Deploy AI Agent
                       </button>
-                      <span className="text-[10px] text-gray-600 mt-3 font-semibold text-center leading-relaxed">
-                         Configure your setup above<br/>and click Save to activate Auto-Pilot.
+                      <span className="text-[9px] text-gray-500 mt-4 font-semibold text-center leading-relaxed">
+                         Configure your parameters above<br/>and click Deploy to activate the Agent.
                       </span>
                   </div>
                ) : (
@@ -416,12 +452,15 @@ const DashboardAi = () => {
         {/* Add Setup Button / Placeholder */}
         <button 
              onClick={() => saveJobsToDb([...autoPilotJobs, { symbol: trackedSymbols.includes('ETHUSD') ? 'ETHUSD' : (trackedSymbols[0] || 'ETHUSD'), interval: 15, auto_trade: false, lot_size: 0.01, ai_mode: 'eval_10_strategies', is_draft: true }])}
-             className="w-full min-h-[250px] border-[1.5px] border-dashed border-default-300 dark:border-[#1E293B] rounded-3xl flex flex-col items-center justify-center gap-4 text-default-400 dark:text-gray-500 hover:text-default-600 dark:hover:text-gray-300 hover:border-default-400 dark:hover:border-[#334155] hover:bg-default-50 dark:hover:bg-[#0F172A] transition-all group"
+             className="w-full min-h-[300px] border-[2px] border-dashed border-default-300 dark:border-white/10 rounded-3xl flex flex-col items-center justify-center gap-4 text-default-400 dark:text-gray-500 hover:text-blue-500 dark:hover:text-blue-400 hover:border-blue-500 hover:bg-blue-50 dark:hover:bg-blue-900/10 transition-all group shadow-sm hover:shadow-xl hover:shadow-blue-500/10"
         >
-             <div className="size-11 rounded-full bg-transparent border-[1.5px] border-default-300 dark:border-[#1E293B] flex items-center justify-center group-hover:bg-default-200 dark:group-hover:bg-[#1E293B] transition-colors">
-                 <LuPlus className="size-4" />
+             <div className="size-16 rounded-2xl bg-white dark:bg-[#0B101E] border-[2px] border-default-300 dark:border-white/10 flex items-center justify-center group-hover:bg-blue-500 group-hover:border-blue-500 group-hover:text-white transition-all shadow-sm">
+                 <LuPlus className="size-7 transition-transform group-hover:scale-125" />
              </div>
-             <span className="text-[10px] font-bold tracking-[0.2em] uppercase">New Trade Setup</span>
+             <div className="flex flex-col items-center">
+                 <span className="text-[12px] font-black tracking-widest uppercase mb-1">New AI Agent Setup</span>
+                 <span className="text-[10px] opacity-70">Initialize a new algorithmic trading bot</span>
+             </div>
         </button>
       </div>
 
