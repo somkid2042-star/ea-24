@@ -376,6 +376,9 @@ const TradingDashboard = () => {
   const [lastPriceUpdateTime, setLastPriceUpdateTime] = useState<Record<string, number>>({});
   const [, setTickFlip] = useState(0);
   const [strategySignals, setStrategySignals] = useState<StrategySignalEntry[]>([]);
+  const [globalNews, setGlobalNews] = useState<any>(null);
+  const [globalCalendar, setGlobalCalendar] = useState<any>(null);
+  const [globalAiUpdated, setGlobalAiUpdated] = useState<number>(0);
 
   // ── Market close detection ──
   // Crypto symbols: ตลาดเปิด 24/7 ไม่มีวันปิด
@@ -594,6 +597,7 @@ const TradingDashboard = () => {
       setTimeout(() => requestHistory(ws), 500);
       // Request strategy signals history
       setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ action: 'get_signals', limit: 50 })); }, 800);
+      setTimeout(() => { if (ws.readyState === 1) ws.send(JSON.stringify({ action: 'get_global_ai_data' })); }, 1000);
     };
     ws.onerror = () => { /* suppress — onclose handles reconnect */ };
     ws.onclose = (evt) => {
@@ -730,7 +734,6 @@ const TradingDashboard = () => {
             });
           }
         }
-        // Handle strategy_signals history (bulk from get_signals)
         if (data.type === 'strategy_signals') {
           if (data.signals) {
             setStrategySignals(data.signals.map((s: any) => ({
@@ -739,6 +742,12 @@ const TradingDashboard = () => {
               timestamp: s.timestamp,
             })));
           }
+        }
+        
+        if (data.type === 'global_ai_data' && data.data) {
+          if (data.data.news) setGlobalNews(data.data.news);
+          if (data.data.calendar) setGlobalCalendar(data.data.calendar);
+          if (data.data.last_updated) setGlobalAiUpdated(data.data.last_updated);
         }
       } catch { /* */ }
     };
@@ -1102,6 +1111,73 @@ const TradingDashboard = () => {
                       <span>Bid: <span className="text-danger">{bid.toFixed(digits)}</span></span>
                       <span>Ask: <span className="text-success">{ask.toFixed(digits)}</span></span>
                       <span>Spread: {spread.toFixed(1)}</span>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI News Card */}
+              <div className="card">
+                <div className="card-header border-b border-default-200 dark:border-white/5 pb-2">
+                  <h6 className="card-title text-sm flex items-center gap-1.5 text-blue-500">
+                    <LuBot size={14} /> Global AI News
+                  </h6>
+                  {globalAiUpdated > 0 && <span className="text-[9px] text-default-400">Updated: {new Date(globalAiUpdated * 1000).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>}
+                </div>
+                <div className="card-body overflow-y-auto max-h-[200px] custom-scrollbar" style={{ padding: '8px 16px' }}>
+                  {!globalNews ? (
+                    <div className="text-center py-4 text-xs text-default-400 animate-pulse">Loading AI News...</div>
+                  ) : (
+                    <div className="space-y-3">
+                      <div className="flex justify-between items-center bg-default-50 dark:bg-white/5 p-2 rounded-xl">
+                        <span className="text-[10px] font-semibold text-default-600 dark:text-gray-300">Macro Sentiment (USD)</span>
+                        <span className={`text-[10px] font-bold px-2 py-0.5 rounded-full ${globalNews.sentiment === 'BULLISH' ? 'bg-success/10 text-success' : globalNews.sentiment === 'BEARISH' ? 'bg-danger/10 text-danger' : 'bg-default-200/50 text-default-600 dark:text-white/80'}`}>
+                          {globalNews.sentiment}
+                        </span>
+                      </div>
+                      <p className="text-[10px] text-default-600 dark:text-gray-300 leading-relaxed font-medium">{globalNews.summary}</p>
+                      <div className="pt-2 border-t border-default-100 dark:border-white/5 space-y-1">
+                        {(globalNews.headlines || []).slice(0, 3).map((h: string, i: number) => (
+                           <div key={i} className="text-[9px] text-default-500 truncate flex gap-1 items-center"><div className="size-1 bg-blue-400 rounded-full shrink-0"/>{h}</div>
+                        ))}
+                      </div>
+                    </div>
+                  )}
+                </div>
+              </div>
+
+              {/* AI Economic Calendar Card */}
+              <div className="card">
+                <div className="card-header border-b border-default-200 dark:border-white/5 pb-2">
+                  <h6 className="card-title text-sm flex items-center gap-1.5 text-amber-500">
+                    <LuCalendarHeart size={14} /> Economic Calendar
+                  </h6>
+                </div>
+                <div className="card-body overflow-y-auto max-h-[200px] custom-scrollbar" style={{ padding: '8px 16px' }}>
+                  {!globalCalendar ? (
+                    <div className="text-center py-4 text-xs text-default-400 animate-pulse">Loading Calendar...</div>
+                  ) : (
+                    <div className="space-y-3">
+                      {globalCalendar.high_impact_soon && (
+                        <div className="bg-danger/10 text-danger text-[10px] p-2 rounded-xl flex items-center gap-1.5 shadow-inner font-bold">
+                          <LuShieldAlert size={14}/> High Impact Event Today!
+                        </div>
+                      )}
+                      {(globalCalendar.events || []).slice(0, 5).map((ev: any, i: number) => {
+                        const evtTimeMs = new Date(ev.date).getTime();
+                        const isPast = evtTimeMs < Date.now();
+                        return (
+                          <div key={i} className={`flex flex-col gap-1 pb-2 mb-2 border-b border-default-50 border-white/5 last:border-0 last:mb-0 last:pb-0 ${isPast ? 'opacity-50 grayscale' : ''}`}>
+                            <div className="flex justify-between items-start">
+                              <span className="text-[10px] font-bold text-default-700 dark:text-white/90 leading-tight flex-1">{ev.title}</span>
+                              <span className="text-[9px] font-mono text-default-400 ml-2 whitespace-nowrap shadow-sm bg-default-100 dark:bg-white/5 px-1 py-0.5 rounded">{new Date(ev.date).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit'})}</span>
+                            </div>
+                            <div className="flex gap-2 text-[9px] text-default-500">
+                               <span className="flex items-center gap-0.5 border border-default-200 dark:border-white/10 px-1 py-0.5 rounded-sm">Curr: <strong className={ev.impact === 'High' ? 'text-danger inline' : 'text-warning inline'}>{ev.country}</strong></span>
+                               <span className="flex items-center gap-0.5 border border-default-200 dark:border-white/10 px-1 py-0.5 rounded-sm">Impact: <strong className={ev.impact === 'High' ? 'text-danger inline' : 'text-warning inline'}>{ev.impact}</strong></span>
+                            </div>
+                          </div>
+                      )})}
                     </div>
                   )}
                 </div>

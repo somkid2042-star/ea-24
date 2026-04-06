@@ -12,6 +12,8 @@ use std::path::{Path, PathBuf};
 use std::sync::atomic::{AtomicUsize, Ordering};
 use std::sync::Arc;
 
+use crate::ai_engine::{NewsResult, CalendarResult};
+
 use futures_util::{SinkExt, StreamExt};
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
@@ -106,6 +108,13 @@ struct EaState {
     balance: f64,
     equity: f64,
     open_positions: usize,
+}
+
+#[derive(Debug, Clone, Serialize)]
+pub struct GlobalAiData {
+    pub news: Option<NewsResult>,
+    pub calendar: Option<CalendarResult>,
+    pub last_updated: i64,
 }
 
 // ──────────────────────────────────────────────
@@ -255,6 +264,12 @@ async fn run_server() {
         balance: 0.0,
         equity: 0.0,
         open_positions: 0,
+    }));
+
+    let global_ai_data = Arc::new(RwLock::new(GlobalAiData {
+        news: None,
+        calendar: None,
+        last_updated: 0,
     }));
 
     let (tx, _rx) = broadcast::channel::<String>(100);
@@ -422,6 +437,52 @@ async fn run_server() {
         }
     });
 
+    // Spawn Global AI loop (News & Calendar every 1 hour)
+    let global_ai_db = database.clone();
+    let global_ai_tx = tx.clone();
+    let global_ai_state = global_ai_data.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(15)).await; // delayed startup
+        loop {
+            let gemini_key = global_ai_db.get_config("gemini_api_key").await.unwrap_or_default();
+            let gemini_model = global_ai_db.get_config("gemini_model").await.unwrap_or_default();
+            let tavily_key = global_ai_db.get_config("tavily_api_key").await.unwrap_or_default();
+
+            if !gemini_key.is_empty() && !tavily_key.is_empty() {
+                info!("🤖 [Global-AI] Fetching News and Economic Calendar for global Watchlist...");
+                let sym = "USD"; // Global macro indicator
+                
+                // Fetch in parallel
+                let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_ai_tx);
+                let cal_fut = ai_engine::run_calendar_watcher(sym, &global_ai_tx);
+                
+                let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                
+                let update_ts = chrono::Utc::now().timestamp();
+                {
+                    let mut st = global_ai_state.write().await;
+                    st.news = Some(news_result.clone());
+                    st.calendar = Some(cal_result.clone());
+                    st.last_updated = update_ts;
+                }
+                
+                let msg = serde_json::json!({
+                    "type": "global_ai_data",
+                    "data": {
+                        "news": news_result,
+                        "calendar": cal_result,
+                        "last_updated": update_ts
+                    }
+                }).to_string();
+                let _ = global_ai_tx.send(msg);
+                info!("🤖 [Global-AI] Successfully updated Global News and Calendar. Next fetch in 1 hour.");
+            }
+            
+            // Sleep for 1 hour (3600 seconds)
+            tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
+        }
+    });
+
     // Spawn sysinfo polling loop — track only THIS process
     let sys_db = database.clone();
     tokio::spawn(async move {
@@ -478,6 +539,7 @@ async fn run_server() {
             ea_state.clone(),
             database.clone(),
             server_start,
+            global_ai_data.clone(),
         ));
     }
 }
@@ -863,6 +925,7 @@ async fn handle_ws_connection(
     ea_state: Arc<RwLock<EaState>>,
     db: Arc<db::Database>,
     server_start: std::time::Instant,
+    global_ai_data: Arc<RwLock<GlobalAiData>>,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
 
@@ -1074,6 +1137,21 @@ async fn handle_ws_connection(
                                         tokio::time::sleep(std::time::Duration::from_millis(500)).await;
                                         info!("👋 Old server exiting...");
                                         std::process::exit(0);
+                                    }
+                                    "get_global_ai_data" => {
+                                        info!("🤖 [UI] Requesting global AI data...");
+                                        let data = global_ai_data.read().await;
+                                        if data.news.is_some() || data.calendar.is_some() {
+                                            let resp = serde_json::json!({
+                                                "type": "global_ai_data",
+                                                "data": {
+                                                    "news": data.news,
+                                                    "calendar": data.calendar,
+                                                    "last_updated": data.last_updated
+                                                }
+                                            }).to_string();
+                                            let _ = write.send(Message::Text(resp)).await;
+                                        }
                                     }
                                     _ => {}
                                 }
