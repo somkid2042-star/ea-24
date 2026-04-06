@@ -1235,6 +1235,52 @@ pub async fn run_all_agents_multi_tf(
 
         if ai_mode == "eval_10_strategies" {
             let ind = crate::strategy::compute_indicators(candles);
+            
+            // Calculate Volume Profile Proxy (HVN)
+            let mut hvn = price;
+            if !candles.is_empty() {
+                let max_high = candles.iter().map(|c| c.high).fold(f64::MIN, f64::max);
+                let min_low = candles.iter().map(|c| c.low).fold(f64::MAX, f64::min);
+                let range = max_high - min_low;
+                if range > 0.0 {
+                    let num_bins = 10;
+                    let bin_size = range / num_bins as f64;
+                    let mut bins = vec![0; num_bins];
+                    for c in candles {
+                        let lower_bin = ((c.low - min_low) / bin_size).floor() as usize;
+                        let upper_bin = ((c.high - min_low) / bin_size).floor() as usize;
+                        for b in lower_bin..=upper_bin.min(num_bins - 1) {
+                            bins[b] += 1;
+                        }
+                    }
+                    let mut best_bin = 0;
+                    let mut max_bincount = 0;
+                    for (i, &count) in bins.iter().enumerate() {
+                        if count > max_bincount {
+                            max_bincount = count;
+                            best_bin = i;
+                        }
+                    }
+                    hvn = min_low + (best_bin as f64 + 0.5) * bin_size;
+                }
+            }
+            
+            let extracted = format!(
+                "\n--- ALGORITHMIC FEATURES EXTRACTED ---\n\
+                RSI (14): {:.1}\n\
+                EMA (9/21/50): {:.5} / {:.5} / {:.5}\n\
+                Bollinger Bands: Upper={:.5}, Mid={:.5}, Lower={:.5}\n\
+                Smart Money (SMC): Bullish_FVG=[{}], Bearish_FVG=[{}]\n\
+                Order Blocks: Bullish={:.5}, Bearish={:.5}\n\
+                Volume Profile Proxy: Point of Control (HVN) = {:.5}\n",
+                ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
+                ind.bb_upper, ind.bb_middle, ind.bb_lower,
+                ind.fair_value_gap_bull, ind.fair_value_gap_bear,
+                ind.order_block_bull, ind.order_block_bear,
+                hvn
+            );
+            base_summary.push_str(&extracted);
+
             let mut strat_results = Vec::new();
             for &strat in crate::strategy::ALL_STRATEGIES {
                 let (signal, reason) = crate::strategy::evaluate_strategy(strat, &ind);

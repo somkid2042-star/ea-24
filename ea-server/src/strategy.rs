@@ -79,10 +79,9 @@ pub enum Signal {
 
 /// All strategy names
 pub const ALL_STRATEGIES: &[&str] = &[
-    "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert", "Grid Master",
-    "SMC", "ICT", "Fibonacci", "Momentum Surge", "Session Sniper",
-    "Engulfing Driver", "Bollinger Squeeze", "Pullback Sniper",
-    "Reversal Catcher", "Golden Cross", "Fractal Breakout"
+    "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
+    "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
+    "Reversal Catcher", "Fractal Breakout"
 ];
 
 /// Per-symbol cooldown tracker
@@ -631,10 +630,9 @@ fn eval_fractal_breakout(ind: &Indicators) -> (Signal, String) {
 fn eval_auto(ind: &Indicators) -> (Signal, String) {
     // Priority order — more sophisticated strategies first (Grid Master is ignored in Auto)
     let priority: &[&str] = &[
-        "SMC", "ICT", "Fibonacci", "Momentum Surge", "Session Sniper",
-        "Fractal Breakout", "Bollinger Squeeze", "Engulfing Driver", 
-        "Pullback Sniper", "Reversal Catcher", "Golden Cross",
-        "Scalper Pro", "Trend Rider", "Breakout Hunter", "Mean Revert",
+        "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
+        "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
+        "Reversal Catcher", "Fractal Breakout"
     ];
     for &strat in priority {
         let (signal, reason) = evaluate_strategy(strat, ind);
