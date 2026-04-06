@@ -10,7 +10,7 @@ import { openUrl } from '@tauri-apps/plugin-opener';
 import { invoke } from '@tauri-apps/api/core';
 const WS_URL = getWsUrl();
 
-type TabKey = 'news' | 'calendar' | 'sentiment' | 'risk' | 'correlation' | 'report' | 'key';
+type TabKey = 'news' | 'calendar' | 'risk' | 'correlation' | 'report' | 'key';
 
 interface AiModel {
   id: string;
@@ -32,8 +32,7 @@ const AgentSettings = () => {
   const [calendarImpact, setCalendarImpact] = useState<string>('High');
 
   // States: Sentiment
-  const [sentimentEnabled, setSentimentEnabled] = useState<boolean>(false);
-  const [sentimentIndexes, setSentimentIndexes] = useState<string>('VIX, FearGreed');
+
 
   // States: Risk
   const [maxDailyDrawdown, setMaxDailyDrawdown] = useState('100');
@@ -102,8 +101,7 @@ const AgentSettings = () => {
           if (c.agent_calendar_enabled !== undefined) setCalendarEnabled(c.agent_calendar_enabled === 'true');
           if (c.agent_calendar_impact !== undefined) setCalendarImpact(c.agent_calendar_impact);
           // Sentiment
-          if (c.agent_sentiment_enabled !== undefined) setSentimentEnabled(c.agent_sentiment_enabled === 'true');
-          if (c.agent_sentiment_indexes !== undefined) setSentimentIndexes(c.agent_sentiment_indexes);
+
           // Risk
           if (c.max_daily_drawdown) setMaxDailyDrawdown(c.max_daily_drawdown);
           if (c.max_total_lot) setMaxTotalLot(c.max_total_lot);
@@ -207,8 +205,7 @@ const AgentSettings = () => {
     saveConfig('agent_news_keyword', newsKeyword);
     saveConfig('agent_calendar_enabled', calendarEnabled ? 'true' : 'false');
     saveConfig('agent_calendar_impact', calendarImpact);
-    saveConfig('agent_sentiment_enabled', sentimentEnabled ? 'true' : 'false');
-    saveConfig('agent_sentiment_indexes', sentimentIndexes);
+
     saveConfig('max_daily_drawdown', maxDailyDrawdown);
     saveConfig('max_total_lot', maxTotalLot);
     saveConfig('max_positions', maxPositions);
@@ -291,7 +288,6 @@ const AgentSettings = () => {
   const TABS = [
     { key: 'news', icon: <LuNewspaper size={18} />, label: 'News AI' },
     { key: 'calendar', icon: <LuCalendar size={18} />, label: 'Calendar' },
-    { key: 'sentiment', icon: <LuActivity size={18} />, label: 'Sentiment' },
     { key: 'risk', icon: <LuShieldAlert size={18} />, label: 'Risk Guard' },
     { key: 'correlation', icon: <LuGitMerge size={18} />, label: 'Correlation' },
     { key: 'report', icon: <LuFileText size={18} />, label: 'Daily Report' },
@@ -651,41 +647,6 @@ const AgentSettings = () => {
             {renderSaveAction()}
           </section>)}
 
-        {/* Sentiment  Tab */}
-          {activeTab === 'sentiment' && (<section id={`section-sentiment`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
-            <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
-              <LuActivity className="text-orange-500 dark:text-orange-400" /> Market Sentiment Analyzer
-            </h2>
-            <p className="text-sm text-default-500 dark:text-gray-400 mb-6">
-              วิเคราะห์ความกลัว ความโลภ และดัชนีสำคัญ (VIX, DXY) เพื่อหาดูว่าตลาดปัจจุบันเป็น Risk-On หรือ Risk-Off
-            </p>
-
-            <div className="space-y-6 max-w-xl">
-              <div className="flex items-center justify-between p-4 bg-default-50 dark:bg-gray-900/50 rounded-xl border border-default-200 dark:border-gray-700/50">
-                <div>
-                  <div className="text-default-800 dark:text-gray-200 font-medium">วิเคราะห์ Sentiment รวม</div>
-                  <div className="text-xs text-default-500 dark:text-gray-400 mt-1">ให้ Agent ตัดสินรอบตลาด ก่อนส่งให้แต่ละคู่เงินปรับ Lot</div>
-                </div>
-                <label className="relative inline-flex items-center cursor-pointer">
-                  <input type="checkbox" className="sr-only peer" checked={sentimentEnabled} onChange={(e) => setSentimentEnabled(e.target.checked)} />
-                  <div className={`w-11 h-6 rounded-full peer-focus:outline-none transition-colors ${sentimentEnabled ? 'bg-blue-500' : 'bg-default-300 dark:bg-gray-600'} peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
-                </label>
-              </div>
-
-              <div className="space-y-2">
-                <label className="text-sm font-medium text-default-700 dark:text-gray-300">ดัชนีชี้วัดที่ต้องการตรวจสอบ</label>
-                <input
-                  type="text"
-                  value={sentimentIndexes}
-                  onChange={(e) => setSentimentIndexes(e.target.value)}
-                  disabled={!sentimentEnabled}
-                  className="w-full bg-white dark:bg-gray-900 border border-default-300 dark:border-gray-700 text-default-900 dark:text-white rounded-lg px-4 py-2.5 focus:outline-none focus:border-blue-500 dark:focus:border-blue-500 disabled:opacity-50 disabled:bg-default-100"
-                  placeholder="VIX, FearGreed, DXY"
-                />
-              </div>
-            </div>
-            {renderSaveAction()}
-          </section>)}
 
         {/* Risk  Tab */}
           {activeTab === 'risk' && (<section id={`section-risk`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
