@@ -29,44 +29,44 @@ pub struct Candle {
 #[allow(dead_code)]
 pub struct Indicators {
     // Core
-    rsi_14: f64,
-    ema_9: f64,
-    ema_21: f64,
-    ema_50: f64,
-    ema_200: f64,
-    bb_upper: f64,
-    bb_middle: f64,
-    bb_lower: f64,
-    prev_ema_9: f64,
-    prev_ema_21: f64,
-    prev_close: f64,
-    current_close: f64,
-    current_high: f64,
-    current_low: f64,
-    current_open: f64,
+    pub rsi_14: f64,
+    pub ema_9: f64,
+    pub ema_21: f64,
+    pub ema_50: f64,
+    pub ema_200: f64,
+    pub bb_upper: f64,
+    pub bb_middle: f64,
+    pub bb_lower: f64,
+    pub prev_ema_9: f64,
+    pub prev_ema_21: f64,
+    pub prev_close: f64,
+    pub current_close: f64,
+    pub current_high: f64,
+    pub current_low: f64,
+    pub current_open: f64,
     // Fibonacci
-    fib_high: f64,
-    fib_low: f64,
-    fib_382: f64,
-    fib_500: f64,
-    fib_618: f64,
+    pub fib_high: f64,
+    pub fib_low: f64,
+    pub fib_382: f64,
+    pub fib_500: f64,
+    pub fib_618: f64,
     // SMC / ICT
-    swing_high: f64,
-    swing_low: f64,
-    prev_swing_high: f64,
-    prev_swing_low: f64,
-    order_block_bull: f64,
-    order_block_bear: f64,
-    fair_value_gap_bull: bool,
-    fair_value_gap_bear: bool,
+    pub swing_high: f64,
+    pub swing_low: f64,
+    pub prev_swing_high: f64,
+    pub prev_swing_low: f64,
+    pub order_block_bull: f64,
+    pub order_block_bear: f64,
+    pub fair_value_gap_bull: bool,
+    pub fair_value_gap_bear: bool,
     // Momentum
-    rsi_prev: f64,
-    momentum: f64,         // rate of change %
-    atr: f64,
-    candle_body_ratio: f64, // body / range  (displacement measure)
+    pub rsi_prev: f64,
+    pub momentum: f64,         // rate of change %
+    pub atr: f64,
+    pub candle_body_ratio: f64, // body / range  (displacement measure)
     // Session
-    asian_high: f64,
-    asian_low: f64,
+    pub asian_high: f64,
+    pub asian_low: f64,
 }
 
 /// Signal type

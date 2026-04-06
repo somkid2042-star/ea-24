@@ -632,28 +632,82 @@ pub async fn run_chart_analyst(
     }).collect::<Vec<_>>().join("\n");
 
     let price = candles.last().map(|c| c.close).unwrap_or(0.0);
-    let trend = if candles.len() >= 10 {
-        let s = candles[candles.len()-10].close;
-        let e = candles[candles.len()-1].close;
-        if e > s * 1.001 { "UPTREND" } else if e < s * 0.999 { "DOWNTREND" } else { "SIDEWAYS" }
-    } else { "UNKNOWN" };
+    
+    // Method 1: Algorithmic Feature Extraction
+    let ind = crate::strategy::compute_indicators(candles);
+    let trend = if ind.ema_9 > ind.ema_21 && ind.ema_21 > ind.ema_50 {
+        "UPTREND (Strong)"
+    } else if ind.ema_9 < ind.ema_21 && ind.ema_21 < ind.ema_50 {
+        "DOWNTREND (Strong)"
+    } else if ind.ema_9 > ind.ema_50 {
+        "UPTREND (Weak)"
+    } else if ind.ema_9 < ind.ema_50 {
+        "DOWNTREND (Weak)"
+    } else {
+        "SIDEWAYS"
+    };
+
+    // Method 4: Volume Profile Proxy (Time-at-Price calculation)
+    let mut hvn = price;
+    if !candles.is_empty() {
+        let max_high = candles.iter().map(|c| c.high).fold(f64::MIN, f64::max);
+        let min_low = candles.iter().map(|c| c.low).fold(f64::MAX, f64::min);
+        let range = max_high - min_low;
+        if range > 0.0 {
+            let num_bins = 10;
+            let bin_size = range / num_bins as f64;
+            let mut bins = vec![0; num_bins];
+            for c in candles {
+                let lower_bin = ((c.low - min_low) / bin_size).floor() as usize;
+                let upper_bin = ((c.high - min_low) / bin_size).floor() as usize;
+                for b in lower_bin..=upper_bin.min(num_bins - 1) {
+                    bins[b] += 1;
+                }
+            }
+            let mut max_bincount = 0;
+            let mut best_bin = 0;
+            for (i, &count) in bins.iter().enumerate() {
+                if count > max_bincount {
+                    max_bincount = count;
+                    best_bin = i;
+                }
+            }
+            hvn = min_low + (best_bin as f64 + 0.5) * bin_size;
+        }
+    }
 
     let data_note = if limited_data {
         format!("\n\nNote: Limited data ({} candles only). Adjust confidence accordingly and be conservative.", candles.len())
     } else { String::new() };
 
     let prompt = format!(
-r#"You are a professional technical analyst. Analyze the chart data below.
+r#"You are a professional technical analyst and algorithmic decision maker. Analyze the chart data and extracted features below.
 
 Symbol: {symbol} | Timeframe: {timeframe} | Price: {price:.5} | Trend: {trend}
 
-OHLC ({} candles):
+--- ALGORITHMIC FEATURES EXTRACTED (Use these facts instead of guessing!) ---
+RSI (14): {rsi:.1}
+EMA (9/21/50): {ema9:.5} / {ema21:.5} / {ema50:.5}
+Bollinger Bands: Upper={bb_upper:.5}, Mid={bb_mid:.5}, Lower={bb_lower:.5}
+Smart Money (SMC): Bullish FVG=[{fvg_bull}], Bearish FVG=[{fvg_bear}] 
+Order Blocks: Bullish={ob_bull:.5}, Bearish={ob_bear:.5}
+Volume Profile Proxy: Point of Control (HVN) = {hvn:.5}
+
+--- RECENT RAW OHLC ({} candles) ---
 {candle_str}{data_note}
 
-Analyze price action, candlestick patterns, support/resistance levels then respond:
+Based on both the math-perfect indicators above and the raw price action, analyze support/resistance levels and market structure. Then respond:
 RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [1-2 sentence summary in Thai language]"#, recent.len());
+REASONING: [1-2 sentence summary in Thai language]"#, 
+        recent.len(),
+        symbol=symbol, timeframe=timeframe, price=price, trend=trend,
+        rsi=ind.rsi_14, ema9=ind.ema_9, ema21=ind.ema_21, ema50=ind.ema_50,
+        bb_upper=ind.bb_upper, bb_mid=ind.bb_middle, bb_lower=ind.bb_lower,
+        fvg_bull=ind.fair_value_gap_bull, fvg_bear=ind.fair_value_gap_bear,
+        ob_bull=ind.order_block_bull, ob_bear=ind.order_block_bear,
+        hvn=hvn, candle_str=candle_str, data_note=data_note
+    );
 
     match call_gemini(gemini_key, model, &prompt, 0.3, 400, false).await {
         Ok(response) => {
