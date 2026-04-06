@@ -541,32 +541,39 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
                 _ => response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim()
             };
 
-            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(clean_json) {
-                if let Some(s) = json_val.get("sentiment").and_then(|v| v.as_str()) {
-                    sentiment = s.to_uppercase();
-                }
-                if let Some(s) = json_val.get("summary").and_then(|v| v.as_str()) {
-                    summary = s.to_string();
-                }
-                if let Some(arr) = json_val.get("stories").and_then(|v| v.as_array()) {
-                    for story in arr {
-                        if let (Some(title), Some(content)) = (
-                            story.get("title").and_then(|v| v.as_str()),
-                            story.get("content").and_then(|v| v.as_str())
-                        ) {
-                            th_headlines.push(format!("{} || {}", title, content));
+            match serde_json::from_str::<serde_json::Value>(clean_json) {
+                Ok(json_val) => {
+                    if let Some(s) = json_val.get("sentiment").and_then(|v| v.as_str()) {
+                        sentiment = s.to_uppercase();
+                    }
+                    if let Some(s) = json_val.get("summary").and_then(|v| v.as_str()) {
+                        summary = s.to_string();
+                    }
+                    if let Some(arr) = json_val.get("stories").and_then(|v| v.as_array()) {
+                        for story in arr {
+                            if let (Some(title), Some(content)) = (
+                                story.get("title").and_then(|v| v.as_str()),
+                                story.get("content").and_then(|v| v.as_str())
+                            ) {
+                                th_headlines.push(format!("{} || {}", title, content));
+                            }
                         }
                     }
+                    // Catch cases where Gemini returns JSON but omits the 'summary' key
+                    if summary.is_empty() {
+                        summary = format!("Gemini did not return 'summary' key. Raw JSON: {}", clean_json);
+                    }
                 }
-            } else {
-                warn!("{} Failed to parse Gemini JSON, falling back. Raw response: {}", agent, response);
-                for line in response.lines() {
-                    let line = line.trim();
-                    if line.to_uppercase().contains("BULLISH") { sentiment = "BULLISH".to_string(); }
-                    else if line.to_uppercase().contains("BEARISH") { sentiment = "BEARISH".to_string(); }
+                Err(err) => {
+                    warn!("{} Failed to parse Gemini JSON, falling back. Error: {}, Raw response: {}", agent, err, response);
+                    for line in response.lines() {
+                        let line = line.trim();
+                        if line.to_uppercase().contains("BULLISH") { sentiment = "BULLISH".to_string(); }
+                        else if line.to_uppercase().contains("BEARISH") { sentiment = "BEARISH".to_string(); }
+                    }
+                    summary = format!("JSON Parse Error: {}. Raw: {}", err, response.replace("\n", " ").trim());
                 }
             }
-            if summary.is_empty() { summary = format!("ไม่สามารถสรุปรายละเอียดได้เนื่องจากข้อผิดพลาดของข้อมูล แต่ AI ประเมินแนวโน้มเป็น: {}", sentiment); }
             let final_headlines = if th_headlines.is_empty() { headlines } else { th_headlines };
             
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
