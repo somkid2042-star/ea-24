@@ -101,8 +101,8 @@ struct TavilyResult {
 //  Calendar Event Types
 // ──────────────────────────────────────────────
 
-#[derive(Deserialize, Debug, Clone)]
-struct ForexCalendarEvent {
+#[derive(Deserialize, Serialize, Debug, Clone)]
+pub struct ForexCalendarEvent {
     title: Option<String>,
     country: Option<String>,
     date: Option<String>,
@@ -141,7 +141,7 @@ pub struct ChartResult {
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalendarResult {
     pub high_impact_soon: bool,
-    pub events: Vec<String>,
+    pub events: Vec<ForexCalendarEvent>,
     pub warning: String,
 }
 
@@ -823,7 +823,7 @@ pub async fn run_calendar_watcher(
         "message": &warning
     }).to_string());
 
-    CalendarResult { high_impact_soon: high_impact, events: event_names, warning }
+    CalendarResult { high_impact_soon: high_impact, events, warning }
 }
 
 pub async fn fetch_macro_indicators(
