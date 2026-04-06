@@ -856,22 +856,32 @@ const AgentSettings = () => {
                                <input type="text" value={acc.address} onChange={(e) => { const n = [...emails]; n[i].address = e.target.value; setEmails(n); }} placeholder="example@gmail.com" className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none" />
                              </div>
                              <div>
-                               <div className="flex items-center justify-between mb-1">
-                                 <label className="text-xs font-medium text-default-600 dark:text-gray-400">Gemini API Key</label>
-                                 <a href="https://aistudio.google.com/app/apikey" target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 font-medium flex items-center gap-1 transition-colors">
+                               <label className="text-xs font-medium text-default-600 dark:text-gray-400 mb-1 block">Gemini API Key</label>
+                               <div className="relative">
+                                 <input type="text" value={acc.apiKey} onChange={(e) => { const n = [...emails]; n[i].apiKey = e.target.value; setEmails(n); }} placeholder="AIzaSy..." className="w-full px-3 py-2 pr-[100px] text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
+                                 <a 
+                                   onClick={() => { if(acc.address) { navigator.clipboard.writeText(acc.address); setSuccessMsg('คัดลอกอีเมลแล้ว'); setTimeout(()=>setSuccessMsg(''), 2000); } }} 
+                                   href={acc.address ? `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(acc.address)}&continue=${encodeURIComponent('https://aistudio.google.com/app/apikey')}` : 'https://aistudio.google.com/app/apikey'} 
+                                   target="_blank" rel="noopener noreferrer" 
+                                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded-md font-medium flex items-center gap-1 transition-colors"
+                                 >
                                    ขอรับ API Key <LuExternalLink className="size-3" />
                                  </a>
                                </div>
-                               <input type="text" value={acc.apiKey} onChange={(e) => { const n = [...emails]; n[i].apiKey = e.target.value; setEmails(n); }} placeholder="AIzaSy..." className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
                              </div>
                              <div>
-                               <div className="flex items-center justify-between mb-1">
-                                 <label className="text-xs font-medium text-default-600 dark:text-gray-400">Tavily API Key</label>
-                                 <a href="https://app.tavily.com/home" target="_blank" rel="noopener noreferrer" className="text-[10px] text-blue-500 hover:text-blue-600 dark:text-blue-400 dark:hover:text-blue-300 font-medium flex items-center gap-1 transition-colors">
+                               <label className="text-xs font-medium text-default-600 dark:text-gray-400 mb-1 block">Tavily API Key</label>
+                               <div className="relative">
+                                 <input type="text" value={acc.tavilyKey} onChange={(e) => { const n = [...emails]; n[i].tavilyKey = e.target.value; setEmails(n); }} placeholder="tvly-dev-..." className="w-full px-3 py-2 pr-[100px] text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
+                                 <a 
+                                   onClick={() => { if(acc.address) { navigator.clipboard.writeText(acc.address); setSuccessMsg('คัดลอกอีเมลแล้ว'); setTimeout(()=>setSuccessMsg(''), 2000); } }} 
+                                   href="https://app.tavily.com/home" 
+                                   target="_blank" rel="noopener noreferrer" 
+                                   className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded-md font-medium flex items-center gap-1 transition-colors"
+                                 >
                                    ขอรับ API Key <LuExternalLink className="size-3" />
                                  </a>
                                </div>
-                               <input type="text" value={acc.tavilyKey} onChange={(e) => { const n = [...emails]; n[i].tavilyKey = e.target.value; setEmails(n); }} placeholder="tvly-dev-..." className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
                              </div>
                           </div>
                         )}
