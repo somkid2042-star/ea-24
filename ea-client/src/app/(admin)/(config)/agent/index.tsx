@@ -61,6 +61,7 @@ const AgentSettings = () => {
   const [globalNews, setGlobalNews] = useState<any>(null);
   const [newsLastUpdated, setNewsLastUpdated] = useState<number>(0);
   const [nextFetchSeconds, setNextFetchSeconds] = useState<number>(0);
+  const [isFetchingNews, setIsFetchingNews] = useState<boolean>(false);
   const [expandedKeys, setExpandedKeys] = useState<number[]>([]);
   const [showApiCards, setShowApiCards] = useState<boolean>(false);
 
@@ -147,6 +148,7 @@ const AgentSettings = () => {
           setTimeout(() => setTavilyResult(null), 10000);
         }
         if (data.type === 'global_ai_data') {
+          setIsFetchingNews(false);
           if (data.data && data.data.news) {
             setGlobalNews(data.data.news);
           }
@@ -379,25 +381,39 @@ const AgentSettings = () => {
                   </h3>
                   <div className="flex items-center gap-3">
                     <button 
-                      onClick={() => send({ action: 'force_fetch_news' })}
-                      className="p-1 rounded-md bg-default-200 dark:bg-gray-700 hover:bg-default-300 dark:hover:bg-gray-600 transition-colors text-default-600 dark:text-gray-300 tooltip focus:outline-none"
+                      onClick={() => {
+                        setIsFetchingNews(true);
+                        send({ action: 'force_fetch_news' });
+                      }}
+                      disabled={isFetchingNews}
+                      className={`p-1.5 rounded-md transition-colors focus:outline-none ${
+                        isFetchingNews 
+                          ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-500 cursor-not-allowed' 
+                          : 'bg-default-200 dark:bg-gray-700 hover:bg-default-300 dark:hover:bg-gray-600 text-default-600 dark:text-gray-300'
+                      }`}
                       title="เช็คข่าวสารด่วน (Refresh)"
                     >
-                      <LuRefreshCw className="w-3.5 h-3.5" />
+                      <LuRefreshCw className={`w-4 h-4 ${isFetchingNews ? 'animate-spin' : ''}`} />
                     </button>
-                    {newsLastUpdated > 0 && nextFetchSeconds > 0 && (
-                      <div className="flex flex-col items-end">
-                        <span className="text-xs text-default-500 font-mono">
-                          อัปเดตอัติโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}
-                        </span>
-                        <span className="text-[10.5px] text-default-400 font-mono mt-0.5">
-                          ดึงล่าสุดเมื่อ: {new Date(newsLastUpdated * 1000).toLocaleTimeString('th-TH')} น.
-                        </span>
-                      </div>
+                    {isFetchingNews ? (
+                      <span className="text-xs text-blue-500 font-mono animate-pulse font-medium">
+                        กำลังให้ AI วิเคราะห์ข่าว...
+                      </span>
+                    ) : (
+                      newsLastUpdated > 0 && nextFetchSeconds > 0 && (
+                        <div className="flex flex-col items-start">
+                          <span className="text-xs text-default-500 font-mono">
+                            อัปเดตอัตโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}
+                          </span>
+                          <span className="text-[10.5px] text-default-400 font-mono mt-0.5">
+                            ดึงล่าสุดเมื่อ: {new Date(newsLastUpdated * 1000).toLocaleTimeString('th-TH')} น.
+                          </span>
+                        </div>
+                      )
                     )}
-                    {newsLastUpdated > 0 && nextFetchSeconds === 0 && (
+                    {newsLastUpdated > 0 && nextFetchSeconds === 0 && !isFetchingNews && (
                       <span className="text-xs text-blue-500 font-mono animate-pulse">
-                        กำลังดึงข้อมูลใหม่...
+                        กำลังเตรียมอัปเดต...
                       </span>
                     )}
                     {globalNews?.sentiment && (
