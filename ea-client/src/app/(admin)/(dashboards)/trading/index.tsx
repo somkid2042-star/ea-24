@@ -87,6 +87,13 @@ const NAV_GROUPS: NavGroup[] = [
       { key: 'agent', icon: <LuShare2 size={20} strokeWidth={1} />, label: 'Agent Config' },
     ],
   },
+  {
+    id: 'ai-pilot',
+    label: '',
+    items: [
+      { key: 'dashboard-ai', icon: <LuBot size={20} strokeWidth={1} />, label: 'Auto-Pilot' },
+    ],
+  },
 ];
 
 const SETTINGS_ITEMS: NavItem[] = [
@@ -106,7 +113,6 @@ const REPORT_ITEMS: NavItem[] = [
 const TRADE_ITEMS: NavItem[] = [
   { key: 'multichart', icon: <LuGrid2X2 size={20} strokeWidth={1} />, label: 'Multi-Symbol Watch' },
   { key: 'setup', icon: <LuSlidersHorizontal size={20} strokeWidth={1} />, label: 'Trade Setup' },
-  { key: 'dashboard-ai', icon: <LuBot size={20} strokeWidth={1} />, label: 'Multi-Currency Auto-Pilot' },
 ];
 
 const PANEL_COMPONENTS: Record<Exclude<PanelKey, 'chart'>, React.LazyExoticComponent<React.ComponentType>> = {
