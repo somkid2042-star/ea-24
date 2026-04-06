@@ -11,7 +11,7 @@ import avatar3 from '@/assets/images/user/avatar-3.png';
 import avatar5 from '@/assets/images/user/avatar-5.png';
 import avatar7 from '@/assets/images/user/avatar-7.png';
 import { Link } from 'react-router';
-import { TbSearch } from 'react-icons/tb';
+
 import SimpleBar from 'simplebar-react';
 import SidenavToggle from './SidenavToggle';
 import ThemeModeToggle from './ThemeModeToggle';
@@ -26,8 +26,13 @@ import {
   LuMoveRight,
   LuSettings,
   LuShoppingBag,
+  LuActivity,
+  LuDatabase,
+  LuCpu,
+  LuMemoryStick
 } from 'react-icons/lu';
-import type { ReactNode } from 'react';
+import { useState, useEffect, useRef, type ReactNode } from 'react';
+import { getWsUrl } from '@/utils/config';
 
 type Language = {
   src: string;
@@ -201,25 +206,69 @@ const profileMenu: ProfileMenuItem[] = [
 ];
 
 const Topbar = () => {
+  const [telemetry, setTelemetry] = useState<{
+    cpu: number;
+    ram_mb: number;
+    total_ram_mb: number;
+    db_pool: number;
+  } | null>(null);
+
+  const wsRef = useRef<WebSocket | null>(null);
+
+  useEffect(() => {
+    const WS_URL = getWsUrl();
+    const ws = new WebSocket(WS_URL);
+    wsRef.current = ws;
+
+    ws.onmessage = (event) => {
+      try {
+        const data = JSON.parse(event.data);
+        if (data.type === 'telemetry') {
+          setTelemetry({
+            cpu: data.cpu,
+            ram_mb: data.ram_mb,
+            total_ram_mb: data.total_ram_mb,
+            db_pool: data.db_pool,
+          });
+        }
+      } catch (e) {}
+    };
+
+    return () => {
+      ws.close();
+    };
+  }, []);
+
   return (
     <div className="app-header min-h-topbar-height flex items-center sticky top-0 z-30 bg-(--topbar-background) border-b border-default-200">
       <div className="w-full flex items-center justify-between px-6">
         <div className="flex items-center gap-5">
           <SidenavToggle />
 
+          {/* Search or Telemetry */}
           <div className="lg:flex hidden items-center relative">
-            <div className="absolute inset-y-0 start-0 flex items-center ps-3 pointer-events-none">
-              <TbSearch className="text-base" />
-            </div>
-            <input
-              type="search"
-              id="topbar-search"
-              className="form-input px-12 text-sm rounded border-transparent focus:border-transparent w-60"
-              placeholder="Search something..."
-            />
-            <button type="button" className="absolute inset-y-0 end-0 flex items-center pe-4">
-              <span className="ms-auto font-medium">⌘ K</span>
-            </button>
+            {telemetry ? (
+              <div className="flex items-center gap-4 text-xs font-medium text-default-600 bg-default-100 rounded-md px-4 py-2 border border-default-200">
+                <div className="flex items-center gap-1.5" title="CPU Usage">
+                  <LuCpu className="size-4 text-primary" />
+                  <span>{telemetry.cpu.toFixed(1)}%</span>
+                </div>
+                <div className="w-px h-3 bg-default-300"></div>
+                <div className="flex items-center gap-1.5" title="RAM Usage">
+                  <LuMemoryStick className="size-4 text-secondary" />
+                  <span>{telemetry.ram_mb} MB / {telemetry.total_ram_mb} MB</span>
+                </div>
+                <div className="w-px h-3 bg-default-300"></div>
+                <div className="flex items-center gap-1.5" title="Database Connections">
+                  <LuDatabase className="size-4 text-emerald-500" />
+                  <span>PG: {telemetry.db_pool} conn</span>
+                </div>
+              </div>
+            ) : (
+              <div className="text-xs text-default-400 flex items-center gap-2">
+                <LuActivity className="size-4 animate-pulse" /> Connecting Telemetry...
+              </div>
+            )}
           </div>
         </div>
 

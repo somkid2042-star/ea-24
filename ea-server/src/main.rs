@@ -567,6 +567,7 @@ async fn run_server() {
 
     // Spawn sysinfo polling loop — track only THIS process
     let sys_db = database.clone();
+    let sys_tx = tx.clone();
     tokio::spawn(async move {
         let pid = sysinfo::Pid::from_u32(std::process::id());
         let mut sys = sysinfo::System::new();
@@ -596,7 +597,16 @@ async fn run_server() {
 
             let db_pool_size = sys_db.size();
 
-
+            let msg = serde_json::json!({
+                "type": "telemetry",
+                "cpu": cpu,
+                "ram_mb": ram,
+                "total_ram_mb": total,
+                "rx_kb": rx_kb,
+                "tx_kb": tx_kb,
+                "db_pool": db_pool_size
+            }).to_string();
+            let _ = sys_tx.send(msg);
         }
     });
 
