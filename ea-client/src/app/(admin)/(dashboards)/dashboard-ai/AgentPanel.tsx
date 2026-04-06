@@ -193,9 +193,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* Right Side: Fast Track M1 Pipeline (Icons Only) */}
-        <div className="relative w-[50px] pl-4 border-l border-default-100 dark:border-white/5 flex flex-col items-center">
+        <div className="relative w-[50px] flex flex-col items-center justify-center">
             {/* Vertically Connecting Line for M1 */}
-            <div className="absolute left-[16px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0 ml-[10px]" />
+            <div className="absolute left-[25px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
 
             <div className="space-y-7 relative z-10">
               {agentConfig.map((agent) => {
