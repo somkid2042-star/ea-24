@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LuBrainCircuit, LuGlobe, LuActivity, LuCalendar, LuShield, LuMonitorOff, LuZap, LuLoader, LuTerminal, LuSettings } from "react-icons/lu";
+import { LuGlobe, LuActivity, LuCalendar, LuShield, LuBrainCircuit, LuLoader, LuTerminal, LuBot, LuSettings, LuZap, LuMonitorOff } from 'react-icons/lu';
 
 export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
@@ -223,51 +223,73 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
       </div>
       
-      {/* Operation Result Stack */}
-      <div className="px-6 pb-6 pt-2 space-y-3">
-        {/* Terminal Window 1: Server/Rust M1 track */}
-        <div className="rounded-xl border border-default-200 dark:border-white/10 bg-default-50/50 dark:bg-[#0A0D14] overflow-hidden flex flex-col transition-all">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-default-200 dark:border-white/10 bg-default-100/50 dark:bg-white/5">
-                <span className="text-[11px] font-mono font-bold text-default-500 dark:text-gray-400 tracking-wider">bash (Server)</span>
-                <div className="flex items-center gap-1.5 text-default-400">
-                   <LuTerminal size={12} />
-                   {agentStatusM1?.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse ml-1"></span>}
-                </div>
-            </div>
-            <div className="p-3 font-mono text-[11px] leading-relaxed text-indigo-600 dark:text-indigo-400 min-h-[50px] max-h-[100px] overflow-y-auto">
-                {agentStatusM1?.orchestrator === 'running' ? (
-                    <span className="animate-pulse">
-                        {logsM1.length > 0 ? stripEmojis(logsM1[logsM1.length - 1].message) : 'ประมวลผลด่วน...'}
-                    </span>
-                ) : logsM1.length > 0 ? (
-                    <span className="opacity-80 break-words">{stripEmojis(logsM1[logsM1.length - 1].message)}</span>
-                ) : (
-                    <span className="opacity-50">สแตนด์บาย M1...</span>
-                )}
-            </div>
+      {/* Operation Logs Stack */}
+      <div className="px-6 pb-6 pt-2 space-y-4">
+        
+        {/* Server / M1 Logs Timeline */}
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col h-[180px]">
+           <div className="flex items-center gap-2 mb-4 shrink-0">
+             <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
+             <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
+           </div>
+           
+           <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]">
+              <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
+              <div className="space-y-4">
+                  {logsM1.length > 0 ? [...logsM1].reverse().map((log, i) => (
+                      <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-indigo-200 text-indigo-500 mt-0.5 shadow-sm`}>
+                             {agentConfig.find(a => a.key === log.agent)?.icon || <LuTerminal size={10} />}
+                          </div>
+                          <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
+                             <div className="flex justify-between items-baseline gap-2">
+                                <span className="text-[12px] font-bold leading-none mb-1 text-indigo-600 dark:text-indigo-400 capitalize truncate">{log.agent.replace('_', ' ')}</span>
+                                <span className="text-[9px] text-default-400 shrink-0">{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
+                             </div>
+                             <span className="text-[11px] text-default-600 leading-relaxed dark:text-gray-400 line-clamp-2">
+                                 {stripEmojis(log.message)}
+                             </span>
+                          </div>
+                      </div>
+                  )) : (
+                      <div className="text-[11px] text-default-400 italic pl-10 pb-4">สแตนด์บาย M1...</div>
+                  )}
+              </div>
+           </div>
         </div>
 
-        {/* Terminal Window 2: AI Track */}
-        <div className="rounded-xl border border-default-200 dark:border-white/10 bg-default-50/50 dark:bg-[#0A0D14] overflow-hidden flex flex-col transition-all">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-default-200 dark:border-white/10 bg-default-100/50 dark:bg-white/5">
-                <span className="text-[11px] font-mono font-bold text-default-500 dark:text-gray-400 tracking-wider">bash (AI)</span>
-                <div className="flex items-center gap-1.5 text-default-400">
-                   <LuTerminal size={12} />
-                   {agentStatus.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-blue-500 animate-pulse ml-1"></span>}
-                </div>
-            </div>
-            <div className="p-3 font-mono text-[11px] leading-relaxed text-[#3B82F6] dark:text-blue-400 min-h-[50px] max-h-[100px] overflow-y-auto">
-                {agentStatus.orchestrator === 'running' ? (
-                  <span className="animate-pulse">กำลังเรียกใช้โมเดล AI...</span>
-                ) : finalResult && finalResult.final_decision ? (
-                  <span className="font-bold">{finalResult.final_decision}</span>
-                ) : logs.length > 0 ? (
-                  <span className="opacity-80 break-words">{stripEmojis(logs[logs.length - 1].message)}</span>
-                ) : (
-                  <span className="opacity-50">รอรับคำสั่ง AI รอบถัดไป...</span>
-                )}
-            </div>
+        {/* AI Logs Timeline */}
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col h-[180px]">
+           <div className="flex items-center gap-2 mb-4 shrink-0">
+             <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
+             <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
+           </div>
+           
+           <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]">
+              <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
+              <div className="space-y-4">
+                  {logs.length > 0 ? [...logs].reverse().map((log, i) => (
+                      <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
+                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-blue-200 text-blue-500 mt-0.5 shadow-sm`}>
+                             {agentConfig.find(a => a.key === log.agent)?.icon || <LuBot size={10} />}
+                          </div>
+                          <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
+                             <div className="flex justify-between items-baseline gap-2">
+                                <span className="text-[12px] font-bold leading-none mb-1 text-blue-600 dark:text-blue-400 capitalize truncate">{log.agent.replace('_', ' ')}</span>
+                                <span className="text-[9px] text-default-400 shrink-0">{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
+                             </div>
+                             <span className="text-[11px] text-default-600 leading-relaxed dark:text-gray-400 line-clamp-2">
+                                 {stripEmojis(log.message)}
+                             </span>
+                          </div>
+                      </div>
+                  )) : (
+                      <div className="text-[11px] text-default-400 italic pl-10 pb-4">รอรับคำสั่ง AI รอบถัดไป...</div>
+                  )}
+              </div>
+           </div>
         </div>
+
       </div>
     </div>
   );
