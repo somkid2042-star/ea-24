@@ -423,14 +423,18 @@ const AgentSettings = () => {
                             const content = parts[1]?.trim() || '';
                             
                             return (
-                              <details key={idx} className="group border border-default-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/50">
-                                <summary className="flex items-center justify-between cursor-pointer p-3 text-sm font-medium text-default-800 dark:text-gray-200 list-none outline-none">
-                                  <span className="truncate pr-4 flex-1">{title}</span>
-                                  <LuChevronDown className="w-4 h-4 text-default-400 transition-transform group-open:rotate-180 flex-shrink-0" />
+                              <details key={idx} className="group border border-default-200 dark:border-gray-700 rounded-xl bg-white dark:bg-gray-800/50 shadow-sm overflow-hidden mb-3">
+                                <summary className="flex items-start justify-between cursor-pointer p-4 font-semibold text-default-800 dark:text-gray-200 list-none outline-none hover:bg-default-50 dark:hover:bg-gray-700/50 transition-colors">
+                                  <div className="flex-1 pr-4">
+                                    <span className="block text-left text-sm md:text-base leading-snug line-clamp-2 md:line-clamp-none text-balance">{title}</span>
+                                  </div>
+                                  <div className="bg-default-100 dark:bg-gray-700 rounded-full p-1 mt-0.5 flex-shrink-0">
+                                    <LuChevronDown className="w-4 h-4 text-default-500 transition-transform group-open:rotate-180" />
+                                  </div>
                                 </summary>
                                 {content && (
-                                  <div className="px-3 pb-3 text-xs text-default-600 dark:text-gray-400 bg-white dark:bg-gray-800/50 rounded-b-lg p-3 pt-0 leading-relaxed border-t border-default-100 dark:border-gray-700/50 mt-1">
-                                    <div className="pt-2">{content}</div>
+                                  <div className="px-4 pb-4 text-sm text-default-600 dark:text-gray-400 bg-default-50 dark:bg-gray-800 leading-relaxed border-t border-default-100 dark:border-gray-700 pt-3">
+                                    <div className="pt-1 italic">{content}</div>
                                   </div>
                                 )}
                               </details>

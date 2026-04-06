@@ -113,6 +113,7 @@ struct ForexCalendarEvent {
 //  Agent Result Types
 // ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize)]
 pub struct AgentLog {
     pub agent: String,
@@ -477,7 +478,7 @@ pub async fn run_news_hunter(
         .filter_map(|a| {
             let title = a.title.as_deref().unwrap_or("");
             let content = a.content.as_deref().unwrap_or("");
-            if title.is_empty() { None } else { Some(format!("- {}: {}", title, &content[..content.len().min(200)])) }
+            if title.is_empty() { None } else { Some(format!("- {}: {}", title, &content[..content.len().min(350)])) }
         })
         .collect::<Vec<_>>()
         .join("\n");
@@ -501,17 +502,19 @@ r#"You are an expert financial news analyst. Analyze the news below and summariz
 News:
 {news_text}
 
+IMPORTANT: You MUST translate ALL text, including the summary, headlines, and content into pure THAI language. Do NOT use English for explanations.
+
 Respond in this exact format only:
 SENTIMENT: [BULLISH/BEARISH/NEUTRAL]
-SUMMARY: [1-2 sentence overall summary in Thai language]
+SUMMARY: [2-3 sentence overall summary in Thai language]
 
-STORY 1: [Thai Headline] || [1-2 sentence Thai Content]
-STORY 2: [Thai Headline] || [1-2 sentence Thai Content]
-STORY 3: [Thai Headline] || [1-2 sentence Thai Content]
-STORY 4: [Thai Headline] || [1-2 sentence Thai Content]
-STORY 5: [Thai Headline] || [1-2 sentence Thai Content]"#);
+STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
+STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
+STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
+STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
+STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]"#);
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 800).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 2048).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
@@ -526,7 +529,12 @@ STORY 5: [Thai Headline] || [1-2 sentence Thai Content]"#);
                 if line.starts_with("SUMMARY:") {
                     summary = line.replace("SUMMARY:", "").trim().to_string();
                 }
-                if line.starts_with("STORY ") {
+                if line.starts_with("STORY:") {
+                    let content = line.replace("STORY:", "").trim().to_string();
+                    if !content.is_empty() {
+                        th_headlines.push(content);
+                    }
+                } else if line.starts_with("STORY ") {
                     if let Some((_, content)) = line.split_once(':') {
                         let content = content.trim().to_string();
                         if !content.is_empty() {
@@ -563,6 +571,7 @@ STORY 5: [Thai Headline] || [1-2 sentence Thai Content]"#);
 //  Agent 2: Chart Analyst (Gemini)
 // ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub async fn run_chart_analyst(
     gemini_key: &str, model: &str,
     symbol: &str, timeframe: &str,
@@ -920,6 +929,7 @@ REASONING: [concise summary in Thai language]"#,
 //  Master Orchestrator: Run All 5 Agents
 // ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub async fn run_all_agents(
     gemini_key: &str, model: &str, tavily_key: &str,
     symbol: &str, timeframe: &str,
