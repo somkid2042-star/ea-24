@@ -102,6 +102,45 @@ const DashboardAi = () => {
   
   const wsRef = useRef<WebSocket | null>(null);
 
+  // Fetch initial history logs
+  useEffect(() => {
+     if (autoPilotJobs.length === 0) return;
+     const httpUrl = typeof window !== 'undefined' ? 
+          (window.location.protocol === 'https:' ? 'https://' : 'http://') + window.location.hostname + ':8080/' : 
+          'http://localhost:8080/';
+
+     autoPilotJobs.forEach(job => {
+         if (!job.symbol) return;
+         fetch(`${httpUrl}api/ai_logs?symbol=${job.symbol}&limit=100`)
+           .then(res => res.json())
+           .then(data => {
+               if (!Array.isArray(data)) return;
+               const newLogs: any[] = [];
+               const newM1Logs: any[] = [];
+               data.forEach(d => {
+                   const logRow = { timestamp: d.timestamp, agent: d.agent, status: d.status, message: d.message };
+                   if (d.type === 'agent_log') newLogs.push(logRow);
+                   if (d.type === 'agent_log_m1') newM1Logs.push(logRow);
+               });
+               
+               if (newLogs.length > 0) {
+                  setLogsBySymbol(prev => {
+                     // don't overwrite if we already received realtime
+                     if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
+                     return {...prev, [job.symbol]: newLogs};
+                  });
+               }
+               if (newM1Logs.length > 0) {
+                  setLogsM1BySymbol(prev => {
+                     if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
+                     return {...prev, [job.symbol]: newM1Logs};
+                  });
+               }
+           })
+           .catch(() => {});
+     });
+  }, [autoPilotJobs]);
+
   useEffect(() => {
     const WS_URL = getWsUrl();
     const ws = new WebSocket(WS_URL);
@@ -315,7 +354,7 @@ const DashboardAi = () => {
         </div>
       </div>
 
-      <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch w-full">
+      <div className="grid grid-cols-1 md:grid-cols-2 xl:grid-cols-3 gap-4 items-stretch w-full">
         {autoPilotJobs.map((job, idx) => (
            <div key={`job-${idx}-${job.symbol}`} className="bg-white dark:bg-[#0B101E] border border-default-200 dark:border-white/5 rounded-2xl flex flex-col shadow-xl relative overflow-hidden group">
                {job.is_draft && (

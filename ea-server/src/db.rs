@@ -103,6 +103,58 @@ impl Database {
         Ok(db)
     }
 
+    /// Insert single AI log into database
+    pub async fn insert_ai_log(&self, symbol: &str, log_type: &str, agent: &str, status: &str, message: &str) {
+        let q = "INSERT INTO ai_logs (symbol, log_type, agent, status, message) VALUES ($1, $2, $3, $4, $5)";
+        if let Err(e) = sqlx::query(q)
+            .bind(symbol)
+            .bind(log_type)
+            .bind(agent)
+            .bind(status)
+            .bind(message)
+            .execute(&self.pool)
+            .await
+        {
+            error!("Failed to save AI log to DB: {}", e);
+        }
+    }
+
+    /// Fetch recent AI logs of a specific type
+    pub async fn get_recent_ai_logs(&self, symbol: &str, limit: i64) -> Result<Vec<serde_json::Value>, String> {
+        let q = "SELECT id, symbol, log_type, agent, status, message, EXTRACT(EPOCH FROM timestamp)*1000 AS ts
+                 FROM ai_logs 
+                 WHERE symbol = $1 
+                 ORDER BY timestamp ASC LIMIT $2";
+                 
+        let records = sqlx::query(q)
+            .bind(symbol)
+            .bind(limit)
+            .fetch_all(&self.pool)
+            .await
+            .map_err(|e| format!("DB Error fetching ai logs: {}", e))?;
+            
+        let mut logs = Vec::new();
+        for row in records {
+            use sqlx::Row;
+            let log_type: String = row.get("log_type");
+            let symbol: String = row.get("symbol");
+            let agent: String = row.get("agent");
+            let status: String = row.get("status");
+            let message: String = row.get("message");
+            let ts: f64 = row.get("ts");
+            
+            logs.push(serde_json::json!({
+                "type": log_type,
+                "symbol": symbol,
+                "agent": agent,
+                "status": status,
+                "message": message,
+                "timestamp": ts as i64
+            }));
+        }
+        Ok(logs)
+    }
+
     async fn create_tables(pool: &PgPool) -> Result<(), String> {
         let schema = "
             CREATE TABLE IF NOT EXISTS tick_log (
@@ -177,11 +229,22 @@ impl Database {
                 timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            CREATE TABLE IF NOT EXISTS ai_logs (
+                id          BIGSERIAL PRIMARY KEY,
+                symbol      TEXT NOT NULL,
+                log_type    TEXT NOT NULL,
+                agent       TEXT NOT NULL,
+                status      TEXT NOT NULL,
+                message     TEXT NOT NULL,
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tick_symbol ON tick_log(symbol);
             CREATE INDEX IF NOT EXISTS idx_tick_time ON tick_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_trade_time ON trade_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_history_time ON trade_history(time);
             CREATE INDEX IF NOT EXISTS idx_signal_time ON strategy_signals(timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_ai_logs_symbol_time ON ai_logs(symbol, timestamp DESC);
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();

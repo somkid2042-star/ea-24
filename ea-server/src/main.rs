@@ -304,10 +304,11 @@ async fn run_server() {
     let (tx, _rx) = broadcast::channel::<String>(100);
 
     // Spawn HTTP static file server (serves React dist/)
+    let http_db = database.clone();
     tokio::spawn(async move {
         info!("🌐 Serving web dashboard from dist/ folder...");
         while let Ok((stream, peer_addr)) = http_listener.accept().await {
-            tokio::spawn(handle_http_request(stream, peer_addr));
+            tokio::spawn(handle_http_request(stream, peer_addr, http_db.clone()));
         }
     });
 
@@ -628,6 +629,25 @@ async fn run_server() {
                 }
             }
             tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
+    });
+
+    // Background Task to persist AI Logs
+    let persist_db = database.clone();
+    let mut persist_rx = tx.subscribe();
+    tokio::spawn(async move {
+        while let Ok(msg) = persist_rx.recv().await {
+            if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg) {
+                if let Some(t) = v["type"].as_str() {
+                    if t == "agent_log" || t == "agent_log_m1" {
+                        let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
+                        let agent = v["agent"].as_str().unwrap_or("unknown");
+                        let status = v["status"].as_str().unwrap_or("unknown");
+                        let message = v["message"].as_str().unwrap_or("");
+                        persist_db.insert_ai_log(sym, t, agent, status, message).await;
+                    }
+                }
+            }
         }
     });
 
@@ -2752,7 +2772,7 @@ use rust_embed::RustEmbed;
 #[folder = "../ea-client/dist/"]
 struct WebAssets;
 
-async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
+async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: db::Database) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut buf = vec![0u8; 4096];
@@ -2762,6 +2782,7 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
     };
 
     let request = String::from_utf8_lossy(&buf[..n]);
+
     let path = request
         .lines()
         .next()
@@ -2770,6 +2791,28 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr) {
 
     let clean_path = path.split('?').next().unwrap_or(path);
     let mut relative = clean_path.trim_start_matches('/');
+
+    // Handle API endpoints
+    if relative.starts_with("api/ai_logs") {
+        let qs = path.split('?').nth(1).unwrap_or("");
+        let query: std::collections::HashMap<String, String> = form_urlencoded::parse(qs.as_bytes())
+            .into_owned()
+            .collect();
+        
+        let symbol = query.get("symbol").map(|s| s.as_str()).unwrap_or("XAUUSD");
+        let limit = query.get("limit").and_then(|l| l.parse::<i64>().ok()).unwrap_or(100);
+        
+        let response_json = match db.get_recent_ai_logs(symbol, limit).await {
+            Ok(logs) => serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string()),
+            Err(_) => "[]".to_string(),
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            response_json.len(), response_json
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
 
     // Handle MT5 Icon dynamically
     if relative.starts_with("icon/") {
