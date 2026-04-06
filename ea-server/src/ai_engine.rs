@@ -522,7 +522,13 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
             let mut summary = String::new();
             let mut th_headlines = Vec::new();
             
-            let clean_json = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+            let start = response.find('{');
+            let end = response.rfind('}');
+            let clean_json = match (start, end) {
+                (Some(s), Some(e)) if s < e => &response[s..=e],
+                _ => response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim()
+            };
+
             if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(clean_json) {
                 if let Some(s) = json_val.get("sentiment").and_then(|v| v.as_str()) {
                     sentiment = s.to_uppercase();
@@ -541,7 +547,7 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
                     }
                 }
             } else {
-                warn!("{} Failed to parse Gemini JSON, falling back to basic extraction", agent);
+                warn!("{} Failed to parse Gemini JSON, falling back. Raw response: {}", agent, response);
                 for line in response.lines() {
                     let line = line.trim();
                     if line.to_uppercase().contains("BULLISH") { sentiment = "BULLISH".to_string(); }
