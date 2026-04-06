@@ -1,6 +1,6 @@
 {
   "productName": "EA Desktop",
-  "version": "6.3.27",
+  "version": "6.3.28",
   "identifier": "com.ea24.desktop",
   "build": {
     "beforeDevCommand": "npm run dev",

@@ -1144,12 +1144,12 @@ async fn handle_ws_connection(
                                         let resp = serde_json::json!({
                                             "type": "global_ai_data",
                                             "data": {
-                                                "news": data.news.clone().unwrap_or_else(|| serde_json::json!({
+                                                "news": data.news.as_ref().map(|n| serde_json::to_value(n).unwrap_or(serde_json::Value::Null)).unwrap_or_else(|| serde_json::json!({
                                                     "sentiment": "NEUTRAL",
                                                     "summary": "AI API Keys (Gemini/Tavily) are not configured. Go to Settings > System Config to add them.",
                                                     "headlines": ["Please configure API keys to unlock AI features."]
                                                 })),
-                                                "calendar": data.calendar.clone().unwrap_or_else(|| serde_json::json!({
+                                                "calendar": data.calendar.as_ref().map(|c| serde_json::to_value(c).unwrap_or(serde_json::Value::Null)).unwrap_or_else(|| serde_json::json!({
                                                     "high_impact_soon": false,
                                                     "events": [{
                                                         "date": chrono::Utc::now().to_rfc3339(),
