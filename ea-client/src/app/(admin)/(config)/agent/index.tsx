@@ -7,7 +7,7 @@ import {
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { openUrl } from '@tauri-apps/plugin-opener';
-
+import { invoke } from '@tauri-apps/api/core';
 const WS_URL = getWsUrl();
 
 type TabKey = 'news' | 'calendar' | 'sentiment' | 'risk' | 'correlation' | 'report' | 'key';
@@ -870,7 +870,12 @@ const AgentSettings = () => {
                                        setTimeout(()=>setSuccessMsg(''), 2000); 
                                      }
                                      const url = acc.address ? `https://accounts.google.com/AccountChooser?Email=${encodeURIComponent(acc.address)}&continue=${encodeURIComponent('https://aistudio.google.com/app/apikey')}` : 'https://aistudio.google.com/app/apikey';
-                                     await openUrl(url);
+                                     try {
+                                       await invoke('open_chrome_incognito', { url });
+                                     } catch (e) {
+                                       console.error('Failed to open incognito, falling back to default browser:', e);
+                                       await openUrl(url);
+                                     }
                                    }} 
                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded-md font-medium flex items-center gap-1 transition-colors outline-none cursor-pointer"
                                  >
@@ -891,7 +896,13 @@ const AgentSettings = () => {
                                        setSuccessMsg('คัดลอกอีเมลแล้ว'); 
                                        setTimeout(()=>setSuccessMsg(''), 2000); 
                                      }
-                                     await openUrl("https://app.tavily.com/home");
+                                     const url = "https://app.tavily.com/home";
+                                     try {
+                                       await invoke('open_chrome_incognito', { url });
+                                     } catch (e) {
+                                       console.error('Failed to open incognito, falling back to default browser:', e);
+                                       await openUrl(url);
+                                     }
                                    }} 
                                    className="absolute right-1.5 top-1/2 -translate-y-1/2 text-[10px] bg-blue-50 hover:bg-blue-100 text-blue-600 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 dark:text-blue-400 px-2 py-1 rounded-md font-medium flex items-center gap-1 transition-colors outline-none cursor-pointer"
                                  >

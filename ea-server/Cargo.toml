@@ -1,6 +1,6 @@
 [package]
 name = "ea-server"
-version = "6.3.50"
+version = "6.3.51"
 edition = "2021"
 
 [dependencies]
