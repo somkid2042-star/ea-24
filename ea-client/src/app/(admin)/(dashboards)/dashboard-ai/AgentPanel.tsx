@@ -161,8 +161,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
              </div>
              <div className="flex items-center gap-2">
-                 {agentStatusM1?.orchestrator === 'running' && (
-                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 text-[10px] font-bold uppercase tracking-widest">Running</span>
+                 {agentStatusM1?.orchestrator === 'running' ? (
+                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><span className="size-1.5 rounded-full bg-indigo-500 animate-pulse"></span>Running</span>
+                 ) : (
+                     <span className="px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-widest">Awaiting Processing</span>
                  )}
                  {!autoScrollM1 && (
                      <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
@@ -213,7 +215,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
              </div>
              <div className="flex items-center gap-2">
-                 {finalResult?.decision && (
+                 {finalResult?.decision ? (
                      <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest uppercase border ${
                        finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
                        finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
@@ -222,6 +224,8 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                      }`}>
                        {finalResult.decision}
                      </span>
+                 ) : (
+                     <span className="px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-widest">Awaiting Processing</span>
                  )}
                  {!autoScrollAI && (
                      <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
