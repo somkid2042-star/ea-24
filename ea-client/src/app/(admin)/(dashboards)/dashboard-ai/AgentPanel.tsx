@@ -20,14 +20,11 @@ interface AgentPanelProps {
   onToggleJob?: () => void;
   logs: AiLog[];
   agentStatus: AgentStatusMap;
-  finalResult: any;
   autoTrade?: boolean;
-  onToggleAutoTrade?: () => void;
   disabledAgents?: string[];
   interval?: number;
   lastRunTime?: number | null;
   onEditJob?: () => void;
-  onToggleAgent?: (agentKey: string) => void;
   agentStatusM1?: AgentStatusMap;
   logsM1?: AiLog[];
 }
@@ -45,7 +42,7 @@ const agentConfig = [
   { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, autoTrade, disabledAgents = [] }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   
   useEffect(() => {
@@ -136,17 +133,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
 
       {/* Timeline Body Area */}
       <div className={`px-6 py-6 flex-1 flex overflow-y-auto ${!jobEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        {/* Left Side: Main AI Pipeline (Interval) */}
-        <div className="relative flex-1">
-            {/* The Vertical Line Connecting Icons */}
-            <div className="absolute left-[20px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
+        {/* Left Side: Main Pipeline (Icons Only) */}
+        <div className="flex-1 flex flex-col items-end pr-8 relative">
+            {/* Vertically Connecting Line for Main Pipeline */}
+            <div className="absolute right-[21px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0 mr-[10px]" />
 
-            <div className="space-y-7 relative z-10 w-full pl-2">
+            <div className="space-y-7 relative z-10">
               {agentConfig.map((agent) => {
-                let isDisabled = disabledAgents.includes(agent.key);
                 let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
+                const isFinal = agent.key === 'decision_maker';
+                let isDisabled = disabledAgents?.includes(agent.key);
                 
-                if (agent.key === 'order_executor') {
+                // Mute other agents if auto-trade is off
+                if (!isFinal && !autoTrade) {
+                   isDisabled = true;
+                   status = 'idle';
+                }
+                if (isFinal) {
                    isDisabled = !autoTrade;
                    if (agentStatus.orchestrator === 'running' || agentStatus.orchestrator === 'idle') {
                        status = 'idle';
@@ -158,35 +161,17 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                 const isActive = !isDisabled && status === 'running';
                 const isError = !isDisabled && status === 'error';
                 
-                // Color Themes Based on Status
                 const circleTheme = isDisabled ? 'bg-gray-50 border-gray-100 text-gray-300 scale-95 dark:bg-[#0B101E] dark:border-white/5 dark:text-gray-600' 
                                : isError ? 'bg-red-50 border-red-200 text-red-500'
                                : isActive ? 'bg-blue-50 border-blue-300 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.3)] ring-4 ring-blue-50 dark:bg-blue-500/10 dark:ring-blue-500/10'
                                : 'bg-white border-gray-200 text-gray-400 dark:bg-[#0A0D14] dark:border-white/10 dark:text-gray-500';
 
                 return (
-                  <div 
-                     key={agent.key} 
-                     onClick={() => {
-                         if (agent.key === 'order_executor') {
-                             if (onToggleAutoTrade) onToggleAutoTrade();
-                         } else {
-                             if (onToggleAgent) onToggleAgent(agent.key);
-                         }
-                     }}
-                     className="flex items-center gap-6 cursor-pointer group"
-                  >
-                    {/* Circle Icon */}
-                    <div className={`size-[42px] rounded-full flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${circleTheme}`}>
-                        {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
-                    </div>
-
-                    {/* Text Title only */}
-                    <div className="flex-1 min-w-0">
-                         <span className={`font-bold text-[14px] font-mono tracking-tight ${isDisabled ? 'text-gray-300 dark:text-gray-600' : 'text-slate-700 dark:text-gray-300 group-hover:text-blue-600 transition-colors'}`}>
-                            {agent.name}
-                         </span>
-                    </div>
+                  <div key={agent.key} className="flex relative justify-end cursor-help group" title={`${agent.name} (Main Interval)`}>
+                     {/* Status Icon */}
+                     <div className={`size-[42px] rounded-full flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${circleTheme}`}>
+                         {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
+                     </div>
                   </div>
                 );
               })}
@@ -194,9 +179,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* Right Side: Fast Track M1 Pipeline (Icons Only) */}
-        <div className="relative w-[50px] flex flex-col items-center justify-center">
+        <div className="relative w-[50px] flex flex-col items-center justify-center pl-4">
             {/* Vertically Connecting Line for M1 */}
-            <div className="absolute left-[25px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
+            <div className="absolute left-[37px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
 
             <div className="space-y-7 relative z-10">
               {agentConfig.map((agent) => {

@@ -1,8 +1,15 @@
 import { useState, useEffect, useRef } from 'react';
-import { LuBot, LuCheck, LuX, LuBrainCircuit, LuChevronDown, LuPlus, LuClock, LuBell } from 'react-icons/lu';
+import { LuBot, LuCheck, LuX, LuBrainCircuit, LuChevronDown, LuPlus, LuClock, LuBell, LuGlobe, LuActivity, LuCalendar, LuShield } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { AgentPanel } from './AgentPanel';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
+
+const agentConfig = [
+  { key: 'news_hunter', name: 'วิเคราะห์ข่าวกรอง (News)', icon: <LuGlobe size={14} /> },
+  { key: 'chart_analyst', name: 'วิเคราะห์เทคนิค (Chart)', icon: <LuActivity size={14} /> },
+  { key: 'calendar', name: 'ติดตามปฏิทินศก. (Calendar)', icon: <LuCalendar size={14} /> },
+  { key: 'risk_manager', name: 'บริหารความเสี่ยง (Risk)', icon: <LuShield size={14} /> },
+];
 
 type AutoPilotJob = { 
   symbol: string; 
@@ -380,6 +387,30 @@ const DashboardAi = () => {
                               </button>
                           </div>
 
+                          <div className="col-span-2 flex flex-col gap-2 mt-2">
+                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest border-b border-default-200 dark:border-white/5 pb-2 mb-1 flex items-center gap-2">
+                                  <LuBrainCircuit className="text-blue-500 size-3" />
+                                  ตัวเลือกการวิเคราะห์ (AI Agents)
+                              </label>
+                              <div className="flex flex-col gap-2">
+                                  {agentConfig.map((agent) => {
+                                      const disabled = job.disabled_agents || [];
+                                      const isEnabled = !disabled.includes(agent.key);
+                                      return (
+                                          <div key={agent.key} className="flex items-center justify-between p-2 rounded-lg bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5">
+                                              <div className="flex items-center gap-2 text-[11px] font-bold text-default-700 dark:text-gray-300">
+                                                  <span className="text-blue-500">{agent.icon}</span>
+                                                  {agent.name}
+                                              </div>
+                                              <button onClick={() => handleToggleAgent(idx, agent.key)} className={`relative inline-flex h-4 w-7 shrink-0 cursor-pointer items-center justify-center rounded-full focus:outline-none transition-colors ${isEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                                                  <span className={`pointer-events-none inline-block h-2.5 w-2.5 transform rounded-full shadow-sm ring-0 transition duration-200 ease-in-out ${isEnabled ? 'translate-x-[6px] bg-white' : '-translate-x-[6px] bg-gray-100 dark:bg-gray-400'}`} />
+                                              </button>
+                                          </div>
+                                      )
+                                  })}
+                              </div>
+                          </div>
+
                           <div className="flex flex-col gap-1.5 col-span-2">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-1">Target Mode (TP/SL)</label>
                               <div className="flex rounded-xl overflow-hidden border border-default-200 dark:border-white/5 p-1 bg-default-100/50 dark:bg-[#131826]">
@@ -559,15 +590,8 @@ const DashboardAi = () => {
                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
                       risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle'
                     }}
-                    finalResult={finalResultBySymbol[job.symbol]}
                     autoTrade={job.auto_trade}
-                    onToggleAutoTrade={() => {
-                      const newJobs = [...autoPilotJobs];
-                      newJobs[idx].auto_trade = !newJobs[idx].auto_trade;
-                      saveJobsToDb(newJobs);
-                    }}
                     disabledAgents={job.disabled_agents || []}
-                    onToggleAgent={(agentKey) => handleToggleAgent(idx, agentKey)}
                  />
                )}
            </div>
