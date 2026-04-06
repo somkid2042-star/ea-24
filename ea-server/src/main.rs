@@ -286,10 +286,18 @@ async fn run_server() {
             initial_last_updated = last;
         }
     }
+    
+    let mut initial_macro = None;
+    if let Some(m_str) = database.get_config("global_macro_cache").await {
+        if let Ok(m) = serde_json::from_str::<ai_engine::MacroResult>(&m_str) {
+            initial_macro = Some(m);
+        }
+    }
 
     let global_ai_data = Arc::new(RwLock::new(GlobalAiData {
         news: initial_news,
         calendar: initial_calendar,
+        macro_data: initial_macro,
         last_updated: initial_last_updated,
     }));
 

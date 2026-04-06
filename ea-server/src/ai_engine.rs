@@ -792,7 +792,9 @@ pub async fn fetch_macro_indicators(
 
     let mut context_text = String::new();
     for (i, article) in articles.into_iter().take(5).enumerate() {
-        context_text.push_str(&format!("[{}] Title: {}\nContent: {}\n\n", i+1, article.title, article.content));
+        let title = article.title.as_deref().unwrap_or("No Title");
+        let content = article.content.as_deref().unwrap_or("No Content");
+        context_text.push_str(&format!("[{}] Title: {}\nContent: {}\n\n", i+1, title, content));
     }
 
     let prompt = format!(
@@ -806,7 +808,7 @@ pub async fn fetch_macro_indicators(
         context_text
     );
 
-    match call_gemini(gemini_key, model, &prompt).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 500).await {
         Ok(res) => {
             let clean_json = res.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
             match serde_json::from_str::<MacroResult>(clean_json) {
