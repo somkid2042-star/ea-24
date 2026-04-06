@@ -696,10 +696,33 @@ Volume Profile Proxy: Point of Control (HVN) = {hvn:.5}
 --- RECENT RAW OHLC ({} candles) ---
 {candle_str}{data_note}
 
-Based on both the math-perfect indicators above and the raw price action, analyze support/resistance levels and market structure. Then respond:
+Based on both the math-perfect indicators above and the raw price action, evaluate the following 10 Strategies and assign a Buy/Sell confidence score (0% = Strong Sell, 50% = Neutral, 100% = Strong Buy) to each:
+1. Trend Following (EMA)
+2. Mean Reversion (Bollinger)
+3. Momentum (RSI)
+4. Order Blocks (SMC)
+5. Fair Value Gaps (SMC)
+6. Volume Profile (HVN)
+7. Price Action Breakout
+8. Supply / Demand
+9. Candlestick Patterns
+10. Multi-Timeframe Structure
+
+Then respond EXACTLY in this format:
 RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
-REASONING: [1-2 sentence summary in Thai language]"#, 
+REASONING: [1-2 sentence summary in Thai language]
+STRATEGIES:
+1. Trend: [X]%
+2. BB: [X]%
+3. RSI: [X]%
+4. OB: [X]%
+5. FVG: [X]%
+6. HVN: [X]%
+7. Breakout: [X]%
+8. S/D: [X]%
+9. Candle: [X]%
+10. Structure: [X]%"#, 
         recent.len(),
         symbol=symbol, timeframe=timeframe, price=price, trend=trend,
         rsi=ind.rsi_14, ema9=ind.ema_9, ema21=ind.ema_21, ema50=ind.ema_50,
@@ -709,11 +732,14 @@ REASONING: [1-2 sentence summary in Thai language]"#,
         hvn=hvn, candle_str=candle_str, data_note=data_note
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.3, 400, false).await {
+    match call_gemini(gemini_key, model, &prompt, 0.3, 800, false).await {
         Ok(response) => {
             let mut rec = "HOLD".to_string();
             let mut conf = 50.0;
             let mut reason = String::new();
+            let mut strats = String::new();
+            let mut parsing_strats = false;
+            
             for line in response.lines() {
                 let line = line.trim();
                 if line.starts_with("RECOMMENDATION:") {
@@ -721,20 +747,34 @@ REASONING: [1-2 sentence summary in Thai language]"#,
                     if v.contains("BUY") { rec = "BUY".to_string(); }
                     else if v.contains("SELL") { rec = "SELL".to_string(); }
                 }
-                if line.starts_with("CONFIDENCE:") {
+                else if line.starts_with("CONFIDENCE:") {
                     let v: String = line.replace("CONFIDENCE:", "").trim().chars()
                         .filter(|c| c.is_ascii_digit() || *c == '.').collect();
                     conf = v.parse().unwrap_or(50.0);
                 }
-                if line.starts_with("REASONING:") {
+                else if line.starts_with("REASONING:") {
                     reason = line.replace("REASONING:", "").trim().to_string();
+                }
+                else if line.starts_with("STRATEGIES:") {
+                    parsing_strats = true;
+                }
+                else if parsing_strats && !line.is_empty() {
+                    strats.push_str("\n");
+                    strats.push_str(line);
                 }
             }
             if reason.is_empty() { reason = response.chars().take(150).collect(); }
+            
+            let full_message = if !strats.is_empty() {
+                format!("✅ {} (confidence {:.0}%) — {}\n\n📊 กลยุทธ์ (0=Sell, 100=Buy):{}", rec, conf, reason, strats)
+            } else {
+                format!("✅ {} (confidence {:.0}%) — {}", rec, conf, reason)
+            };
+            
             info!("{} {} — confidence {:.0}%", agent, rec, conf);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
-                "message": format!("✅ {} (confidence {:.0}%) — {}", rec, conf, reason)
+                "message": full_message
             }).to_string());
             ChartResult { recommendation: rec, confidence: conf, reasoning: reason }
         }
