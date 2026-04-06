@@ -1243,15 +1243,20 @@ async fn handle_ws_connection(
                                                     "message": "กำลังดึงข้อมูลข่าวสารล่าสุด (Manual Refresh)..."
                                                 }).to_string());
                                                 
-                                                let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_tx);
+                                                let tv_key = if !tavily_key.is_empty() { tavily_key.clone() } else { "".to_string() };
+                                                
+                                                let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tv_key, sym, &global_tx);
                                                 let cal_fut = ai_engine::run_calendar_watcher(sym, &global_tx);
-                                                let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                                                let macro_fut = ai_engine::fetch_macro_indicators(&gemini_key, &gemini_model, &tv_key, &global_tx);
+                                                
+                                                let (news_result, cal_result, macro_result) = tokio::join!(news_fut, cal_fut, macro_fut);
                                                 
                                                 let update_ts = chrono::Utc::now().timestamp();
                                                 {
                                                     let mut st = global_state.write().await;
                                                     st.news = Some(news_result.clone());
                                                     st.calendar = Some(cal_result.clone());
+                                                    st.macro_data = Some(macro_result.clone());
                                                     st.last_updated = update_ts;
                                                 }
                                                 // Save to DB
@@ -1265,7 +1270,7 @@ async fn handle_ws_connection(
 
                                                 let msg = serde_json::json!({
                                                     "type": "global_ai_data",
-                                                    "data": { "news": news_result, "calendar": cal_result, "last_updated": update_ts }
+                                                    "data": { "news": news_result, "calendar": cal_result, "macro_data": macro_result, "last_updated": update_ts }
                                                 }).to_string();
                                                 let _ = global_tx.send(msg);
                                                 info!("🤖 [UI] Manual fetch complete and broadcasted.");
