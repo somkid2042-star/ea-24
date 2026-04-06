@@ -27,7 +27,7 @@ interface AgentPanelProps {
   onEditJob?: () => void;
   agentStatusM1?: AgentStatusMap;
   logsM1?: AiLog[];
-  finalResult?: { decision: string; confidence?: number; [key: string]: any };
+  finalResult?: { final_decision: string; confidence?: number; [key: string]: any };
 }
 
 const stripEmojis = (msg: string) => {
@@ -220,14 +220,14 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px] relative">
            {/* Left Edge Status Tab */}
            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
-               {finalResult?.decision ? (
+               {finalResult?.final_decision ? (
                    <span className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-[0.2em] uppercase shadow-sm border whitespace-nowrap ${
-                     finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                     finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
-                     finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                     finalResult.final_decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
+                     finalResult.final_decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
+                     finalResult.final_decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
                      'bg-gray-50 text-gray-600 border-gray-200'
                    }`}>
-                     {finalResult.decision}
+                     {finalResult.final_decision}
                    </span>
                ) : (
                    <span className="bg-white dark:bg-[#0A0D14] text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
