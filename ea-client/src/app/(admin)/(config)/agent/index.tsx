@@ -896,7 +896,7 @@ const AgentSettings = () => {
                                        setSuccessMsg('คัดลอกอีเมลแล้ว'); 
                                        setTimeout(()=>setSuccessMsg(''), 2000); 
                                      }
-                                     const url = "https://app.tavily.com/home";
+                                     const url = acc.address ? `https://accounts.google.com/o/oauth2/v2/auth?client_id=424489547385-365js6428uvagemjaqaacbp6b5gmmmi2.apps.googleusercontent.com&redirect_uri=https%3A%2F%2Fauth.tavily.com%2Flogin%2Fcallback&response_type=code&scope=email%20profile&login_hint=${encodeURIComponent(acc.address)}` : "https://app.tavily.com/home";
                                      try {
                                        await invoke('open_chrome_incognito', { url });
                                      } catch (e) {
