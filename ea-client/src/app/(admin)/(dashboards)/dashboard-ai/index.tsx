@@ -369,6 +369,20 @@ const DashboardAi = () => {
                                       />
                                   </div>
                                   <div className="flex flex-col gap-1.5">
+                                      <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">SL (Pips)</label>
+                                      <input
+                                          type="number"
+                                          min="0" step="1"
+                                          value={job.sl_value || 0}
+                                          onChange={(e) => {
+                                          const newJobs = [...autoPilotJobs];
+                                          newJobs[idx].sl_value = parseFloat(e.target.value) || 0;
+                                          saveJobsToDb(newJobs);
+                                          }}
+                                          className="w-full px-3 py-2 text-[11px] font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-orange-500/50 focus:border-orange-500 outline-none transition-all text-orange-600 dark:text-orange-400"
+                                      />
+                                  </div>
+                                  <div className="flex flex-col gap-1.5 col-span-2">
                                       <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Trailing Step (Pips)</label>
                                       <input
                                           type="number"

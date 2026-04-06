@@ -406,6 +406,28 @@ void HandleOpenTrade(const string msg)
    int digits = (int)SymbolInfoInteger(sym, SYMBOL_DIGITS);
    double ask = SymbolInfoDouble(sym, SYMBOL_ASK);
    double bid = SymbolInfoDouble(sym, SYMBOL_BID);
+   double point = SymbolInfoDouble(sym, SYMBOL_POINT);
+   
+   // Apply physical Risk configurations if found in activeRisks
+   for(int i=0; i<ArraySize(activeRisks); i++)
+     {
+      if(activeRisks[i].symbol == sym)
+        {
+         if(activeRisks[i].sl_value > 0)
+           {
+            double dist = activeRisks[i].sl_value * point * 10;
+            if(dir == "BUY") sl = NormalizeDouble(ask - dist, digits);
+            if(dir == "SELL") sl = NormalizeDouble(bid + dist, digits);
+           }
+         if(activeRisks[i].risk_mode == "pips" && activeRisks[i].tp_value > 0)
+           {
+            double dist = activeRisks[i].tp_value * point * 10;
+            if(dir == "BUY") tp = NormalizeDouble(ask + dist, digits);
+            if(dir == "SELL") tp = NormalizeDouble(bid - dist, digits);
+           }
+         break;
+        }
+     }
    
    bool result = false;
    
