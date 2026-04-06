@@ -121,7 +121,7 @@ impl Database {
 
     /// Fetch recent AI logs of a specific type
     pub async fn get_recent_ai_logs(&self, symbol: &str, limit: i64) -> Result<Vec<serde_json::Value>, String> {
-        let q = "SELECT id, symbol, log_type, agent, status, message, EXTRACT(EPOCH FROM timestamp)*1000 AS ts
+        let q = "SELECT id, symbol, log_type, agent, status, message, (EXTRACT(EPOCH FROM timestamp)::FLOAT8)*1000 AS ts
                  FROM ai_logs 
                  WHERE symbol = $1 
                  ORDER BY timestamp DESC LIMIT $2";
@@ -136,12 +136,12 @@ impl Database {
         let mut logs = Vec::new();
         for row in records {
             use sqlx::Row;
-            let log_type: String = row.get("log_type");
-            let symbol: String = row.get("symbol");
-            let agent: String = row.get("agent");
-            let status: String = row.get("status");
-            let message: String = row.get("message");
-            let ts: f64 = row.get("ts");
+            let log_type: String = row.try_get("log_type").unwrap_or_default();
+            let symbol: String = row.try_get("symbol").unwrap_or_default();
+            let agent: String = row.try_get("agent").unwrap_or_default();
+            let status: String = row.try_get("status").unwrap_or_default();
+            let message: String = row.try_get("message").unwrap_or_default();
+            let ts: f64 = row.try_get("ts").unwrap_or(0.0);
             
             logs.push(serde_json::json!({
                 "type": log_type,
