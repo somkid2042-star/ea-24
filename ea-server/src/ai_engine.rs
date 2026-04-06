@@ -503,12 +503,19 @@ News:
 
 Respond in this exact format only:
 SENTIMENT: [BULLISH/BEARISH/NEUTRAL]
-SUMMARY: [1-2 sentence summary in Thai language]"#);
+SUMMARY: [1-2 sentence overall summary in Thai language]
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 300).await {
+STORY 1: [Thai Headline] || [1-2 sentence Thai Content]
+STORY 2: [Thai Headline] || [1-2 sentence Thai Content]
+STORY 3: [Thai Headline] || [1-2 sentence Thai Content]
+STORY 4: [Thai Headline] || [1-2 sentence Thai Content]
+STORY 5: [Thai Headline] || [1-2 sentence Thai Content]"#);
+
+    match call_gemini(gemini_key, model, &prompt, 0.2, 800).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
+            let mut th_headlines = Vec::new();
             for line in response.lines() {
                 let line = line.trim();
                 if line.starts_with("SENTIMENT:") {
@@ -519,14 +526,24 @@ SUMMARY: [1-2 sentence summary in Thai language]"#);
                 if line.starts_with("SUMMARY:") {
                     summary = line.replace("SUMMARY:", "").trim().to_string();
                 }
+                if line.starts_with("STORY ") {
+                    if let Some((_, content)) = line.split_once(':') {
+                        let content = content.trim().to_string();
+                        if !content.is_empty() {
+                            th_headlines.push(content);
+                        }
+                    }
+                }
             }
             if summary.is_empty() { summary = response.chars().take(150).collect(); }
+            let final_headlines = if th_headlines.is_empty() { headlines } else { th_headlines };
+            
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
                 "message": format!("✅ Sentiment: {} — {}", sentiment, summary)
             }).to_string());
-            NewsResult { sentiment, summary, headlines, source_count: articles.len() }
+            NewsResult { sentiment, summary, headlines: final_headlines, source_count: articles.len() }
         }
         Err(e) => {
             let _ = log_tx.send(serde_json::json!({

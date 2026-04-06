@@ -2,7 +2,8 @@ import { useState, useRef, useCallback, useEffect } from 'react';
 import { 
   LuSave, LuNetwork, LuNewspaper, LuCalendar, 
   LuActivity, LuShieldAlert, LuGitMerge, LuFileText,
-  LuKey, LuCheck, LuX, LuSparkles, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuSearch, LuOctagon, LuCircleCheck, LuCircleX, LuTrendingDown, LuLayers, LuGauge, LuDollarSign
+  LuKey, LuCheck, LuX, LuSparkles, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuSearch, LuOctagon, LuCircleCheck, LuCircleX, LuTrendingDown, LuLayers, LuGauge, LuDollarSign,
+  LuChevronRight, LuEye, LuEyeOff
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
@@ -57,6 +58,22 @@ const AgentSettings = () => {
   const [testing, setTesting] = useState(false);
   const [testingTavily, setTestingTavily] = useState(false);
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
+  const [globalNews, setGlobalNews] = useState<any>(null);
+  const [newsLastUpdated, setNewsLastUpdated] = useState<number>(0);
+  const [nextFetchSeconds, setNextFetchSeconds] = useState<number>(0);
+  const [expandedKeys, setExpandedKeys] = useState<number[]>([]);
+  const [showApiCards, setShowApiCards] = useState<boolean>(false);
+
+  const toggleExpand = (index: number) => {
+    if (expandedKeys.includes(index)) {
+      setExpandedKeys(expandedKeys.filter(i => i !== index));
+    } else {
+      setExpandedKeys([...expandedKeys, index]);
+    }
+  };
+
+
+
   const wsRef = useRef<WebSocket | null>(null);
 
   const connectWs = useCallback(() => {
@@ -65,6 +82,7 @@ const AgentSettings = () => {
       setWsConnected(true);
       ws.send(JSON.stringify({ action: 'get_server_config' }));
       ws.send(JSON.stringify({ action: 'get_ai_models' }));
+      ws.send(JSON.stringify({ action: 'get_global_ai_data' }));
     };
     ws.onclose = () => { setWsConnected(false); setTimeout(connectWs, 3000); };
     ws.onmessage = (evt) => {
@@ -128,6 +146,14 @@ const AgentSettings = () => {
           setTavilyResult({ success: data.success, message: data.message });
           setTimeout(() => setTavilyResult(null), 10000);
         }
+        if (data.type === 'global_ai_data') {
+          if (data.data && data.data.news) {
+            setGlobalNews(data.data.news);
+          }
+          if (data.data && data.data.last_updated) {
+            setNewsLastUpdated(data.data.last_updated);
+          }
+        }
         if (data.type === 'account_data') {
           const positions = data.positions || [];
           setCurrentPositions(positions.length);
@@ -145,6 +171,18 @@ const AgentSettings = () => {
   }, []);
 
   useEffect(() => { connectWs(); return () => { wsRef.current?.close(); }; }, [connectWs]);
+
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (newsLastUpdated > 0) {
+        const now = Math.floor(Date.now() / 1000);
+        let diff = 3600 - (now - newsLastUpdated);
+        if (diff < 0) diff = 0;
+        setNextFetchSeconds(diff);
+      }
+    }, 1000);
+    return () => clearInterval(timer);
+  }, [newsLastUpdated]);
 
   const send = (msg: object) => { if (wsRef.current?.readyState === 1) wsRef.current.send(JSON.stringify(msg)); };
 
@@ -248,6 +286,22 @@ const AgentSettings = () => {
     { key: 'key', icon: <LuKey size={18} />, label: 'API Keys' },
   ] as const;
 
+  const renderSaveAction = () => (
+    <div className="flex items-center justify-between border-t border-default-100 dark:border-gray-700/50 pt-5 mt-6">
+      <div>
+        {successMsg && <span className="text-green-500 font-medium flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {successMsg}</span>}
+        {!wsConnected && <span className="text-red-500 font-medium flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> การเชื่อมต่อขาดหาย</span>}
+      </div>
+      <button
+        onClick={handleSave}
+        className="px-6 py-2.5 shadow-md shadow-blue-500/20 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl transition-all flex items-center gap-2 font-medium"
+      >
+        <LuSave size={18} />
+        บันทึกการตั้งค่า
+      </button>
+    </div>
+  );
+
   return (
     <div className="p-4 lg:p-6 max-w-5xl mx-auto space-y-6">
       <div className="flex items-center gap-3 mb-6">
@@ -260,27 +314,32 @@ const AgentSettings = () => {
         </div>
       </div>
 
-      <div className="flex bg-default-100 dark:bg-gray-800/60 p-1 rounded-xl overflow-x-auto hide-scrollbar">
-        {TABS.map((tab) => (
-          <button
-            key={tab.key}
-            onClick={() => setActiveTab(tab.key)}
-            className={`flex items-center gap-2 px-5 py-2.5 rounded-lg text-sm font-medium transition-all whitespace-nowrap ${
-              activeTab === tab.key 
-                ? 'bg-white dark:bg-gray-700 text-blue-600 dark:text-blue-400 shadow-sm border border-default-200 dark:border-gray-600/50' 
-                : 'text-default-600 dark:text-gray-400 hover:text-default-900 dark:hover:text-gray-200 hover:bg-default-200 dark:hover:bg-gray-700/50 border border-transparent'
-            }`}
-          >
-            {tab.icon}
-            {tab.label}
-          </button>
-        ))}
-      </div>
+      <div className="flex flex-col lg:flex-row gap-6 lg:gap-8 items-start mb-24 relative">
+        {/* Sidebar Tabs */}
+        <div className="w-full lg:w-60 shrink-0 lg:sticky lg:top-24 bg-white/40 dark:bg-gray-800/20 backdrop-blur-xl p-2 rounded-2xl border border-default-200/50 dark:border-gray-700/30 flex lg:flex-col gap-1 overflow-x-auto hide-scrollbar z-10 shadow-sm">
+          {TABS.map((tab) => (
+            <button
+              key={tab.key}
+              onClick={() => {
+                setActiveTab(tab.key);
+                
+              }}
+              className={`flex flex-shrink-0 items-center justify-start gap-3 px-4 py-3 rounded-xl text-sm font-medium transition-all duration-300 ${
+                activeTab === tab.key 
+                  ? 'bg-blue-600 text-white shadow-md shadow-blue-500/20' 
+                  : 'text-default-600 dark:text-gray-400 hover:text-blue-600 dark:hover:text-blue-400 hover:bg-blue-50 dark:hover:bg-blue-500/10 border-transparent'
+              }`}
+            >
+              <div className={activeTab === tab.key ? 'text-white/90 scale-110 transition-transform' : 'opacity-70'}>{tab.icon}</div>
+              {tab.label}
+            </button>
+          ))}
+        </div>
 
-      <div className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 shadow-sm min-h-[350px] mb-20">
-        {/* News Tab */}
-        {activeTab === 'news' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {/* Content Sections */}
+        <div className="flex-1 space-y-8 w-full min-w-0 pb-32">
+        {/* News  Tab */}
+          {activeTab === 'news' && (<section id={`section-news`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
               <LuNewspaper className="text-blue-500 dark:text-blue-400" /> Global News Agent
             </h2>
@@ -311,13 +370,84 @@ const AgentSettings = () => {
                   placeholder="ตัวอย่าง: Global Forex Market News"
                 />
               </div>
-            </div>
-          </div>
-        )}
 
-        {/* Calendar Tab */}
-        {activeTab === 'calendar' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+              {/* Fetched News Card */}
+              <div className="mt-6 p-5 rounded-xl border border-default-200 dark:border-gray-700/50 bg-default-50/50 dark:bg-gray-900/30">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-medium text-default-900 dark:text-gray-100 flex items-center gap-2">
+                    <LuActivity className="text-blue-500" /> ข่าวสารล่าสุดที่ระบบหาได้
+                  </h3>
+                  <div className="flex items-center gap-3">
+                    {newsLastUpdated > 0 && nextFetchSeconds > 0 && (
+                      <span className="text-xs text-default-500 font-mono">
+                        อัปเดตอัติโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}
+                      </span>
+                    )}
+                    {newsLastUpdated > 0 && nextFetchSeconds === 0 && (
+                      <span className="text-xs text-blue-500 font-mono animate-pulse">
+                        กำลังดึงข้อมูลใหม่...
+                      </span>
+                    )}
+                    {globalNews?.sentiment && (
+                      <span className={`px-2.5 py-1 rounded-md text-xs font-semibold ${
+                        globalNews.sentiment === 'BULLISH' ? 'bg-green-100 text-green-700 dark:bg-green-500/20 dark:text-green-400' :
+                        globalNews.sentiment === 'BEARISH' ? 'bg-red-100 text-red-700 dark:bg-red-500/20 dark:text-red-400' :
+                        'bg-gray-200 text-gray-700 dark:bg-gray-700 dark:text-gray-300'
+                      }`}>
+                        {globalNews.sentiment}
+                      </span>
+                    )}
+                  </div>
+                </div>
+                
+                {globalNews ? (
+                  <div className="space-y-4">
+                    <p className="text-sm text-default-600 dark:text-gray-300 leading-relaxed">
+                      {globalNews.summary}
+                    </p>
+                    
+                    {globalNews.headlines && globalNews.headlines.length > 0 && (
+                      <div className="mt-4 border-t border-default-200 dark:border-gray-700 pt-4">
+                        <h4 className="text-xs font-semibold text-default-500 dark:text-gray-400 mb-3 uppercase">Headlines</h4>
+                        <div className="space-y-2">
+                          {globalNews.headlines.slice(0, 5).map((h: string, idx: number) => {
+                            const parts = h.split('||');
+                            const title = parts[0]?.trim() || h;
+                            const content = parts[1]?.trim() || '';
+                            
+                            return (
+                              <details key={idx} className="group border border-default-200 dark:border-gray-700 rounded-lg bg-white dark:bg-gray-800/50">
+                                <summary className="flex items-center justify-between cursor-pointer p-3 text-sm font-medium text-default-800 dark:text-gray-200 list-none outline-none">
+                                  <span className="truncate pr-4 flex-1">{title}</span>
+                                  <LuChevronDown className="w-4 h-4 text-default-400 transition-transform group-open:rotate-180 flex-shrink-0" />
+                                </summary>
+                                {content && (
+                                  <div className="px-3 pb-3 text-xs text-default-600 dark:text-gray-400 bg-white dark:bg-gray-800/50 rounded-b-lg p-3 pt-0 leading-relaxed border-t border-default-100 dark:border-gray-700/50 mt-1">
+                                    <div className="pt-2">{content}</div>
+                                  </div>
+                                )}
+                              </details>
+                            );
+                          })}
+                        </div>
+                      </div>
+                    )}
+                  </div>
+                ) : (
+                  <div className="text-center py-6 text-sm text-default-500 dark:text-gray-500 flex flex-col items-center gap-2">
+                    <LuNewspaper size={24} className="opacity-50" />
+                    <span>ยังไม่มีข้อมูลข่าวสารในขณะนี้</span>
+                    <span className="text-xs">ระบบจะดึงข้อมูลอัตโนมัติ 1 ครั้งต่อชั่วโมง เพื่อลดการใช้ API Credit</span>
+                  </div>
+                )}
+              </div>
+
+            </div>
+            {renderSaveAction()}
+          </section>)}
+
+        {/* Calendar  Tab */}
+          {activeTab === 'calendar' && (<section id={`section-calendar`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
               <LuCalendar className="text-purple-500 dark:text-purple-400" /> Economic Calendar AI
             </h2>
@@ -351,12 +481,11 @@ const AgentSettings = () => {
                 </select>
               </div>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-        {/* Sentiment Tab */}
-        {activeTab === 'sentiment' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {/* Sentiment  Tab */}
+          {activeTab === 'sentiment' && (<section id={`section-sentiment`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
               <LuActivity className="text-orange-500 dark:text-orange-400" /> Market Sentiment Analyzer
             </h2>
@@ -388,12 +517,11 @@ const AgentSettings = () => {
                 />
               </div>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-        {/* Risk Tab */}
-        {activeTab === 'risk' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-6">
+        {/* Risk  Tab */}
+          {activeTab === 'risk' && (<section id={`section-risk`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <div className="flex items-center justify-between">
               <div>
                 <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
@@ -481,12 +609,11 @@ const AgentSettings = () => {
                 <div className={`w-11 h-6 rounded-full transition-colors ${riskStopEnabled ? 'bg-blue-500' : 'bg-default-300 dark:bg-gray-600'} peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
               </label>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-        {/* Correlation Tab */}
-        {activeTab === 'correlation' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {/* Correlation  Tab */}
+          {activeTab === 'correlation' && (<section id={`section-correlation`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
               <LuGitMerge className="text-cyan-500 dark:text-cyan-400" /> Correlation Analyzer
             </h2>
@@ -519,12 +646,11 @@ const AgentSettings = () => {
                 />
               </div>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-        {/* Report Tab */}
-        {activeTab === 'report' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300">
+        {/* Report  Tab */}
+          {activeTab === 'report' && (<section id={`section-report`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
               <LuFileText className="text-emerald-500 dark:text-emerald-400" /> Global Daily Reporter
             </h2>
@@ -542,12 +668,11 @@ const AgentSettings = () => {
                 <div className={`w-11 h-6 rounded-full transition-colors ${reportEnabled ? 'bg-blue-500' : 'bg-default-300 dark:bg-gray-600'} peer-checked:after:translate-x-full after:content-[''] after:absolute after:top-[2px] after:left-[2px] after:bg-white after:border-gray-300 after:border after:rounded-full after:h-5 after:w-5 after:transition-all`}></div>
               </label>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-        {/* API Keys Tab */}
-        {activeTab === 'key' && (
-          <div className="animate-in fade-in slide-in-from-bottom-2 duration-300 space-y-8">
+        {/* API Keys  Tab */}
+          {activeTab === 'key' && (<section id={`section-key`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <div>
               <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
                 <LuKey className="text-violet-500 dark:text-violet-400" /> API Keys & Models
@@ -620,50 +745,80 @@ const AgentSettings = () => {
                   </h5>
                   <p className="text-xs text-default-500 mt-1">จับคู่ Email กับ Key ทั้งหมดเพื่อให้สลับใช้งานได้ง่าย</p>
                 </div>
+                <div className="flex gap-2">
+                   <button 
+                     onClick={() => setShowApiCards(!showApiCards)} 
+                     className={`px-3 py-1.5 text-xs font-medium rounded-lg flex items-center gap-1.5 transition-colors ${showApiCards ? 'bg-default-100 hover:bg-default-200 dark:bg-gray-800 dark:hover:bg-gray-700 text-default-700 dark:text-gray-300' : 'bg-blue-50 hover:bg-blue-100 dark:bg-blue-500/10 dark:hover:bg-blue-500/20 text-blue-600 dark:text-blue-400'}`}
+                   >
+                     {showApiCards ? <><LuEyeOff className="size-3.5" /> ซ่อนทั้งหมด</> : <><LuEye className="size-3.5" /> แสดงทั้งหมด</>}
+                   </button>
+                </div>
               </div>
               
               <div className="space-y-3">
-                {emails.map((acc, i) => (
-                  <div key={i} className="flex gap-2 pb-3 border-b border-default-200/50 dark:border-gray-700/50 items-center">
-                    <div className="flex flex-col">
-                      <button onClick={() => moveEmailUp(i)} disabled={i === 0} className="text-default-400 hover:text-blue-500 disabled:opacity-20"><LuChevronUp className="size-4" /></button>
-                      <button onClick={() => moveEmailDown(i)} disabled={i === emails.length - 1} className="text-default-400 hover:text-blue-500 disabled:opacity-20"><LuChevronDown className="size-4" /></button>
-                    </div>
-                    <div className="flex-1 space-y-2">
-                       <input type="text" value={acc.address} onChange={(e) => { const n = [...emails]; n[i].address = e.target.value; setEmails(n); }} placeholder="Google Email" className="w-full px-3 py-2 text-sm rounded bg-default-50 dark:bg-gray-900 border dark:border-gray-700" />
-                       <input type="text" value={acc.apiKey} onChange={(e) => { const n = [...emails]; n[i].apiKey = e.target.value; setEmails(n); }} placeholder="Gemini API Key" className="w-full px-3 py-2 text-sm rounded bg-default-50 dark:bg-gray-900 border dark:border-gray-700 font-mono" />
-                       <input type="text" value={acc.tavilyKey} onChange={(e) => { const n = [...emails]; n[i].tavilyKey = e.target.value; setEmails(n); }} placeholder="Tavily API Key" className="w-full px-3 py-2 text-sm rounded bg-default-50 dark:bg-gray-900 border dark:border-gray-700 font-mono" />
-                    </div>
-                    <div className="flex flex-col gap-2 ml-1">
-                      {emails.length > 1 && (
-                        <button onClick={() => setEmails(emails.filter((_, j) => j !== i))} className="p-2 text-red-500 hover:bg-red-500/10 rounded"><LuTrash2 className="size-4" /></button>
-                      )}
-                    </div>
-                  </div>
+                {showApiCards && (
+                  <>
+                    {emails.map((acc, i) => (
+                      <div key={i} className={`border ${expandedKeys.includes(i) ? 'border-blue-500/50 shadow-sm dark:border-blue-500/30' : 'border-default-200 dark:border-gray-700/80'} rounded-xl bg-white dark:bg-gray-800/50 overflow-hidden transition-all duration-200`}>
+                        <div 
+                          className="flex items-center justify-between p-3 cursor-pointer hover:bg-default-50 dark:hover:bg-gray-800 transition-colors"
+                          onClick={() => toggleExpand(i)}
+                        >
+                          <div className="flex items-center gap-3">
+                            <div className={`text-default-400 transition-transform duration-200 ${expandedKeys.includes(i) ? 'rotate-90' : ''}`}>
+                              <LuChevronRight className="size-4" />
+                            </div>
+                            <div className="flex flex-col">
+                              <span className={`text-sm font-medium ${expandedKeys.includes(i) ? 'text-blue-600 dark:text-blue-400' : 'text-default-900 dark:text-gray-200'}`}>
+                                {acc.address || `บัญชีใหม่ (ไม่มีอีเมล ${i + 1})`}
+                              </span>
+                            </div>
+                          </div>
+                          <div className="flex items-center gap-1">
+                            <button onClick={(e) => { e.stopPropagation(); moveEmailUp(i); }} disabled={i === 0} className="p-1.5 text-default-400 hover:text-blue-500 disabled:opacity-20 rounded hover:bg-default-100 dark:hover:bg-gray-700 transition-colors"><LuChevronUp className="size-4" /></button>
+                            <button onClick={(e) => { e.stopPropagation(); moveEmailDown(i); }} disabled={i === emails.length - 1} className="p-1.5 text-default-400 hover:text-blue-500 disabled:opacity-20 rounded hover:bg-default-100 dark:hover:bg-gray-700 transition-colors"><LuChevronDown className="size-4" /></button>
+                            {emails.length > 1 && (
+                              <button onClick={(e) => { e.stopPropagation(); setEmails(emails.filter((_, j) => j !== i)); }} className="p-1.5 text-red-500 hover:bg-red-500/10 rounded ml-1 transition-colors"><LuTrash2 className="size-4" /></button>
+                            )}
+                          </div>
+                        </div>
+                        
+                        {expandedKeys.includes(i) && (
+                          <div className="p-4 bg-default-50/50 dark:bg-gray-900/30 border-t border-default-100 dark:border-gray-700/50 space-y-3 animate-in fade-in slide-in-from-top-1">
+                             <div>
+                               <label className="text-xs font-medium text-default-600 dark:text-gray-400 mb-1 block">Google Email</label>
+                               <input type="text" value={acc.address} onChange={(e) => { const n = [...emails]; n[i].address = e.target.value; setEmails(n); }} placeholder="example@gmail.com" className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none" />
+                             </div>
+                             <div>
+                               <label className="text-xs font-medium text-default-600 dark:text-gray-400 mb-1 block">Gemini API Key</label>
+                               <input type="text" value={acc.apiKey} onChange={(e) => { const n = [...emails]; n[i].apiKey = e.target.value; setEmails(n); }} placeholder="AIzaSy..." className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
+                             </div>
+                             <div>
+                               <label className="text-xs font-medium text-default-600 dark:text-gray-400 mb-1 block">Tavily API Key</label>
+                               <input type="text" value={acc.tavilyKey} onChange={(e) => { const n = [...emails]; n[i].tavilyKey = e.target.value; setEmails(n); }} placeholder="tvly-dev-..." className="w-full px-3 py-2 text-sm rounded-lg bg-white dark:bg-gray-900 border border-default-200 dark:border-gray-700 focus:ring-1 focus:ring-blue-500/50 hover:border-blue-400 transition-all outline-none font-mono" />
+                             </div>
+                          </div>
+                        )}
+                      </div>
                 ))}
-                <button onClick={() => setEmails([...emails, {address: '', password: '', apiKey: '', tavilyKey: ''}])} className="text-xs text-blue-500 font-medium flex items-center gap-1 hover:bg-blue-500/10 px-2 py-1.5 rounded">
-                  <LuPlus className="size-3.5" /> เพิ่มบัญชีใหม่
+                
+                <button 
+                  onClick={() => {
+                    const newIndex = emails.length;
+                    setEmails([...emails, {address: '', password: '', apiKey: '', tavilyKey: ''}]);
+                    setExpandedKeys([...expandedKeys, newIndex]);
+                  }} 
+                  className="w-full mt-2 py-3 border-2 border-dashed border-default-200 hover:border-blue-500 dark:border-gray-700 dark:hover:border-blue-500 text-default-500 hover:text-blue-600 dark:text-gray-400 dark:hover:text-blue-400 rounded-xl flex items-center justify-center gap-2 text-sm font-medium transition-colors bg-default-50/50 hover:bg-blue-50 dark:bg-gray-800/20 dark:hover:bg-blue-500/10"
+                >
+                  <LuPlus className="size-4" /> เพิ่มบัญชี API ใหม่
                 </button>
+                  </>
+                )}
               </div>
             </div>
-          </div>
-        )}
+            {renderSaveAction()}
+          </section>)}
 
-      </div>
-
-      <div className="fixed bottom-0 left-0 right-0 bg-white/80 dark:bg-[#151821]/80 backdrop-blur-xl border-t border-default-200 dark:border-gray-700/50 p-4 z-10">
-        <div className="max-w-5xl mx-auto flex items-center justify-between lg:pl-[240px]">
-          <div>
-            {successMsg && <span className="text-green-500 font-medium flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-green-500 animate-pulse"></span> {successMsg}</span>}
-            {!wsConnected && <span className="text-red-500 font-medium flex items-center gap-2"><span className="w-2 h-2 rounded-full bg-red-500 animate-pulse"></span> การเชื่อมต่อขาดหาย</span>}
-          </div>
-          <button
-            onClick={handleSave}
-            className="px-6 py-2.5 shadow-md shadow-blue-500/20 bg-blue-600 hover:bg-blue-500 active:scale-95 text-white rounded-xl transition-all flex items-center gap-2 font-medium"
-          >
-            <LuSave size={18} />
-            บันทึกการตั้งค่า Global Agent
-          </button>
         </div>
       </div>
     </div>
