@@ -126,16 +126,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
                </span>
             )}
-            {jobEnabled && finalResult?.decision && (
-               <span className={`inline-flex items-center rounded-md px-2 py-0.5 text-[11px] font-black tracking-widest uppercase border ${
-                 finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                 finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
-                 finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
-                 'bg-gray-50 text-gray-600 border-gray-200'
-               }`}>
-                 {finalResult.decision}
-               </span>
-            )}
           </div>
         </div>
 
@@ -170,11 +160,16 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
                  <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
              </div>
-             {!autoScrollM1 && (
-                 <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
-                    Scroll to Latest
-                 </button>
-             )}
+             <div className="flex items-center gap-2">
+                 {agentStatusM1?.orchestrator === 'running' && (
+                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 text-[10px] font-bold uppercase tracking-widest">Running</span>
+                 )}
+                 {!autoScrollM1 && (
+                     <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
+                        Scroll to Latest
+                     </button>
+                 )}
+             </div>
            </div>
            
            <div 
@@ -217,11 +212,23 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                  <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
                  <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
              </div>
-             {!autoScrollAI && (
-                 <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
-                    Scroll to Latest
-                 </button>
-             )}
+             <div className="flex items-center gap-2">
+                 {finalResult?.decision && (
+                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest uppercase border ${
+                       finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
+                       finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
+                       finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                       'bg-gray-50 text-gray-600 border-gray-200'
+                     }`}>
+                       {finalResult.decision}
+                     </span>
+                 )}
+                 {!autoScrollAI && (
+                     <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                        Scroll to Latest
+                     </button>
+                 )}
+             </div>
            </div>
            
            <div 
