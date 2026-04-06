@@ -865,7 +865,8 @@ pub async fn fetch_macro_indicators(
     }
 
     let prompt = format!(
-        "You are an expert economic analyst. Extract the most recently announced values and their exact announcement dates (in Thai) for the following US macro indicators from the provided search context.\n\
+        "You are an expert economic analyst. Find the most recently announced values and their exact announcement dates (in Thai) for the following US macro indicators.\n\
+        If the provided Context is empty or insufficient, USE YOUR OWN MOST RECENT KNOWLEDGE to provide the answers.\n\
         1. FED Interest Rate (อัตราดอกเบี้ยนโยบายสหรัฐ)\n\
         2. NFP (Non-Farm Payrolls)\n\
         3. CPI (Consumer Price Index Y/Y or M/M)\n\n\
