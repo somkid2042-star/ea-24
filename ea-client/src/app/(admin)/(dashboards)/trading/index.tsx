@@ -8,7 +8,8 @@ import {
   LuSlidersHorizontal, LuPlus, LuX, LuChevronDown,
   LuSun, LuMoon, LuChartCandlestick, LuSettings, LuRefreshCw,
   LuChartNoAxesCombined, LuBell, LuShieldAlert, LuBookOpen, LuGrid2X2, LuBot,
-  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart, LuShare2
+  LuZoomIn, LuZoomOut, LuMaximize2, LuMinimize2, LuHouse, LuHeart, LuCalendarHeart, LuShare2,
+  LuCpu, LuMemoryStick, LuDatabase
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { useLayoutContext } from '@/context/useLayoutContext';
@@ -388,6 +389,7 @@ const TradingDashboard = () => {
   const [globalNews, setGlobalNews] = useState<any>(null);
   const [globalCalendar, setGlobalCalendar] = useState<any>(null);
   const [globalAiUpdated, setGlobalAiUpdated] = useState<number>(0);
+  const [telemetry, setTelemetry] = useState<{cpu: number, total_ram_mb: number, ram_mb: number, db_pool: number} | null>(null);
 
   // ── Market close detection ──
   // Crypto symbols: ตลาดเปิด 24/7 ไม่มีวันปิด
@@ -758,6 +760,9 @@ const TradingDashboard = () => {
           if (data.data.calendar) setGlobalCalendar(data.data.calendar);
           if (data.data.last_updated) setGlobalAiUpdated(data.data.last_updated);
         }
+        if (data.type === 'telemetry') {
+          setTelemetry({ cpu: data.cpu_usage, total_ram_mb: data.total_ram_mb, ram_mb: data.ram_usage_mb, db_pool: data.db_pool });
+        }
       } catch { /* */ }
     };
     wsRef.current = ws;
@@ -1016,7 +1021,24 @@ const TradingDashboard = () => {
               <span className="text-[9px] font-black text-white tracking-tight">EA24</span>
             </div>
             <div className="hidden sm:block">
-              <div className="text-[13px] font-bold text-default-900">EA-24 <span className="text-[10px] font-medium text-default-400">v5.9.1</span></div>
+              <div className="text-[13px] font-bold text-default-900 flex items-center gap-2">
+                EA-24 <span className="text-[10px] font-medium text-default-400">v5.9.1</span>
+                {telemetry && (
+                  <div className="flex items-center gap-1.5 text-[8.5px] font-semibold text-default-500 bg-default-100 dark:bg-default-200/20 px-2 py-0.5 rounded-full relative top-[-1px]">
+                    <div className="flex items-center gap-1" title="CPU">
+                      <LuCpu className="size-2.5 text-primary" /> <span>{telemetry.cpu.toFixed(0)}%</span>
+                    </div>
+                    <div className="w-px h-2.5 bg-default-300"></div>
+                    <div className="flex items-center gap-1" title="RAM">
+                      <LuMemoryStick className="size-2.5 text-secondary" /> <span>{telemetry.ram_mb}MB</span>
+                    </div>
+                    <div className="w-px h-2.5 bg-default-300"></div>
+                    <div className="flex items-center gap-1" title="Database">
+                      <LuDatabase className="size-2.5 text-emerald-500" /> <span>PG: {telemetry.db_pool}</span>
+                    </div>
+                  </div>
+                )}
+              </div>
               <div className="text-[8px] text-default-400">algorithmic trading</div>
             </div>
           </div>
