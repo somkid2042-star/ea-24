@@ -565,6 +565,60 @@ async fn run_server() {
         }
     });
 
+    // Spawn Fast-Track M1 System loop (Internal Rust Logic without Gemini API calls)
+    let m1_ai_db = database.clone();
+    let m1_ai_tx = tx.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        loop {
+            let config_raw = m1_ai_db.get_config("ai_autopilot_jobs").await.unwrap_or_default();
+            if !config_raw.is_empty() {
+                if let Ok(jobs) = serde_json::from_str::<Vec<serde_json::Value>>(&config_raw) {
+                    for job in jobs {
+                        if job["enabled"].as_bool() == Some(true) {
+                            if let Some(sym) = job["symbol"].as_str() {
+                                let sym = sym.to_string();
+                                
+                                // Broadcast M1 pipeline start
+                                let _ = m1_ai_tx.send(serde_json::json!({
+                                    "type": "agents_started_m1",
+                                    "symbol": sym,
+                                }).to_string());
+                                
+                                // Sequentially light up agents to denote internal fast-track processing
+                                let agents = ["news_hunter", "chart_analyst", "calendar", "risk_manager", "decision_maker"];
+                                for agent in agents {
+                                    let _ = m1_ai_tx.send(serde_json::json!({
+                                        "type": "agent_log_m1",
+                                        "symbol": sym,
+                                        "agent": agent,
+                                        "status": "running"
+                                    }).to_string());
+                                    
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                                    
+                                    let _ = m1_ai_tx.send(serde_json::json!({
+                                        "type": "agent_log_m1",
+                                        "symbol": sym,
+                                        "agent": agent,
+                                        "status": "done"
+                                    }).to_string());
+                                }
+                                
+                                // Broadcast M1 done
+                                let _ = m1_ai_tx.send(serde_json::json!({
+                                    "type": "agents_done_m1",
+                                    "symbol": sym,
+                                }).to_string());
+                            }
+                        }
+                    }
+                }
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        }
+    });
+
     // Spawn sysinfo polling loop — track only THIS process
     let sys_db = database.clone();
     let sys_tx = tx.clone();

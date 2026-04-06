@@ -83,9 +83,11 @@ const DashboardAi = () => {
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
 
   const [trackedSymbols, setTrackedSymbols] = useState<string[]>([]);
-  // We keep globalSymbol as a fallback default for parsing websocket logs 
   const [globalSymbol, setGlobalSymbol] = useState("XAUUSD");
-  // Auto-Pilot States
+  
+  // M1 states per symbol
+  const [agentStatusM1Map, setAgentStatusM1Map] = useState<Record<string, AgentStatusMap>>({});
+  
   // Auto-Pilot States
   const [autoPilotJobs, setAutoPilotJobs] = useState<AutoPilotJob[]>([]);
   const [closedMap, setClosedMap] = useState<Record<string, boolean>>({});
@@ -109,12 +111,9 @@ const DashboardAi = () => {
         
         if (data.type === 'server_config' && data.config) {
           const c = data.config;
-          // auto_analyze is now per-job
-          
           if (c.ai_autopilot_jobs) {
             try { setAutoPilotJobs(JSON.parse(c.ai_autopilot_jobs)); } catch(e){}
           } else if (c.ai_target_symbols) {
-            // Legacy migration
             const syms = c.ai_target_symbols.split(',').map((s: string) => s.trim()).filter(Boolean);
             const legacyInterval = parseInt(c.ai_analyze_interval || '15', 10);
             const legacyAutoTrade = c.ai_auto_trade === 'true';
@@ -137,7 +136,7 @@ const DashboardAi = () => {
         }
 
         if (data.type === 'agent_log') {
-          const sym = data.symbol || globalSymbol; // Fallback
+          const sym = data.symbol || globalSymbol;
           const newLog = { timestamp: Date.now(), agent: data.agent, status: data.status, message: data.message };
           
           setLogsBySymbol(prev => ({
@@ -157,6 +156,46 @@ const DashboardAi = () => {
                 };
              });
           }
+        } else if (data.type === 'agent_log_m1') {
+          const symbol = data.symbol;
+          const agentStr = data.agent as keyof AgentStatusMap;
+          
+          setAgentStatusM1Map(prev => {
+              const newMap = { ...prev };
+              if (!newMap[symbol]) {
+                  newMap[symbol] = {
+                      orchestrator: 'running',
+                      news_hunter: 'idle', chart_analyst: 'idle',
+                      calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
+                  };
+              }
+              if (agentStr) {
+                 newMap[symbol][agentStr] = data.status as 'idle'|'running'|'done'|'error';
+              }
+              return newMap;
+          });
+        } else if (data.type === 'agents_started_m1') {
+          const symbol = data.symbol;
+          setAgentStatusM1Map(prev => {
+              const newMap = { ...prev };
+              newMap[symbol] = {
+                  orchestrator: 'running',
+                  news_hunter: 'idle', chart_analyst: 'idle',
+                  calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
+              };
+              return newMap;
+          });
+        } else if (data.type === 'agents_done_m1') {
+          const symbol = data.symbol;
+          setAgentStatusM1Map(prev => {
+              const newMap = { ...prev };
+              newMap[symbol] = {
+                  orchestrator: 'idle',
+                  news_hunter: 'idle', chart_analyst: 'idle',
+                  calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
+              };
+              return newMap;
+          });
         }
         
         if (data.type === 'multi_agent_result') {
@@ -172,13 +211,14 @@ const DashboardAi = () => {
         if (data.type === 'agents_started') {
           const sym = data.symbol || globalSymbol;
           setLastRunMap(prev => ({...prev, [sym]: Date.now()}));
-          setAgentStatusBySymbol(prev => ({
-             ...prev,
-             [sym]: {
+          setAgentStatusBySymbol(prev => {
+             const newMap = {...prev};
+             newMap[sym] = {
                 news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
-                risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'running',
-             }
-          }));
+                risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'running'
+             };
+             return newMap;
+          });
           setFinalResultBySymbol(prev => {
              const newObj = {...prev};
              delete newObj[sym];
@@ -204,7 +244,6 @@ const DashboardAi = () => {
 
   const saveJobsToDb = (newJobs: AutoPilotJob[]) => {
      setAutoPilotJobs(newJobs);
-     // Only save jobs that have finalized their setup (not drafts)
      const cleanJobs = newJobs.filter(j => !j.is_draft).map(j => {
         const { is_draft, ...rest } = j;
         return rest;
@@ -241,14 +280,12 @@ const DashboardAi = () => {
 
   const rejectProposal = () => setTradeProposal(null);
 
-  // Symbol options for our CustomSelect
   const trackedSymbolOptions = trackedSymbols
     .filter(s => !closedMap[s])
     .map(s => ({ label: s, value: s }));
   
   return (
     <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto space-y-6">
-      {/* Header Controls */}
       <div className="flex flex-col md:flex-row justify-between items-start md:items-end gap-4 border-b border-default-200 pb-4">
         <div>
           <h1 className="text-2xl font-black text-default-900 tracking-tight flex items-center gap-2">
@@ -258,14 +295,9 @@ const DashboardAi = () => {
         </div>
       </div>
 
-      {/* Manual Global Run Panel */}
-
-
-      {/* Array of Auto-Pilot Panels! */}
       <div className="grid grid-cols-1 md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-4 items-stretch w-full">
         {autoPilotJobs.map((job, idx) => (
            <div key={`job-${idx}-${job.symbol}`} className="bg-white dark:bg-[#0B101E] border border-default-200 dark:border-white/5 rounded-2xl flex flex-col shadow-xl relative overflow-hidden group">
-               {/* Tiny delete button */}
                {job.is_draft && (
                    <button onClick={() => {
                        setConfirmDialog({
@@ -280,7 +312,6 @@ const DashboardAi = () => {
                    </button>
                )}
 
-               {/* Setup Settings Block embedded at the top */}
                {job.is_draft && (
                    <div className="p-5 border-b border-default-200 dark:border-white/5 bg-gradient-to-b from-default-50 to-white dark:from-[#131826]/80 dark:to-[#0B101E]">
                       <h3 className="text-xs font-black text-default-700 dark:text-gray-300 flex items-center gap-2 mb-4 uppercase tracking-widest border-b border-default-200/50 dark:border-white/5 pb-3">
@@ -425,7 +456,6 @@ const DashboardAi = () => {
                           </div>
                       </div>
 
-                      {/* AI Context Feeds Checkboxes/Badges */}
                       <div className="mt-6 pt-4 border-t border-default-200 dark:border-white/5">
                           <h4 className="text-[10px] font-bold text-gray-500 uppercase tracking-widest mb-3 flex items-center gap-1.5">
                               <LuBrainCircuit className="size-3 text-purple-500" /> AI Context Feeds 
@@ -464,7 +494,6 @@ const DashboardAi = () => {
                    </div>
                )}
 
-               {/* Agent Panel (Monitoring) */}
                {job.is_draft ? (
                   <div className="p-5 bg-default-50/50 dark:bg-[#0A0D14] flex-1 flex flex-col justify-center items-center">
                       <button 
@@ -503,7 +532,6 @@ const DashboardAi = () => {
                         });
                         return;
                       }
-                      // If it's turning ON, just do it directly without confirm
                       const newJobs = [...autoPilotJobs];
                       newJobs[idx].enabled = true;
                       saveJobsToDb(newJobs);
@@ -516,7 +544,11 @@ const DashboardAi = () => {
                     logs={logsBySymbol[job.symbol] || []}
                     agentStatus={agentStatusBySymbol[job.symbol] || {
                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
-                      risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle',
+                      risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle'
+                    }}
+                    agentStatusM1={agentStatusM1Map[job.symbol] || {
+                      news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
+                      risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle'
                     }}
                     finalResult={finalResultBySymbol[job.symbol]}
                     autoTrade={job.auto_trade}
