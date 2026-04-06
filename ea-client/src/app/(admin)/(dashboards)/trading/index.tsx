@@ -1028,23 +1028,22 @@ const TradingDashboard = () => {
             <div className="hidden sm:block">
               <div className="text-[13px] font-bold text-default-900 flex items-center gap-2">
                 EA-24 <span className="text-[10px] font-medium text-default-400">v5.9.1</span>
-                {telemetry && (
-                  <div className="flex items-center gap-1.5 text-[8.5px] font-semibold text-default-500 bg-default-100 dark:bg-default-200/20 px-2 py-0.5 rounded-full relative top-[-1px]">
-                    <div className="flex items-center gap-1" title="CPU">
-                      <LuCpu className="size-2.5 text-primary" /> <span>{telemetry.cpu.toFixed(0)}%</span>
-                    </div>
-                    <div className="w-px h-2.5 bg-default-300"></div>
-                    <div className="flex items-center gap-1" title="RAM">
-                      <LuMemoryStick className="size-2.5 text-secondary" /> <span>{telemetry.ram_mb}MB</span>
-                    </div>
-                    <div className="w-px h-2.5 bg-default-300"></div>
-                    <div className="flex items-center gap-1" title="Database">
-                      <LuDatabase className="size-2.5 text-emerald-500" /> <span>PG: {telemetry.db_pool}</span>
-                    </div>
-                  </div>
-                )}
               </div>
-              <div className="text-[8px] text-default-400">algorithmic trading</div>
+              {telemetry && (
+                <div className="flex items-center gap-1.5 text-[9px] font-medium text-default-400 opacity-90 mt-[1px]">
+                  <div className="flex items-center gap-0.5" title="CPU">
+                    <LuCpu className="size-[10px] text-primary" /> <span>{telemetry.cpu.toFixed(0)}%</span>
+                  </div>
+                  <div className="w-px h-2.5 bg-default-300"></div>
+                  <div className="flex items-center gap-0.5" title="RAM">
+                    <LuMemoryStick className="size-[10px] text-secondary" /> <span>{telemetry.ram_mb}MB</span>
+                  </div>
+                  <div className="w-px h-2.5 bg-default-300"></div>
+                  <div className="flex items-center gap-0.5" title="Database">
+                    <LuDatabase className="size-[10px] text-emerald-500" /> <span>PG {telemetry.db_pool}</span>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>
