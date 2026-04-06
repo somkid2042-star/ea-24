@@ -190,10 +190,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
                    setAutoScrollM1(isAtBottom);
                }}
-               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]"
+               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
            >
-              <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
-              <div className="space-y-4 pb-4">
+              <div className="space-y-4 pb-4 relative min-h-full">
+                  <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
                   {logsM1.length > 0 ? logsM1.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                           <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-indigo-200 text-indigo-500 mt-0.5 shadow-sm`}>
@@ -257,10 +257,10 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                    const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
                    setAutoScrollAI(isAtBottom);
                }}
-               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]"
+               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
            >
-              <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
-              <div className="space-y-4 pb-4">
+              <div className="space-y-4 pb-4 relative min-h-full">
+                  <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
                   {logs.length > 0 ? logs.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                           <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-blue-200 text-blue-500 mt-0.5 shadow-sm`}>
