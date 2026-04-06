@@ -399,9 +399,20 @@ const AgentSettings = () => {
                       <LuRefreshCw className={`w-4 h-4 ${isFetchingNews ? 'animate-spin' : ''}`} />
                     </button>
                     {isFetchingNews ? (
-                      <span className="text-xs text-blue-500 font-mono animate-pulse font-medium">
-                        กำลังให้ AI วิเคราะห์ข่าว...
-                      </span>
+                      <div className="flex flex-col items-start gap-1">
+                        <span className="text-xs text-blue-500 font-mono animate-pulse font-medium">
+                          กำลังให้ AI วิเคราะห์ข่าว...
+                        </span>
+                        <span className="text-[10px] text-blue-400 font-mono opacity-80">
+                          {(() => {
+                            const activeGemini = emails.find(e => e.apiKey.trim())?.apiKey.trim();
+                            const activeTavily = emails.find(e => e.tavilyKey.trim())?.tavilyKey.trim();
+                            const gStr = activeGemini ? `...${activeGemini.slice(-5)}` : 'None';
+                            const tStr = activeTavily ? `...${activeTavily.slice(-5)}` : 'None';
+                            return `G: ${gStr} | T: ${tStr}`;
+                          })()}
+                        </span>
+                      </div>
                     ) : (
                       newsLastUpdated > 0 && nextFetchSeconds > 0 && (
                         <div className="flex flex-col items-start">
