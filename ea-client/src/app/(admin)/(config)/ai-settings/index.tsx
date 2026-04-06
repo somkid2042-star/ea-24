@@ -1,5 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from 'react';
-import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink } from 'react-icons/lu';
+import { LuCheck, LuX, LuSparkles, LuKey, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuExternalLink, LuSearch, LuSave } from 'react-icons/lu';
 import { openUrl as tauriOpen } from '@tauri-apps/plugin-opener';
 import { getWsUrl } from '@/utils/config';
 
@@ -17,6 +17,7 @@ const AiSettings = () => {
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string}[]>([{address: '', password: '', apiKey: ''}]);
+  const [tavilyKey, setTavilyKey] = useState('');
   const [showEmailSection, setShowEmailSection] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
 
@@ -50,6 +51,7 @@ const AiSettings = () => {
         if (data.type === 'server_config' && data.config) {
           const c = data.config;
           if (c.gemini_model) setSelectedModel(c.gemini_model);
+          if (c.tavily_api_key) setTavilyKey(c.tavily_api_key);
           if (c.gmail_address || c.gmail_app_password || c.gemini_api_key) {
             const addrs = (c.gmail_address || '').split(',').map((x: string) => x.trim());
             const passes = (c.gmail_app_password || '').split(',').map((x: string) => x.trim());
@@ -196,6 +198,42 @@ const AiSettings = () => {
             {testResult.success ? <><LuCheck className="size-4" /> AI Response: {testResult.message}</> : <><LuX className="size-4" /> {testResult.message}</>}
           </div>
         )}
+
+        <hr className="border-default-200 dark:border-default-300/10 mt-4" />
+        
+        {/* Tavily API Key */}
+        <div className="space-y-1">
+          <label className="text-sm font-medium text-default-900 font-semibold mb-1 flex items-center gap-2">
+            <div className="size-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><LuSearch className="size-4 text-orange-500"/></div>
+            Tavily API Key (ระบบค้นหาข่าวสารให้ AI)
+          </label>
+          <p className="text-xs text-default-500 mb-2">
+            จำเป็นต้องใช้ Tavily API เพื่อให้ AI สามารถค้นหาข่าวเศรษฐกิจล่าสุดแบบ Real-time ได้ (รับฟรีที่ tavily.com)
+          </p>
+          <div className="flex gap-2">
+            <input 
+              type="text" 
+              value={tavilyKey} 
+              onChange={(e) => setTavilyKey(e.target.value)} 
+              onKeyDown={(e) => { if (e.key === 'Enter') saveConfig('tavily_api_key', tavilyKey.trim()); }}
+              placeholder="tvly-..."
+              className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+            />
+            <button 
+              onClick={() => saveConfig('tavily_api_key', tavilyKey.trim())}
+              className="btn bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-sm font-medium px-4 border-none rounded-xl flex items-center gap-2 transition-colors"
+            >
+              <LuSave className="size-4" /> บันทึก
+            </button>
+            <button
+              onClick={() => tauriOpen('https://tavily.com')}
+              className="btn bg-default-100 dark:bg-default-200/5 hover:bg-default-200 dark:hover:bg-default-200/10 text-default-600 text-xs px-3 border-none rounded-xl"
+              title="สมัครรับ API ฟรี"
+            >
+              <LuExternalLink className="size-4" />
+            </button>
+          </div>
+        </div>
       </div>
 
       {/* Email Setup */}
