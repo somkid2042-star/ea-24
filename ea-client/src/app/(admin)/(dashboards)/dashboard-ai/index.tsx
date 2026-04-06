@@ -129,11 +129,37 @@ const DashboardAi = () => {
                      if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
                      return {...prev, [job.symbol]: newLogs};
                   });
+                  setAgentStatusBySymbol(prev => {
+                     if (prev[job.symbol]) return prev;
+                     const currentStatuses: AgentStatusMap = {
+                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
+                       risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle',
+                     };
+                     newLogs.forEach(log => {
+                        if (log.agent && log.status) {
+                           currentStatuses[log.agent as keyof AgentStatusMap] = log.status as any;
+                        }
+                     });
+                     return {...prev, [job.symbol]: currentStatuses};
+                  });
                }
                if (newM1Logs.length > 0) {
                   setLogsM1BySymbol(prev => {
                      if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
                      return {...prev, [job.symbol]: newM1Logs};
+                  });
+                  setAgentStatusM1Map(prev => {
+                     if (prev[job.symbol]) return prev;
+                     const currentStatuses: AgentStatusMap = {
+                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
+                       risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle',
+                     };
+                     newM1Logs.forEach(log => {
+                        if (log.agent && log.status) {
+                           currentStatuses[log.agent as keyof AgentStatusMap] = log.status as any;
+                        }
+                     });
+                     return {...prev, [job.symbol]: currentStatuses};
                   });
                }
            })
