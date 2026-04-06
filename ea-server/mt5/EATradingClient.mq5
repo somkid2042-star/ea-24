@@ -585,6 +585,8 @@ void SendMarketWatch()
          double spread = (ask - bid) * MathPow(10, digits);
          string desc = SymbolInfoString(sym, SYMBOL_DESCRIPTION);
          
+         long sym_time = SymbolInfoInteger(sym, SYMBOL_TIME);
+         
          if(count > 0) symbolsJson += ",";
          symbolsJson += "{";
          symbolsJson += "\"symbol\":\"" + sym + "\"";
@@ -592,6 +594,7 @@ void SendMarketWatch()
          symbolsJson += ",\"ask\":" + DoubleToString(ask, digits);
          symbolsJson += ",\"spread\":" + DoubleToString(spread, 1);
          symbolsJson += ",\"digits\":" + IntegerToString(digits);
+         symbolsJson += ",\"time\":" + IntegerToString(sym_time);
          symbolsJson += ",\"desc\":\"" + desc + "\"";
          symbolsJson += "}";
          count++;

@@ -102,6 +102,7 @@ struct EaState {
     version: String,
     symbol: String,
     gap_status: std::collections::HashMap<String, String>,
+    last_quote_times: std::collections::HashMap<String, i64>,
     balance: f64,
     equity: f64,
     open_positions: usize,
@@ -250,6 +251,7 @@ async fn run_server() {
         version: "unknown".to_string(),
         symbol: "".to_string(),
         gap_status: std::collections::HashMap::new(),
+        last_quote_times: std::collections::HashMap::new(),
         balance: 0.0,
         equity: 0.0,
         open_positions: 0,
@@ -614,11 +616,16 @@ async fn handle_mt5_connection(
                                         }
                                     } else if msg_type == Some("market_watch") {
                                         if let Some(symbols) = val.get("symbols").and_then(|s| s.as_array()) {
+                                            let mut state = ea_state.write().await;
                                             for info in symbols {
                                                 let sym = info["symbol"].as_str().unwrap_or("");
                                                 let digits = info["digits"].as_i64().unwrap_or(5);
+                                                let time = info["time"].as_i64().unwrap_or(0);
                                                 if !sym.is_empty() {
                                                     digits_map.insert(sym.to_string(), digits);
+                                                    if time > 0 {
+                                                        state.last_quote_times.insert(sym.to_string(), time);
+                                                    }
                                                 }
                                             }
                                         }
@@ -1674,8 +1681,13 @@ async fn handle_ws_connection(
                                         let symbols = db.get_tracked_symbols().await;
                                         let mut closed_map = serde_json::Map::new();
                                         let now_ts = chrono::Utc::now().timestamp();
+                                        let state = ea_state.read().await;
                                         for sym in &symbols {
-                                            let lt = db.get_latest_tick_timestamp(sym).await;
+                                            // Priority: memory tracked quote time (market_watch), then fallback to db tick
+                                            let mut lt = state.last_quote_times.get(sym).copied().unwrap_or(0);
+                                            if lt == 0 {
+                                                lt = db.get_latest_tick_timestamp(sym).await;
+                                            }
                                             closed_map.insert(sym.clone(), serde_json::Value::Bool(now_ts - lt > 300 && lt > 0));
                                         }
                                         let resp = serde_json::json!({
