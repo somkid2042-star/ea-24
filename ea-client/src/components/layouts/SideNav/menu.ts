@@ -5,6 +5,7 @@ import {
   LuBrain,
   LuChartLine,
   LuBot,
+  LuShare2,
 } from 'react-icons/lu';
 
 export type MenuItemType = {
@@ -43,8 +44,13 @@ export const menuItemsData: MenuItemType[] = [
       { key: 'Database Settings', label: 'Database Settings', href: '/config/database' },
       { key: 'Security & License', label: 'Security & License', href: '/config/security' },
       { key: 'AI Settings', label: 'AI Settings', href: '/config/ai' },
-      { key: 'Agent Config', label: 'Agent Config', href: '/config/agent' },
     ],
+  },
+  {
+    key: 'Agent Config',
+    label: 'Agent Config',
+    icon: LuShare2,
+    href: '/config/agent',
   },
   {
     key: 'Strategy Config',
