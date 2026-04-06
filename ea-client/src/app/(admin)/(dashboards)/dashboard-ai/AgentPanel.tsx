@@ -1,4 +1,4 @@
-import React, { useEffect, useState } from 'react';
+import React, { useEffect, useState, useRef } from 'react';
 import { LuGlobe, LuActivity, LuCalendar, LuShield, LuBrainCircuit, LuLoader, LuTerminal, LuBot, LuSettings, LuZap, LuMonitorOff } from 'react-icons/lu';
 
 export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
@@ -42,8 +42,26 @@ const agentConfig = [
   { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, autoTrade, disabledAgents = [] }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1 }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
+  const logsM1Ref = useRef<HTMLDivElement>(null);
+  const logsAIRef = useRef<HTMLDivElement>(null);
+  const [autoScrollM1, setAutoScrollM1] = useState(true);
+  const [autoScrollAI, setAutoScrollAI] = useState(true);
+
+  // Auto-scroll M1 Logs
+  useEffect(() => {
+     if (autoScrollM1 && logsM1Ref.current) {
+         logsM1Ref.current.scrollTop = logsM1Ref.current.scrollHeight;
+     }
+  }, [logsM1, autoScrollM1]);
+
+  // Auto-scroll AI Logs
+  useEffect(() => {
+     if (autoScrollAI && logsAIRef.current) {
+         logsAIRef.current.scrollTop = logsAIRef.current.scrollHeight;
+     }
+  }, [logs, autoScrollAI]);
   
   useEffect(() => {
     if (!interval || !jobEnabled || agentStatus.orchestrator === 'running') {
@@ -125,86 +143,9 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                onClick={() => onToggleJob()}
                className={`relative inline-flex h-[26px] w-[46px] items-center rounded-full transition-colors ${jobEnabled ? 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' : 'bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}`}
              >
-               <span className={`inline-block size-5 transform rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-[22px] shadow-sm' : 'translate-x-[2px] shadow-sm'}`} />
+               <span className={`size-5 rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
              </button>
           )}
-        </div>
-      </div>
-
-      {/* Timeline Body Area */}
-      <div className={`px-6 py-6 flex-1 flex overflow-y-auto ${!jobEnabled ? 'opacity-50 pointer-events-none' : ''}`}>
-        {/* Left Side: Main Pipeline (Icons Only) */}
-        <div className="flex-1 flex flex-col items-end pr-8 relative">
-            {/* Vertically Connecting Line for Main Pipeline */}
-            <div className="absolute right-[21px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0 mr-[10px]" />
-
-            <div className="space-y-7 relative z-10">
-              {agentConfig.map((agent) => {
-                let status = agentStatus[agent.key as keyof AgentStatusMap] || 'idle';
-                const isFinal = agent.key === 'decision_maker';
-                let isDisabled = disabledAgents?.includes(agent.key);
-                
-                // Mute other agents if auto-trade is off
-                if (!isFinal && !autoTrade) {
-                   isDisabled = true;
-                   status = 'idle';
-                }
-                if (isFinal) {
-                   isDisabled = !autoTrade;
-                   if (agentStatus.orchestrator === 'running' || agentStatus.orchestrator === 'idle') {
-                       status = 'idle';
-                   } else if (agentStatus.orchestrator === 'done' || agentStatus.orchestrator === 'error') {
-                       status = 'done';
-                   }
-                }
-                
-                const isActive = !isDisabled && status === 'running';
-                const isError = !isDisabled && status === 'error';
-                
-                const circleTheme = isDisabled ? 'bg-gray-50 border-gray-100 text-gray-300 scale-95 dark:bg-[#0B101E] dark:border-white/5 dark:text-gray-600' 
-                               : isError ? 'bg-red-50 border-red-200 text-red-500'
-                               : isActive ? 'bg-blue-50 border-blue-300 text-blue-600 shadow-[0_0_15px_rgba(59,130,246,0.3)] ring-4 ring-blue-50 dark:bg-blue-500/10 dark:ring-blue-500/10'
-                               : 'bg-white border-gray-200 text-gray-400 dark:bg-[#0A0D14] dark:border-white/10 dark:text-gray-500';
-
-                return (
-                  <div key={agent.key} className="flex relative justify-end cursor-help group" title={`${agent.name} (Main Interval)`}>
-                     {/* Status Icon */}
-                     <div className={`size-[42px] rounded-full flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${circleTheme}`}>
-                         {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
-                     </div>
-                  </div>
-                );
-              })}
-            </div>
-        </div>
-
-        {/* Right Side: Fast Track M1 Pipeline (Icons Only) */}
-        <div className="relative w-[50px] flex flex-col items-center justify-center pl-4">
-            {/* Vertically Connecting Line for M1 */}
-            <div className="absolute left-[37px] top-[10px] bottom-[20px] w-px bg-gray-200 dark:bg-white/10 z-0" />
-
-            <div className="space-y-7 relative z-10">
-              {agentConfig.map((agent) => {
-                let isDisabled = disabledAgents.includes(agent.key);
-                let status = agentStatusM1 ? (agentStatusM1[agent.key as keyof AgentStatusMap] || 'idle') : 'idle';
-                
-                const isActive = !isDisabled && status === 'running';
-                const isError = !isDisabled && status === 'error';
-                
-                const circleTheme = isDisabled ? 'bg-gray-50 border-gray-100 text-gray-300 scale-95 dark:bg-[#0B101E] dark:border-white/5 dark:text-gray-600' 
-                               : isError ? 'bg-red-50 border-red-200 text-red-500'
-                               : isActive ? 'bg-indigo-50 border-indigo-300 text-indigo-600 shadow-[0_0_15px_rgba(99,102,241,0.3)] ring-4 ring-indigo-50 dark:bg-indigo-500/10 dark:ring-indigo-500/10'
-                               : 'bg-white border-gray-200 text-gray-400 dark:bg-[#0A0D14] dark:border-white/10 dark:text-gray-500';
-
-                return (
-                  <div key={`m1-${agent.key}`} className="flex items-center justify-center cursor-help">
-                    <div className={`size-[42px] rounded-full flex items-center justify-center shrink-0 border-[1.5px] transition-all duration-300 relative z-20 ${circleTheme}`} title={`${agent.name} (1min Fast Track)`}>
-                        {isActive ? <LuLoader className="animate-spin size-4" /> : agent.icon}
-                    </div>
-                  </div>
-                );
-              })}
-            </div>
         </div>
       </div>
       
@@ -212,16 +153,31 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       <div className="px-6 pb-6 pt-2 space-y-4">
         
         {/* Server / M1 Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col h-[180px]">
-           <div className="flex items-center gap-2 mb-4 shrink-0">
-             <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
-             <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
+           <div className="flex items-center justify-between mb-4 shrink-0">
+             <div className="flex items-center gap-2">
+                 <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
+                 <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
+             </div>
+             {!autoScrollM1 && (
+                 <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
+                    Scroll to Latest
+                 </button>
+             )}
            </div>
            
-           <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]">
+           <div 
+               ref={logsM1Ref}
+               onScroll={(e) => {
+                   const target = e.currentTarget;
+                   const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
+                   setAutoScrollM1(isAtBottom);
+               }}
+               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]"
+           >
               <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
-              <div className="space-y-4">
-                  {logsM1.length > 0 ? [...logsM1].reverse().map((log, i) => (
+              <div className="space-y-4 pb-4">
+                  {logsM1.length > 0 ? logsM1.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                           <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-indigo-200 text-indigo-500 mt-0.5 shadow-sm`}>
                              {agentConfig.find(a => a.key === log.agent)?.icon || <LuTerminal size={10} />}
@@ -244,16 +200,31 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* AI Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col h-[180px]">
-           <div className="flex items-center gap-2 mb-4 shrink-0">
-             <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
-             <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
+           <div className="flex items-center justify-between mb-4 shrink-0">
+             <div className="flex items-center gap-2">
+                 <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
+                 <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
+             </div>
+             {!autoScrollAI && (
+                 <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
+                    Scroll to Latest
+                 </button>
+             )}
            </div>
            
-           <div className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]">
+           <div 
+               ref={logsAIRef}
+               onScroll={(e) => {
+                   const target = e.currentTarget;
+                   const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
+                   setAutoScrollAI(isAtBottom);
+               }}
+               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden relative pl-[10px]"
+           >
               <div className="absolute left-[20px] top-[14px] bottom-0 w-px bg-default-200 dark:bg-white/10 z-0" />
-              <div className="space-y-4">
-                  {logs.length > 0 ? [...logs].reverse().map((log, i) => (
+              <div className="space-y-4 pb-4">
+                  {logs.length > 0 ? logs.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
                           <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-blue-200 text-blue-500 mt-0.5 shadow-sm`}>
                              {agentConfig.find(a => a.key === log.agent)?.icon || <LuBot size={10} />}

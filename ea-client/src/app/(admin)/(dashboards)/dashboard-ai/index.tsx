@@ -84,7 +84,6 @@ const CustomSelect = ({ value, options, onChange, icon, minWidth = '120px', clas
 const DashboardAi = () => {
   const [logsBySymbol, setLogsBySymbol] = useState<Record<string, AiLog[]>>({});
   const [agentStatusBySymbol, setAgentStatusBySymbol] = useState<Record<string, AgentStatusMap>>({});
-  const [finalResultBySymbol, setFinalResultBySymbol] = useState<Record<string, any>>({});
   const [lastRunMap, setLastRunMap] = useState<Record<string, number>>({});
   const [tradeProposal, setTradeProposal] = useState<any>(null);
   const [confirmDialog, setConfirmDialog] = useState<{ message: string; onConfirm: () => void } | null>(null);
@@ -214,7 +213,6 @@ const DashboardAi = () => {
         
         if (data.type === 'multi_agent_result') {
           const sym = data.symbol || globalSymbol;
-          setFinalResultBySymbol(prev => ({ ...prev, [sym]: data.result }));
           
           setAgentStatusBySymbol(prev => {
              const currentStatuses = prev[sym] || {} as AgentStatusMap;
@@ -233,11 +231,7 @@ const DashboardAi = () => {
              };
              return newMap;
           });
-          setFinalResultBySymbol(prev => {
-             const newObj = {...prev};
-             delete newObj[sym];
-             return newObj;
-          });
+
           setTradeProposal(null);
         }
 
