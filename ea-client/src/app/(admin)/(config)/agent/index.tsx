@@ -60,6 +60,7 @@ const AgentSettings = () => {
   const [testingTavily, setTestingTavily] = useState(false);
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
   const [globalNews, setGlobalNews] = useState<any>(null);
+  const [globalCalendar, setGlobalCalendar] = useState<any>(null);
   const [newsLastUpdated, setNewsLastUpdated] = useState<number>(0);
   const [nextFetchSeconds, setNextFetchSeconds] = useState<number>(0);
   const [isFetchingNews, setIsFetchingNews] = useState<boolean>(false);
@@ -152,6 +153,9 @@ const AgentSettings = () => {
           setIsFetchingNews(false);
           if (data.data && data.data.news) {
             setGlobalNews(data.data.news);
+          }
+          if (data.data && data.data.calendar) {
+            setGlobalCalendar(data.data.calendar);
           }
           if (data.data && data.data.last_updated) {
             setNewsLastUpdated(data.data.last_updated);
@@ -496,7 +500,7 @@ const AgentSettings = () => {
         {/* Calendar  Tab */}
           {activeTab === 'calendar' && (<section id={`section-calendar`} className="bg-white dark:bg-gray-800/50 border border-default-200 dark:border-gray-700/50 rounded-2xl p-6 lg:p-8 shadow-sm scroll-mt-28 transition-all hover:shadow-md group">
             <h2 className="text-lg font-semibold text-default-900 dark:text-white flex items-center gap-2 mb-2">
-              <LuCalendar className="text-purple-500 dark:text-purple-400" /> Economic Calendar AI
+              <LuCalendar className="text-purple-500 dark:text-purple-400" /> Economic Calendar AI <span className="text-sm font-normal text-default-400 ml-2">(Forex Factory)</span>
             </h2>
             <p className="text-sm text-default-500 dark:text-gray-400 mb-6">
               ให้ Global Agent ตัวเดียวคอยดึงข้อมูลตัวเลขเศรษฐกิจสำคัญ เพื่อแจ้งเตือนคู่เงินทั้งหมด
@@ -528,6 +532,81 @@ const AgentSettings = () => {
                 </select>
               </div>
             </div>
+
+            {/* Display Fetched Calendar Data */}
+            {globalCalendar && (
+              <div className="mt-8 pt-6 border-t border-default-200 dark:border-gray-700/50">
+                <div className="flex items-center justify-between mb-4">
+                  <h3 className="text-sm font-semibold text-default-800 dark:text-gray-200 flex items-center gap-2">
+                    <LuActivity className="text-blue-500" /> รายละเอียดข่าวเศรษฐกิจสัปดาห์นี้
+                  </h3>
+                  {globalCalendar.high_impact_soon ? (
+                    <span className="px-2 py-1 bg-red-100 text-red-600 dark:bg-red-500/10 dark:text-red-400 text-[10px] rounded font-medium flex items-center gap-1 border border-red-200 dark:border-red-500/20">
+                      <LuShieldAlert className="size-3" /> แจ้งเตือน: มีข่าวแดงเร็วๆ นี้
+                    </span>
+                  ) : (
+                    <span className="px-2 py-1 bg-green-100 text-green-600 dark:bg-green-500/10 dark:text-green-400 text-[10px] rounded font-medium flex items-center gap-1 border border-green-200 dark:border-green-500/20">
+                      <LuCheck className="size-3" /> ปลอดภัย: ไม่มีข่าวแดงเร็วๆ นี้
+                    </span>
+                  )}
+                </div>
+                
+                {globalCalendar.events && globalCalendar.events.length > 0 ? (
+                  <div className="bg-default-50 dark:bg-gray-900/50 rounded-xl border border-default-200 dark:border-gray-700/50 overflow-hidden">
+                    <div className="max-h-60 overflow-y-auto custom-scrollbar">
+                      <table className="w-full text-left text-xs">
+                        <thead className="sticky top-0 bg-default-100 dark:bg-gray-800 text-default-600 dark:text-gray-400 border-b border-default-200 dark:border-gray-700/50 shadow-sm z-10">
+                          <tr>
+                            <th className="px-4 py-2 font-medium">วันที่ / เวลา</th>
+                            <th className="px-4 py-2 font-medium">สกุลเงิน</th>
+                            <th className="px-4 py-2 font-medium">ความรุนแรง</th>
+                            <th className="px-4 py-2 font-medium w-full">เหตุการณ์</th>
+                          </tr>
+                        </thead>
+                        <tbody className="divide-y divide-default-100 dark:divide-gray-800/50">
+                          {globalCalendar.events.map((evt: any, i: number) => {
+                            let impactColor = "text-gray-500 dark:text-gray-400";
+                            if (evt.impact === 'High') impactColor = "text-red-500 font-semibold";
+                            if (evt.impact === 'Medium') impactColor = "text-orange-500";
+                            if (evt.impact === 'Low') impactColor = "text-yellow-500";
+                            
+                            const dateObj = new Date(evt.date);
+                            const now = new Date();
+                            const isPast = dateObj < now;
+                            
+                            return (
+                              <tr key={i} className={`hover:bg-default-100/50 dark:hover:bg-gray-800/20 transition-colors ${isPast ? 'opacity-50' : ''}`}>
+                                <td className="px-4 py-2 whitespace-nowrap text-[10px] text-default-500 dark:text-gray-400">
+                                  {dateObj.toLocaleDateString('th-TH', { 
+                                    weekday: 'short', day: '2-digit', month: 'short'
+                                  })} <br/>
+                                  <span className="font-mono">{dateObj.toLocaleTimeString('th-TH', { hour: '2-digit', minute: '2-digit' })}</span>
+                                </td>
+                                <td className="px-4 py-2 font-bold text-default-700 dark:text-gray-300">
+                                  {evt.country}
+                                </td>
+                                <td className={`px-4 py-2 ${impactColor}`}>
+                                  {evt.impact}
+                                </td>
+                                <td className="px-4 py-2 text-default-600 dark:text-gray-300 line-clamp-2" title={evt.title}>
+                                  {evt.title}
+                                </td>
+                              </tr>
+                            );
+                          })}
+                        </tbody>
+                      </table>
+                    </div>
+                  </div>
+                ) : (
+                  <div className="flex flex-col items-center justify-center p-6 text-default-400 bg-default-50 dark:bg-gray-900/30 rounded-xl border border-dashed border-default-200 dark:border-gray-700/50">
+                    <LuCalendar className="size-8 mb-2 opacity-50" />
+                    <span className="text-xs">ไม่มีข้อมูลตารางข่าวในขณะนี้</span>
+                  </div>
+                )}
+              </div>
+            )}
+            
             {renderSaveAction()}
           </section>)}
 
