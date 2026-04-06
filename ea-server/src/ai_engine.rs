@@ -121,7 +121,7 @@ pub struct AgentLog {
     pub message: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct NewsResult {
     pub sentiment: String,        // "BULLISH", "BEARISH", "NEUTRAL"
     pub summary: String,
@@ -136,7 +136,7 @@ pub struct ChartResult {
     pub reasoning: String,
 }
 
-#[derive(Debug, Clone, Serialize)]
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct CalendarResult {
     pub high_impact_soon: bool,
     pub events: Vec<String>,
@@ -759,7 +759,7 @@ pub fn run_risk_manager(
     emergency_stop: bool,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> RiskResult {
-    let agent = "🛡️ Risk Manager";
+    let _agent = "🛡️ Risk Manager";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": symbol, "agent": "risk_manager", "status": "running",
         "message": format!("ตรวจสอบความเสี่ยง... Balance: ${:.2}, Equity: ${:.2}", balance, equity)
@@ -826,7 +826,7 @@ pub async fn run_decision_maker(
     calendar: &CalendarResult, risk: &RiskResult,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> (String, f64, String) {
-    let agent = "🧠 Decision Maker";
+    let _agent = "🧠 Decision Maker";
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": symbol, "agent": "decision_maker", "status": "running",
         "message": "กำลังรวมข้อมูลจากทุก Agent เพื่อตัดสินใจ..."
