@@ -3,7 +3,7 @@ import {
   LuSave, LuNetwork, LuNewspaper, LuCalendar, 
   LuActivity, LuShieldAlert, LuGitMerge, LuFileText,
   LuKey, LuCheck, LuX, LuSparkles, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuSearch, LuOctagon, LuCircleCheck, LuCircleX, LuTrendingDown, LuLayers, LuGauge, LuDollarSign,
-  LuChevronRight, LuEye, LuEyeOff
+  LuChevronRight, LuEye, LuEyeOff, LuRefreshCw
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 
@@ -378,6 +378,13 @@ const AgentSettings = () => {
                     <LuActivity className="text-blue-500" /> ข่าวสารล่าสุดที่ระบบหาได้
                   </h3>
                   <div className="flex items-center gap-3">
+                    <button 
+                      onClick={() => send({ action: 'force_fetch_news' })}
+                      className="p-1 rounded-md bg-default-200 dark:bg-gray-700 hover:bg-default-300 dark:hover:bg-gray-600 transition-colors text-default-600 dark:text-gray-300 tooltip focus:outline-none"
+                      title="เช็คข่าวสารด่วน (Refresh)"
+                    >
+                      <LuRefreshCw className="w-3.5 h-3.5" />
+                    </button>
                     {newsLastUpdated > 0 && nextFetchSeconds > 0 && (
                       <span className="text-xs text-default-500 font-mono">
                         อัปเดตอัติโนมัติในอีก {Math.floor(nextFetchSeconds / 60)}:{(nextFetchSeconds % 60).toString().padStart(2, '0')}

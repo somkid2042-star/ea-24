@@ -1158,8 +1158,8 @@ async fn handle_ws_connection(
                                             "data": {
                                                 "news": data.news.as_ref().map(|n| serde_json::to_value(n).unwrap_or(serde_json::Value::Null)).unwrap_or_else(|| serde_json::json!({
                                                     "sentiment": "NEUTRAL",
-                                                    "summary": "AI API Keys (Gemini/Tavily) are not configured. Go to Settings > System Config to add them.",
-                                                    "headlines": ["Please configure API keys to unlock AI features."]
+                                                    "summary": "ยังไม่มีข้อมูลข่าวสารในขณะนี้ กรุณากดปุ่มเพื่อดึงข้อมูล...",
+                                                    "headlines": ["Pending First Fetch"]
                                                 })),
                                                 "calendar": data.calendar.as_ref().map(|c| serde_json::to_value(c).unwrap_or(serde_json::Value::Null)).unwrap_or_else(|| serde_json::json!({
                                                     "high_impact_soon": false,
@@ -1174,6 +1174,47 @@ async fn handle_ws_connection(
                                             }
                                         }).to_string();
                                         let _ = write.send(Message::Text(resp)).await;
+                                    }
+                                    "force_fetch_news" => {
+                                        let gemini_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                        let gemini_model = db.get_config("gemini_model").await.unwrap_or_default();
+                                        let tavily_key = db.get_config("tavily_api_key").await.unwrap_or_default();
+                                        
+                                        if !gemini_key.is_empty() && !tavily_key.is_empty() {
+                                            let global_tx = tx.clone();
+                                            let global_state = global_ai_data.clone();
+                                            let db_clone = db.clone();
+                                            tokio::spawn(async move {
+                                                info!("🤖 [UI] Manual force fetch News requested...");
+                                                let sym_keyword = db_clone.get_config("agent_news_keyword").await.unwrap_or_else(|| "Global Forex Market".to_string());
+                                                let sym = sym_keyword.as_str();
+                                                
+                                                let _ = global_tx.send(serde_json::json!({
+                                                    "type": "agent_log", "symbol": sym, "agent": "news_hunter", "status": "running",
+                                                    "message": "กำลังดึงข้อมูลข่าวสารล่าสุด (Manual Refresh)..."
+                                                }).to_string());
+                                                
+                                                let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_tx);
+                                                let cal_fut = ai_engine::run_calendar_watcher(sym, &global_tx);
+                                                let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                                                
+                                                let update_ts = chrono::Utc::now().timestamp();
+                                                {
+                                                    let mut st = global_state.write().await;
+                                                    st.news = Some(news_result.clone());
+                                                    st.calendar = Some(cal_result.clone());
+                                                    st.last_updated = update_ts;
+                                                }
+                                                let msg = serde_json::json!({
+                                                    "type": "global_ai_data",
+                                                    "data": { "news": news_result, "calendar": cal_result, "last_updated": update_ts }
+                                                }).to_string();
+                                                let _ = global_tx.send(msg);
+                                                info!("🤖 [UI] Manual fetch complete and broadcasted.");
+                                            });
+                                        } else {
+                                            info!("🤖 [UI] Cannot force fetch: missing API keys.");
+                                        }
                                     }
                                     _ => {}
                                 }
