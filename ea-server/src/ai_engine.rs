@@ -504,46 +504,51 @@ News:
 
 IMPORTANT: You MUST translate ALL text, including the summary, headlines, and content into pure THAI language. Do NOT use English for explanations.
 
-Respond in this exact format only:
-SENTIMENT: [BULLISH/BEARISH/NEUTRAL]
-SUMMARY: [2-3 sentence overall summary in Thai language]
-
-STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
-STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
-STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
-STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]
-STORY: [แปล Headline เป็นภาษาไทยเต็มรูปแบบ] || [แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย]"#);
+Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT wrap in ```json), exactly matching this structure:
+{{
+  "sentiment": "BULLISH",
+  "summary": "สรุปภาพรวม 2-3 ประโยคเป็นภาษาไทย",
+  "stories": [
+    {{
+      "title": "แปล Headline เป็นภาษาไทย",
+      "content": "แปลเนื้อหา 2-3 ประโยคเป็นภาษาไทย"
+    }}
+  ]
+}}"#);
 
     match call_gemini(gemini_key, model, &prompt, 0.2, 2048).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
             let mut th_headlines = Vec::new();
-            for line in response.lines() {
-                let line = line.trim();
-                if line.starts_with("SENTIMENT:") {
-                    let val = line.replace("SENTIMENT:", "").trim().to_uppercase();
-                    if val.contains("BULLISH") { sentiment = "BULLISH".to_string(); }
-                    else if val.contains("BEARISH") { sentiment = "BEARISH".to_string(); }
+            
+            let clean_json = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+            if let Ok(json_val) = serde_json::from_str::<serde_json::Value>(clean_json) {
+                if let Some(s) = json_val.get("sentiment").and_then(|v| v.as_str()) {
+                    sentiment = s.to_uppercase();
                 }
-                if line.starts_with("SUMMARY:") {
-                    summary = line.replace("SUMMARY:", "").trim().to_string();
+                if let Some(s) = json_val.get("summary").and_then(|v| v.as_str()) {
+                    summary = s.to_string();
                 }
-                if line.starts_with("STORY:") {
-                    let content = line.replace("STORY:", "").trim().to_string();
-                    if !content.is_empty() {
-                        th_headlines.push(content);
-                    }
-                } else if line.starts_with("STORY ") {
-                    if let Some((_, content)) = line.split_once(':') {
-                        let content = content.trim().to_string();
-                        if !content.is_empty() {
-                            th_headlines.push(content);
+                if let Some(arr) = json_val.get("stories").and_then(|v| v.as_array()) {
+                    for story in arr {
+                        if let (Some(title), Some(content)) = (
+                            story.get("title").and_then(|v| v.as_str()),
+                            story.get("content").and_then(|v| v.as_str())
+                        ) {
+                            th_headlines.push(format!("{} || {}", title, content));
                         }
                     }
                 }
+            } else {
+                warn!("{} Failed to parse Gemini JSON, falling back to basic extraction", agent);
+                for line in response.lines() {
+                    let line = line.trim();
+                    if line.to_uppercase().contains("BULLISH") { sentiment = "BULLISH".to_string(); }
+                    else if line.to_uppercase().contains("BEARISH") { sentiment = "BEARISH".to_string(); }
+                }
             }
-            if summary.is_empty() { summary = response.chars().take(150).collect(); }
+            if summary.is_empty() { summary = "ไม่มีสรุปเนื้อหา (พบปัญหาในการแปล)".to_string(); }
             let final_headlines = if th_headlines.is_empty() { headlines } else { th_headlines };
             
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
