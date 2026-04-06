@@ -393,25 +393,25 @@ pub async fn run_news_hunter(
         "message": format!("กำลังค้นหาข่าว {}...", symbol)
     }).to_string());
 
-    // Try Google News RSS first (free, no API key), then Tavily as fallback
-    let articles = match search_news_google_rss(symbol).await {
-        Ok(results) if !results.is_empty() => {
-            info!("{} Found {} articles via Google News", agent, results.len());
-            let _ = log_tx.send(serde_json::json!({
-                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
-                "message": format!("พบข่าว {} รายการ (Google News) — กำลังวิเคราะห์ sentiment...", results.len())
-            }).to_string());
-            results
-        }
-        _ => {
-            // Fallback to Tavily if available
-            if !tavily_key.is_empty() {
-                match search_news_tavily(tavily_key, symbol).await {
-                    Ok(results) => {
-                        info!("{} Found {} articles via Tavily", agent, results.len());
+    // Try Tavily API first, then Google News RSS as fallback
+    let articles = if !tavily_key.is_empty() {
+        match search_news_tavily(tavily_key, symbol).await {
+            Ok(results) if !results.is_empty() => {
+                info!("{} Found {} articles via Tavily", agent, results.len());
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
+                    "message": format!("พบข่าว {} รายการ (Tavily) — กำลังวิเคราะห์ sentiment...", results.len())
+                }).to_string());
+                results
+            }
+            _ => {
+                warn!("{} Tavily failed or returned no results, falling back to Google News", agent);
+                match search_news_google_rss(symbol).await {
+                    Ok(results) if !results.is_empty() => {
+                        info!("{} Found {} articles via Google News", agent, results.len());
                         let _ = log_tx.send(serde_json::json!({
                             "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
-                            "message": format!("พบข่าว {} รายการ (Tavily) — กำลังวิเคราะห์ sentiment...", results.len())
+                            "message": format!("พบข่าว {} รายการ (Google News) — กำลังวิเคราะห์ sentiment...", results.len())
                         }).to_string());
                         results
                     }
@@ -419,7 +419,7 @@ pub async fn run_news_hunter(
                         warn!("{} All search methods failed: {}", agent, e);
                         let _ = log_tx.send(serde_json::json!({
                             "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "error",
-                            "message": format!("ค้นข่าวไม่สำเร็จ: {}", e)
+                            "message": format!("ค้นข่าวไม่สำเร็จ: ทั้ง Tavily และ Google News ล้มเหลว")
                         }).to_string());
                         return NewsResult {
                             sentiment: "NEUTRAL".to_string(),
@@ -427,17 +427,43 @@ pub async fn run_news_hunter(
                             headlines: vec![], source_count: 0,
                         };
                     }
+                    _ => {
+                        warn!("{} No news found by any method", agent);
+                        return NewsResult {
+                            sentiment: "NEUTRAL".to_string(),
+                            summary: "ไม่พบข่าวสารที่เกี่ยวข้องในตลาด".to_string(), headlines: vec![], source_count: 0,
+                        };
+                    }
                 }
-            } else {
+            }
+        }
+    } else {
+        // If no Tavily key, try Google News only
+        match search_news_google_rss(symbol).await {
+            Ok(results) if !results.is_empty() => {
+                info!("{} Found {} articles via Google News", agent, results.len());
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "running",
+                    "message": format!("พบข่าว {} รายการ (Google News) — กำลังวิเคราะห์ sentiment...", results.len())
+                }).to_string());
+                results
+            }
+            Err(e) => {
                 warn!("{} Google News failed and no Tavily key", agent);
                 let _ = log_tx.send(serde_json::json!({
                     "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "error",
-                    "message": "ค้นข่าวไม่สำเร็จ — ไม่มี Tavily Key สำรอง"
+                    "message": format!("ค้นข่าวไม่สำเร็จ: {}", e)
                 }).to_string());
                 return NewsResult {
                     sentiment: "NEUTRAL".to_string(),
-                    summary: "ไม่สามารถค้นข่าวได้".to_string(),
+                    summary: "ไม่สามารถค้นข่าวได้ — ไม่มี Tavily Key สำรอง".to_string(),
                     headlines: vec![], source_count: 0,
+                };
+            }
+            _ => {
+                return NewsResult {
+                    sentiment: "NEUTRAL".to_string(),
+                    summary: "ไม่พบข่าวสารที่เกี่ยวข้อง".to_string(), headlines: vec![], source_count: 0,
                 };
             }
         }
@@ -950,6 +976,7 @@ pub async fn run_all_agents_multi_tf(
     max_drawdown_pct: f64, emergency_stop: bool,
     ai_mode: &str,
     disabled_agents: &[String],
+    global_news: Option<NewsResult>,
     log_tx: &tokio::sync::broadcast::Sender<String>,
 ) -> MultiAgentResult {
     info!("🤖 [Multi-Agent] Starting Multi-TF analysis for {}...", symbol);
@@ -967,6 +994,12 @@ pub async fn run_all_agents_multi_tf(
                 "message": "⏸️ SKIPPED (Disabled by User)"
             }).to_string());
             NewsResult { sentiment: "NEUTRAL".to_string(), summary: "SKIPPED".to_string(), headlines: vec![], source_count: 0 }
+        } else if let Some(global_news_result) = global_news {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
+                "message": "🌍 ใช้ข้อมูลข่าวสารจาก Agent ส่วนกลาง"
+            }).to_string());
+            global_news_result
         } else {
             run_news_hunter(gemini_key, model, tavily_key, symbol, log_tx).await
         }

@@ -306,6 +306,7 @@ async fn run_server() {
     let db_ai = database.clone();
     let tx_ai = tx.clone();
     let ea_state_ai = ea_state.clone();
+    let global_ai_data_ai = global_ai_data.clone();
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         let mut last_runs: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
@@ -381,6 +382,14 @@ async fn run_server() {
                             .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
                             .unwrap_or_default();
                         
+                        let is_centralized = db_ai.get_config("agent_centralized").await.unwrap_or_else(|| "true".to_string()) == "true";
+                        let global_news = if is_centralized {
+                            let state = global_ai_data_ai.read().await;
+                            state.news.clone()
+                        } else {
+                            None
+                        };
+                        
                         let result = ai_engine::run_all_agents_multi_tf(
                             &gemini_key, &gemini_model, &tavily_key,
                             &sym, &multi_tf_candles,
@@ -389,6 +398,7 @@ async fn run_server() {
                             open_pos, 5, 10.0, false, 
                             &job_ai_mode,
                             &disabled_agents,
+                            global_news,
                             &tx_ai
                         ).await;
                         
@@ -450,7 +460,8 @@ async fn run_server() {
 
             if !gemini_key.is_empty() && !tavily_key.is_empty() {
                 info!("🤖 [Global-AI] Fetching News and Economic Calendar for global Watchlist...");
-                let sym = "USD"; // Global macro indicator
+                let sym_keyword = global_ai_db.get_config("agent_news_keyword").await.unwrap_or_else(|| "Global Forex Market".to_string());
+                let sym = sym_keyword.as_str();
                 
                 // Fetch in parallel
                 let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_ai_tx);
@@ -1256,9 +1267,11 @@ async fn handle_ws_connection(
                                                 if !gemini_key.is_empty() && !tavily_key.is_empty() {
                                                     let global_tx = tx.clone();
                                                     let global_state = global_ai_data.clone();
+                                                    let db_clone = db.clone();
                                                     tokio::spawn(async move {
                                                         info!("🤖 [Global-AI] API Keys updated! Forcing immediate fetch for Global Watchlist...");
-                                                        let sym = "USD";
+                                                        let sym_keyword = db_clone.get_config("agent_news_keyword").await.unwrap_or_else(|| "Global Forex Market".to_string());
+                                                        let sym = sym_keyword.as_str();
                                                         // Send "Loading" status to UI
                                                         let _ = global_tx.send(serde_json::json!({
                                                             "type": "agent_log", "symbol": sym, "agent": "news_hunter", "status": "running",
@@ -1814,13 +1827,24 @@ async fn handle_ws_connection(
                                         let ai_mode = client_msg.ai_mode.clone().unwrap_or_else(|| "auto".to_string());
                                         let tx_agents = tx.clone();
                                         let sym_resp = sym.clone();
+                                        let db_agents = db.clone();
+                                        let global_data_agents = global_ai_data.clone();
                                         tokio::spawn(async move {
+                                            let is_centralized = db_agents.get_config("agent_centralized").await.unwrap_or_else(|| "true".to_string()) == "true";
+                                            let global_news = if is_centralized {
+                                                let state = global_data_agents.read().await;
+                                                state.news.clone()
+                                            } else {
+                                                None
+                                            };
+                                            
                                             let result = ai_engine::run_all_agents_multi_tf(
                                                 &gemini_key, &gemini_model, &tavily_key,
                                                 &sym, &multi_tf_candles,
                                                 balance, equity, open_pos, max_pos, max_dd, estop,
                                                 &ai_mode,
                                                 &[], // Manual runs don't disable agents by default
+                                                global_news,
                                                 &tx_agents
                                             ).await;
                                             

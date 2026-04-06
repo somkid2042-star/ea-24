@@ -43,6 +43,7 @@ export const menuItemsData: MenuItemType[] = [
       { key: 'Database Settings', label: 'Database Settings', href: '/config/database' },
       { key: 'Security & License', label: 'Security & License', href: '/config/security' },
       { key: 'AI Settings', label: 'AI Settings', href: '/config/ai' },
+      { key: 'Agent Config', label: 'Agent Config', href: '/config/agent' },
     ],
   },
   {
