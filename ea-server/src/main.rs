@@ -1247,6 +1247,49 @@ async fn handle_ws_connection(
                                                 "key": key,
                                             });
                                             let _ = write.send(Message::Text(resp.to_string())).await;
+                                            
+                                            // 🚀 If API Keys were updated, trigger a manual fetch of Global AI Data!
+                                            if key == "tavily_api_key" || key == "gemini_api_key" {
+                                                let gemini_key = db.get_config("gemini_api_key").await.unwrap_or_default();
+                                                let gemini_model = db.get_config("gemini_model").await.unwrap_or_default();
+                                                let tavily_key = db.get_config("tavily_api_key").await.unwrap_or_default();
+                                                if !gemini_key.is_empty() && !tavily_key.is_empty() {
+                                                    let global_tx = tx.clone();
+                                                    let global_state = global_ai_data.clone();
+                                                    tokio::spawn(async move {
+                                                        info!("🤖 [Global-AI] API Keys updated! Forcing immediate fetch for Global Watchlist...");
+                                                        let sym = "USD";
+                                                        // Send "Loading" status to UI
+                                                        let _ = global_tx.send(serde_json::json!({
+                                                            "type": "agent_log", "symbol": sym, "agent": "news_hunter", "status": "running",
+                                                            "message": "กำลังดึงข้อมูลข่าวสารล่าสุดเนื่องจากมีการอัพเดท API Key..."
+                                                        }).to_string());
+                                                        
+                                                        let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_tx);
+                                                        let cal_fut = ai_engine::run_calendar_watcher(sym, &global_tx);
+                                                        let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                                                        
+                                                        let update_ts = chrono::Utc::now().timestamp();
+                                                        {
+                                                            let mut st = global_state.write().await;
+                                                            st.news = Some(news_result.clone());
+                                                            st.calendar = Some(cal_result.clone());
+                                                            st.last_updated = update_ts;
+                                                        }
+                                                        
+                                                        let msg = serde_json::json!({
+                                                            "type": "global_ai_data",
+                                                            "data": {
+                                                                "news": news_result,
+                                                                "calendar": cal_result,
+                                                                "last_updated": update_ts
+                                                            }
+                                                        }).to_string();
+                                                        let _ = global_tx.send(msg);
+                                                        info!("🤖 [Global-AI] Immediate fetch complete.");
+                                                    });
+                                                }
+                                            }
                                         }
                                     }
                                     "vacuum_db" => {
