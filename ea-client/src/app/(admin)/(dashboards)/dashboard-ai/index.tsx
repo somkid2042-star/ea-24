@@ -87,6 +87,7 @@ const DashboardAi = () => {
   
   // M1 states per symbol
   const [agentStatusM1Map, setAgentStatusM1Map] = useState<Record<string, AgentStatusMap>>({});
+  const [logsM1BySymbol, setLogsM1BySymbol] = useState<Record<string, AiLog[]>>({});
   
   // Auto-Pilot States
   const [autoPilotJobs, setAutoPilotJobs] = useState<AutoPilotJob[]>([]);
@@ -141,7 +142,7 @@ const DashboardAi = () => {
           
           setLogsBySymbol(prev => ({
              ...prev,
-             [sym]: [...(prev[sym] || []), newLog]
+             [sym]: [...(prev[sym] || []), newLog].slice(-50)
           }));
           
           if (data.agent) {
@@ -159,6 +160,12 @@ const DashboardAi = () => {
         } else if (data.type === 'agent_log_m1') {
           const symbol = data.symbol;
           const agentStr = data.agent as keyof AgentStatusMap;
+          const newLog = { timestamp: Date.now(), agent: data.agent, status: data.status, message: data.message };
+          
+          setLogsM1BySymbol(prev => ({
+             ...prev,
+             [symbol]: [...(prev[symbol] || []), newLog].slice(-50)
+          }));
           
           setAgentStatusM1Map(prev => {
               const newMap = { ...prev };
@@ -264,6 +271,11 @@ const DashboardAi = () => {
     
     newJobs[jobIndex] = job;
     saveJobsToDb(newJobs);
+  };
+
+  const handleEditJob = (job: AutoPilotJob) => {
+      const newJobs = autoPilotJobs.map(j => j.symbol === job.symbol ? { ...j, is_draft: true } : j);
+      saveJobsToDb(newJobs);
   };
 
   const acceptProposal = () => {
@@ -536,12 +548,9 @@ const DashboardAi = () => {
                       newJobs[idx].enabled = true;
                       saveJobsToDb(newJobs);
                     }}
-                    onEditJob={() => {
-                      const newJobs = [...autoPilotJobs];
-                      newJobs[idx].is_draft = true;
-                      saveJobsToDb(newJobs);
-                    }}
+                    onEditJob={() => handleEditJob(job)}
                     logs={logsBySymbol[job.symbol] || []}
+                    logsM1={logsM1BySymbol[job.symbol] || []}
                     agentStatus={agentStatusBySymbol[job.symbol] || {
                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
                       risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle'

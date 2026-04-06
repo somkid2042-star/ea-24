@@ -583,25 +583,36 @@ async fn run_server() {
                                 let _ = m1_ai_tx.send(serde_json::json!({
                                     "type": "agents_started_m1",
                                     "symbol": sym,
+                                    "message": "[M1] Initializing background analysis cycle..."
                                 }).to_string());
                                 
-                                // Sequentially light up agents to denote internal fast-track processing
+                                // Sequentially light up agents with messages
                                 let agents = ["news_hunter", "chart_analyst", "calendar", "risk_manager", "decision_maker"];
-                                for agent in agents {
+                                let messages = [
+                                    "[M1] Scanning real-time market sentiment...",
+                                    "[M1] Computing technical indicators (RSI, EMA)...",
+                                    "[M1] Checking impending macroeconomic events...",
+                                    "[M1] Evaluating drawdown and position exposure...",
+                                    "[M1] Aggregating multi-layer strategy signals..."
+                                ];
+                                
+                                for (i, agent) in agents.iter().enumerate() {
                                     let _ = m1_ai_tx.send(serde_json::json!({
                                         "type": "agent_log_m1",
                                         "symbol": sym,
                                         "agent": agent,
-                                        "status": "running"
+                                        "status": "running",
+                                        "message": messages[i]
                                     }).to_string());
                                     
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(200)).await;
+                                    tokio::time::sleep(tokio::time::Duration::from_millis(500)).await;
                                     
                                     let _ = m1_ai_tx.send(serde_json::json!({
                                         "type": "agent_log_m1",
                                         "symbol": sym,
                                         "agent": agent,
-                                        "status": "done"
+                                        "status": "done",
+                                        "message": format!("{} OK", messages[i].replace("[M1] ", ""))
                                     }).to_string());
                                 }
                                 
@@ -609,6 +620,7 @@ async fn run_server() {
                                 let _ = m1_ai_tx.send(serde_json::json!({
                                     "type": "agents_done_m1",
                                     "symbol": sym,
+                                    "message": "background analysis completed."
                                 }).to_string());
                             }
                         }

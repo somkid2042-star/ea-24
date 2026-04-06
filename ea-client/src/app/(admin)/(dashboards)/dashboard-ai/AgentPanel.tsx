@@ -1,5 +1,5 @@
 import React, { useEffect, useState } from 'react';
-import { LuBrainCircuit, LuGlobe, LuActivity, LuCalendar, LuShield, LuMonitorOff, LuZap, LuLoader, LuBot, LuSettings } from "react-icons/lu";
+import { LuBrainCircuit, LuGlobe, LuActivity, LuCalendar, LuShield, LuMonitorOff, LuZap, LuLoader, LuTerminal, LuSettings } from "react-icons/lu";
 
 export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
@@ -29,6 +29,7 @@ interface AgentPanelProps {
   onEditJob?: () => void;
   onToggleAgent?: (agentKey: string) => void;
   agentStatusM1?: AgentStatusMap;
+  logsM1?: AiLog[];
 }
 
 const stripEmojis = (msg: string) => {
@@ -44,7 +45,7 @@ const agentConfig = [
   { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, agentStatusM1, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, finalResult, autoTrade, onToggleAutoTrade, disabledAgents = [], onToggleAgent }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   
   useEffect(() => {
@@ -222,25 +223,50 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
       </div>
       
-      {/* Final Operation Result */}
-      <div className="p-5 pb-6">
-        <div className={`p-4 rounded-[16px] border-[1.5px] transition-all bg-[#FAFBFF] dark:bg-[#0B101E] border-blue-100 dark:border-blue-900/30`}>
-           <div className="flex items-center gap-2 mb-2">
-             <LuBot className={`size-4 text-[#3B82F6] ${agentStatus.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
-             <span className="text-[12px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">ผลสรุปการวิเคราะห์</span>
-           </div>
-           
-           <div className="ml-6 text-[13px] font-mono text-[#3B82F6] dark:text-blue-400">
-              {agentStatus.orchestrator === 'running' ? (
-                  <span className="animate-pulse">กำลังประมวลผลข้อมูล...</span>
-              ) : finalResult && finalResult.final_decision ? (
+      {/* Operation Result Stack */}
+      <div className="px-6 pb-6 pt-2 space-y-3">
+        {/* Terminal Window 1: Server/Rust M1 track */}
+        <div className="rounded-xl border border-default-200 dark:border-white/10 bg-default-50/50 dark:bg-[#0A0D14] overflow-hidden flex flex-col transition-all">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-default-200 dark:border-white/10 bg-default-100/50 dark:bg-white/5">
+                <span className="text-[11px] font-mono font-bold text-default-500 dark:text-gray-400 tracking-wider">bash (Server)</span>
+                <div className="flex items-center gap-1.5 text-default-400">
+                   <LuTerminal size={12} />
+                   {agentStatusM1?.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse ml-1"></span>}
+                </div>
+            </div>
+            <div className="p-3 font-mono text-[11px] leading-relaxed text-indigo-600 dark:text-indigo-400 min-h-[50px] max-h-[100px] overflow-y-auto">
+                {agentStatusM1?.orchestrator === 'running' ? (
+                    <span className="animate-pulse">
+                        {logsM1.length > 0 ? stripEmojis(logsM1[logsM1.length - 1].message) : 'ประมวลผลด่วน...'}
+                    </span>
+                ) : logsM1.length > 0 ? (
+                    <span className="opacity-80 break-words">{stripEmojis(logsM1[logsM1.length - 1].message)}</span>
+                ) : (
+                    <span className="opacity-50">สแตนด์บาย M1...</span>
+                )}
+            </div>
+        </div>
+
+        {/* Terminal Window 2: AI Track */}
+        <div className="rounded-xl border border-default-200 dark:border-white/10 bg-default-50/50 dark:bg-[#0A0D14] overflow-hidden flex flex-col transition-all">
+            <div className="flex items-center justify-between px-3 py-2 border-b border-default-200 dark:border-white/10 bg-default-100/50 dark:bg-white/5">
+                <span className="text-[11px] font-mono font-bold text-default-500 dark:text-gray-400 tracking-wider">bash (AI)</span>
+                <div className="flex items-center gap-1.5 text-default-400">
+                   <LuTerminal size={12} />
+                   {agentStatus.orchestrator === 'running' && <span className="size-1.5 rounded-full bg-blue-500 animate-pulse ml-1"></span>}
+                </div>
+            </div>
+            <div className="p-3 font-mono text-[11px] leading-relaxed text-[#3B82F6] dark:text-blue-400 min-h-[50px] max-h-[100px] overflow-y-auto">
+                {agentStatus.orchestrator === 'running' ? (
+                  <span className="animate-pulse">กำลังเรียกใช้โมเดล AI...</span>
+                ) : finalResult && finalResult.final_decision ? (
                   <span className="font-bold">{finalResult.final_decision}</span>
-              ) : logs.length > 0 ? (
-                  <span className="break-words font-medium opacity-80 text-sm">
-                    {stripEmojis(logs[logs.length - 1].message)}
-                  </span>
-              ) : 'สแตนด์บาย รอรับคำสั่ง...'}
-           </div>
+                ) : logs.length > 0 ? (
+                  <span className="opacity-80 break-words">{stripEmojis(logs[logs.length - 1].message)}</span>
+                ) : (
+                  <span className="opacity-50">รอรับคำสั่ง AI รอบถัดไป...</span>
+                )}
+            </div>
         </div>
       </div>
     </div>
