@@ -670,7 +670,12 @@ async fn run_server() {
                     }
                 }
             }
-            tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+            let now = chrono::Local::now();
+            let mut seconds_to_next_minute = 60 - now.timestamp() % 60;
+            if seconds_to_next_minute == 0 {
+                seconds_to_next_minute = 60;
+            }
+            tokio::time::sleep(tokio::time::Duration::from_secs(seconds_to_next_minute as u64)).await;
         }
     });
 
