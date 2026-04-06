@@ -124,7 +124,7 @@ impl Database {
         let q = "SELECT id, symbol, log_type, agent, status, message, EXTRACT(EPOCH FROM timestamp)*1000 AS ts
                  FROM ai_logs 
                  WHERE symbol = $1 
-                 ORDER BY timestamp ASC LIMIT $2";
+                 ORDER BY timestamp DESC LIMIT $2";
                  
         let records = sqlx::query(q)
             .bind(symbol)
@@ -152,6 +152,7 @@ impl Database {
                 "timestamp": ts as i64
             }));
         }
+        logs.reverse(); // Restore chronological order (oldest first)
         Ok(logs)
     }
 

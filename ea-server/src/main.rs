@@ -576,7 +576,8 @@ async fn run_server() {
             if !config_raw.is_empty() {
                 if let Ok(jobs) = serde_json::from_str::<Vec<serde_json::Value>>(&config_raw) {
                     for job in jobs {
-                        if job["enabled"].as_bool() == Some(true) {
+                        let is_enabled = job["enabled"].as_bool().unwrap_or(true);
+                        if is_enabled {
                             if let Some(sym) = job["symbol"].as_str() {
                                 let sym = sym.to_string();
                                 
@@ -2783,14 +2784,21 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
 
     let request = String::from_utf8_lossy(&buf[..n]);
 
-    let path = request
-        .lines()
-        .next()
-        .and_then(|line| line.split_whitespace().nth(1))
-        .unwrap_or("/");
+    let mut lines = request.lines();
+    let first_line = lines.next().unwrap_or("");
+    let mut parts = first_line.split_whitespace();
+    let method = parts.next().unwrap_or("GET");
+    let path = parts.next().unwrap_or("/");
 
     let clean_path = path.split('?').next().unwrap_or(path);
     let mut relative = clean_path.trim_start_matches('/');
+
+    // Handle OPTIONS for CORS
+    if method == "OPTIONS" {
+        let response = "HTTP/1.1 204 No Content\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n";
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
 
     // Handle API endpoints
     if relative.starts_with("api/ai_logs") {
