@@ -153,7 +153,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       <div className="px-6 pb-6 pt-2 space-y-4">
         
         {/* Server / M1 Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
+        <div className="px-2 flex flex-col flex-1 overflow-hidden min-h-[220px]">
            <div className="flex items-center justify-between mb-4 shrink-0">
              <div className="flex items-center gap-2">
                  <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
@@ -200,7 +200,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* AI Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
+        <div className="px-2 pt-4 border-t border-gray-100 dark:border-white/5 flex flex-col flex-1 overflow-hidden min-h-[220px]">
            <div className="flex items-center justify-between mb-4 shrink-0">
              <div className="flex items-center gap-2">
                  <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
