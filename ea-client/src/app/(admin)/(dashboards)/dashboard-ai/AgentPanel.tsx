@@ -154,18 +154,27 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       <div className="px-6 pb-6 pt-2 space-y-4">
         
         {/* Server / M1 Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
-           <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px] relative">
+           {/* Left Edge Status Tab */}
+           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
+               {agentStatusM1?.orchestrator === 'running' ? (
+                   <span className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm flex items-center gap-1.5 whitespace-nowrap">
+                       <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
+                       Running
+                   </span>
+               ) : (
+                   <span className="bg-white dark:bg-[#0A0D14] text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
+                       Awaiting Processing
+                   </span>
+               )}
+           </div>
+
+           <div className="flex items-center justify-between mb-4 shrink-0 pl-1">
              <div className="flex items-center gap-2">
                  <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
                  <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
              </div>
              <div className="flex items-center gap-2">
-                 {agentStatusM1?.orchestrator === 'running' ? (
-                     <span className="px-2 py-0.5 rounded-md bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 text-[10px] font-bold uppercase tracking-widest flex items-center gap-1"><span className="size-1.5 rounded-full bg-indigo-500 animate-pulse"></span>Running</span>
-                 ) : (
-                     <span className="px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-widest">Awaiting Processing</span>
-                 )}
                  {!autoScrollM1 && (
                      <button onClick={() => setAutoScrollM1(true)} className="text-[10px] font-bold text-indigo-500 bg-indigo-50 dark:bg-indigo-500/10 px-2 py-0.5 rounded-full hover:bg-indigo-100 dark:hover:bg-indigo-500/20 transition-colors">
                         Scroll to Latest
@@ -208,25 +217,31 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* AI Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px]">
-           <div className="flex items-center justify-between mb-4 shrink-0">
+        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px] relative">
+           {/* Left Edge Status Tab */}
+           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
+               {finalResult?.decision ? (
+                   <span className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-[0.2em] uppercase shadow-sm border whitespace-nowrap ${
+                     finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
+                     finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
+                     finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
+                     'bg-gray-50 text-gray-600 border-gray-200'
+                   }`}>
+                     {finalResult.decision}
+                   </span>
+               ) : (
+                   <span className="bg-white dark:bg-[#0A0D14] text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
+                       Awaiting Processing
+                   </span>
+               )}
+           </div>
+
+           <div className="flex items-center justify-between mb-4 shrink-0 pl-1">
              <div className="flex items-center gap-2">
                  <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
                  <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
              </div>
              <div className="flex items-center gap-2">
-                 {finalResult?.decision ? (
-                     <span className={`px-2 py-0.5 rounded-md text-[10px] font-bold tracking-widest uppercase border ${
-                       finalResult.decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                       finalResult.decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
-                       finalResult.decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
-                       'bg-gray-50 text-gray-600 border-gray-200'
-                     }`}>
-                       {finalResult.decision}
-                     </span>
-                 ) : (
-                     <span className="px-2 py-0.5 rounded-md bg-gray-50 dark:bg-gray-800 text-gray-400 border border-gray-200 dark:border-gray-700 text-[10px] font-bold uppercase tracking-widest">Awaiting Processing</span>
-                 )}
                  {!autoScrollAI && (
                      <button onClick={() => setAutoScrollAI(true)} className="text-[10px] font-bold text-blue-500 bg-blue-50 dark:bg-blue-500/10 px-2 py-0.5 rounded-full hover:bg-blue-100 dark:hover:bg-blue-500/20 transition-colors">
                         Scroll to Latest
