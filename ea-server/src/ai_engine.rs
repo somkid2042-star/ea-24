@@ -315,6 +315,11 @@ async fn search_news_tavily(tavily_key: &str, symbol: &str) -> Result<Vec<Tavily
         return Err("Tavily API Key is empty".to_string());
     }
 
+    let keys: Vec<&str> = tavily_key.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    if keys.is_empty() {
+        return Err("Tavily API Key list is empty".to_string());
+    }
+
     let query = match symbol.to_uppercase().as_str() {
         s if s.contains("XAU") || s.contains("GOLD") => "gold XAUUSD price news today forecast".to_string(),
         s if s.contains("EUR") => format!("{} forex news today", symbol),
@@ -325,30 +330,55 @@ async fn search_news_tavily(tavily_key: &str, symbol: &str) -> Result<Vec<Tavily
         _ => format!("{} trading price news today", symbol),
     };
 
-    let request = TavilyRequest {
-        api_key: tavily_key.to_string(),
-        query,
-        max_results: 5,
-        search_depth: "basic".to_string(),
-        include_answer: true,
-    };
-
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(15))
         .build().map_err(|e| format!("HTTP error: {}", e))?;
 
-    let resp = client.post(TAVILY_API_URL).json(&request).send().await
-        .map_err(|e| format!("Tavily request failed: {}", e))?;
+    let mut last_error = "Unknown error".to_string();
 
-    if !resp.status().is_success() {
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Tavily error: {}", body));
+    for (i, key) in keys.iter().enumerate() {
+        let request = TavilyRequest {
+            api_key: key.to_string(),
+            query: query.clone(),
+            max_results: 5,
+            search_depth: "basic".to_string(),
+            include_answer: true,
+        };
+
+        let resp = match client.post(TAVILY_API_URL).json(&request).send().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("Tavily request failed: {}", e);
+                continue;
+            }
+        };
+
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            last_error = format!("Tavily error ({}): {}", status, body);
+            // HTTP 429 = Too Many Requests / Quota 
+            if status.as_u16() == 429 || status.as_u16() == 403 || status.as_u16() == 400 || body.to_lowercase().contains("limit") || body.to_lowercase().contains("credit") {
+                 if i < keys.len() - 1 {
+                     warn!("⚠️ Tavily API Key {} hit limit/error, trying next...", i+1);
+                     continue;
+                 }
+            }
+            if i < keys.len() - 1 { continue; } else { return Err(last_error); }
+        }
+
+        let tavily_resp: TavilyResponse = match resp.json().await {
+            Ok(r) => r,
+            Err(e) => {
+                last_error = format!("Tavily parse error: {}", e);
+                if i < keys.len() - 1 { continue; } else { return Err(last_error); }
+            }
+        };
+
+        return Ok(tavily_resp.results.unwrap_or_default());
     }
 
-    let tavily_resp: TavilyResponse = resp.json().await
-        .map_err(|e| format!("Tavily parse error: {}", e))?;
-
-    Ok(tavily_resp.results.unwrap_or_default())
+    Err(format!("Tavily fail (tried {} keys): {}", keys.len(), last_error))
 }
 
 pub async fn run_news_hunter(

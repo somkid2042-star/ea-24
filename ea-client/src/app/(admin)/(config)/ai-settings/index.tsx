@@ -16,9 +16,9 @@ const AiSettings = () => {
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
-  const [emails, setEmails] = useState<{address: string, password: string, apiKey: string}[]>([{address: '', password: '', apiKey: ''}]);
-  const [tavilyKey, setTavilyKey] = useState('');
+  const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
   const [showEmailSection, setShowEmailSection] = useState(false);
+  const [showTavilySection, setShowTavilySection] = useState(false);
   const [emailSaved, setEmailSaved] = useState(false);
 
   const hideEmailTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
@@ -29,6 +29,7 @@ const AiSettings = () => {
     if (hideEmailTimeoutRef.current) clearTimeout(hideEmailTimeoutRef.current);
     hideEmailTimeoutRef.current = setTimeout(() => {
       setShowEmailSection(false);
+      setShowTavilySection(false);
     }, 60000); // Auto hide after 60 seconds
   }, []);
 
@@ -51,22 +52,23 @@ const AiSettings = () => {
         if (data.type === 'server_config' && data.config) {
           const c = data.config;
           if (c.gemini_model) setSelectedModel(c.gemini_model);
-          if (c.tavily_api_key) setTavilyKey(c.tavily_api_key);
-          if (c.gmail_address || c.gmail_app_password || c.gemini_api_key) {
+          if (c.gmail_address || c.gmail_app_password || c.gemini_api_key || c.tavily_api_key) {
             const addrs = (c.gmail_address || '').split(',').map((x: string) => x.trim());
             const passes = (c.gmail_app_password || '').split(',').map((x: string) => x.trim());
             const keys = (c.gemini_api_key || '').split(',').map((x: string) => x.trim());
-            const length = Math.max(addrs.length, passes.length, keys.length, 1);
+            const tvlys = (c.tavily_api_key || '').split(',').map((x: string) => x.trim());
+            const length = Math.max(addrs.length, passes.length, keys.length, tvlys.length, 1);
             const loaded = [];
             for (let i = 0; i < length; i++) {
               loaded.push({ 
                 address: addrs[i] || '', 
                 password: passes[i] || '',
-                apiKey: keys[i] || ''
+                apiKey: keys[i] || '',
+                tavilyKey: tvlys[i] || ''
               });
             }
             if (loaded.length > 0) setEmails(loaded);
-            else setEmails([{address: '', password: '', apiKey: ''}]);
+            else setEmails([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
           }
         }
         if (data.type === 'ai_models') {
@@ -97,11 +99,12 @@ const AiSettings = () => {
 
   const saveEmailConfig = (list?: typeof emails) => {
     const listToSave = list || emails;
-    const validEmails = listToSave.filter(e => e.address.trim() || e.password.trim() || e.apiKey.trim());
-    const toSave = validEmails.length > 0 ? validEmails : [{address: '', password: '', apiKey: ''}];
+    const validEmails = listToSave.filter(e => e.address.trim() || e.password.trim() || e.apiKey.trim() || e.tavilyKey.trim());
+    const toSave = validEmails.length > 0 ? validEmails : [{address: '', password: '', apiKey: '', tavilyKey: ''}];
     saveConfig('gmail_address', toSave.map(e => e.address).join(','));
     saveConfig('gmail_app_password', toSave.map(e => e.password).join(','));
     saveConfig('gemini_api_key', toSave.map(e => e.apiKey).join(','));
+    saveConfig('tavily_api_key', toSave.map(e => e.tavilyKey).join(','));
   };
 
   const moveEmailUp = (index: number) => {
@@ -199,41 +202,6 @@ const AiSettings = () => {
           </div>
         )}
 
-        <hr className="border-default-200 dark:border-default-300/10 mt-4" />
-        
-        {/* Tavily API Key */}
-        <div className="space-y-1">
-          <label className="text-sm font-medium text-default-900 font-semibold mb-1 flex items-center gap-2">
-            <div className="size-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><LuSearch className="size-4 text-orange-500"/></div>
-            Tavily API Key (ระบบค้นหาข่าวสารให้ AI)
-          </label>
-          <p className="text-xs text-default-500 mb-2">
-            จำเป็นต้องใช้ Tavily API เพื่อให้ AI สามารถค้นหาข่าวเศรษฐกิจล่าสุดแบบ Real-time ได้ (รับฟรีที่ tavily.com)
-          </p>
-          <div className="flex gap-2">
-            <input 
-              type="text" 
-              value={tavilyKey} 
-              onChange={(e) => setTavilyKey(e.target.value)} 
-              onKeyDown={(e) => { if (e.key === 'Enter') saveConfig('tavily_api_key', tavilyKey.trim()); }}
-              placeholder="tvly-..."
-              className="flex-1 px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
-            />
-            <button 
-              onClick={() => saveConfig('tavily_api_key', tavilyKey.trim())}
-              className="btn bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-sm font-medium px-4 border-none rounded-xl flex items-center gap-2 transition-colors"
-            >
-              <LuSave className="size-4" /> บันทึก
-            </button>
-            <button
-              onClick={() => tauriOpen('https://tavily.com')}
-              className="btn bg-default-100 dark:bg-default-200/5 hover:bg-default-200 dark:hover:bg-default-200/10 text-default-600 text-xs px-3 border-none rounded-xl"
-              title="สมัครรับ API ฟรี"
-            >
-              <LuExternalLink className="size-4" />
-            </button>
-          </div>
-        </div>
       </div>
 
       {/* Email Setup */}
@@ -348,7 +316,7 @@ const AiSettings = () => {
           <button
             onClick={() => {
               resetEmailHideTimer();
-              setEmails([...emails, {address: '', password: '', apiKey: ''}]);
+              setEmails([...emails, {address: '', password: '', apiKey: '', tavilyKey: ''}]);
             }}
             className="flex items-center gap-2 text-xs text-blue-500 hover:text-blue-600 font-medium px-2 py-1.5 rounded-lg hover:bg-blue-500/10 transition-colors"
           >
@@ -358,7 +326,101 @@ const AiSettings = () => {
         )}
       </div>
 
+
+      {/* Tavily API Key Setup */}
+      <div className="card !p-6 space-y-4 mt-6">
+        <div className="flex items-center justify-between">
+          <div>
+            <h5 className="text-sm font-semibold text-default-900 mb-1 flex items-center gap-2">
+              <div className="size-8 rounded-lg bg-orange-500/10 flex items-center justify-center"><LuSearch className="size-4 text-orange-500" /></div>
+              Tavily API Key (ระบบค้นหาข่าวสารให้ AI)
+              <span className="text-xs font-normal text-default-400">({emails.filter(e => e.tavilyKey.trim()).length} บัญชี)</span>
+            </h5>
+            <p className="text-xs text-default-500 max-w-[500px]">
+              จำเป็นต้องใช้ Tavily API เพื่อให้ AI สามารถค้นหาข่าวเศรษฐกิจล่าสุดแบบ Real-time ได้ (รับฟรีที่ tavily.com) อีเมล์จะใช้ร่วมกับด้านบนโดยอัตโนมัติ
+            </p>
+          </div>
+          <button
+            onClick={() => setShowTavilySection(!showTavilySection)}
+            className="flex items-center gap-1.5 text-xs font-medium text-orange-500 hover:text-orange-600 px-3 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors"
+          >
+            {showTavilySection ? <><LuChevronUp className="size-4" /> ซ่อน</> : <><LuChevronDown className="size-4" /> แสดง</>}
+          </button>
+        </div>
+
+        {showTavilySection && (
+        <div className="space-y-4 animate-in fade-in slide-in-from-top-2 bg-default-50 dark:bg-default-100/5 p-4 rounded-xl border border-default-200/50">
+          {emails.map((acc, i) => (
+            <div 
+              key={i} 
+              className="flex gap-3 pb-3 border-b border-default-200/50 last:border-0 last:pb-0 items-center group"
+            >
+              <div className="w-8 h-8 rounded-full bg-blue-500/10 flex items-center justify-center shrink-0" title="Email">
+                <LuMail className="size-4 text-blue-500" />
+              </div>
+              <div className="flex-1 opacity-75">
+                <input
+                  type="text"
+                  value={acc.address}
+                  disabled
+                  placeholder={`ไม่มีอีเมล์`}
+                  className="w-full px-4 py-2.5 rounded-xl bg-transparent text-default-900 border border-transparent text-sm font-medium"
+                />
+              </div>
+
+              <div className="w-8 h-8 rounded-full bg-orange-500/10 flex items-center justify-center shrink-0 ml-1" title="Tavily API Key">
+                <LuKey className="size-4 text-orange-500" />
+              </div>
+              <div className="flex-[1.5] relative">
+                <input
+                  type="text"
+                  value={acc.tavilyKey}
+                  onChange={(e) => {
+                    resetEmailHideTimer();
+                    const next = [...emails];
+                    next[i].tavilyKey = e.target.value;
+                    setEmails(next);
+                  }}
+                  onKeyDown={(e) => { if (e.key === 'Enter') saveEmailConfig(); }}
+                  placeholder={`Tavily API Key #${i + 1}`}
+                  className="w-full px-4 py-2.5 rounded-xl bg-default-100 dark:bg-default-200/10 text-default-900 border border-default-200 dark:border-default-300/10 text-sm focus:outline-none focus:ring-2 focus:ring-orange-500/50 transition-all font-mono"
+                />
+              </div>
+
+              <div className="flex items-center gap-2 ml-1">
+                <button
+                  onClick={() => tauriOpen('https://app.tavily.com/sign-in')}
+                  className="h-10 px-4 rounded-xl bg-orange-500/10 hover:bg-orange-500/20 text-orange-600 font-bold text-xs flex items-center justify-center shrink-0 transition-colors gap-2"
+                  title="รับ API ฟรี"
+                >
+                  <LuExternalLink className="size-4" /> รับ API
+                </button>
+              </div>
+            </div>
+          ))}
+          <div className="flex items-center gap-3">
+             <button
+              onClick={() => {
+                resetEmailHideTimer();
+                setEmails([...emails, {address: '', password: '', apiKey: '', tavilyKey: ''}]);
+              }}
+              className="flex items-center gap-2 text-xs text-orange-500 hover:text-orange-600 font-medium px-2 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors"
+            >
+              <LuPlus className="size-3.5" /> เพิ่มแถว
+            </button>
+            <button 
+              onClick={() => saveEmailConfig()}
+              className="btn bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-sm font-medium px-4 border-none rounded-xl flex items-center gap-2 transition-colors ml-auto h-9"
+            >
+              <LuSave className="size-4" /> บันทึกทั้งหมด
+            </button>
+          </div>
+        </div>
+        )}
+      </div>
+
     </main>
+
   );
 };
 
