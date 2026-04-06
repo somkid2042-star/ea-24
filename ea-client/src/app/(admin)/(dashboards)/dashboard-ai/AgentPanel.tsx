@@ -216,15 +216,11 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                        </div>
 
                        {!isDisabled && latestAgentLog && (
-                          <div className="mt-[2px] relative">
-                             <p className={`text-[13px] font-mono leading-relaxed truncate ${logTextColor}`}>
-                               <span className="opacity-40 mr-1.5 font-bold">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
+                          <div className="mt-[2px]">
+                             <p className={`text-[13px] font-mono leading-relaxed line-clamp-2 pr-2 ${logTextColor}`}>
+                               <span className="opacity-50 mr-1.5 font-bold">[{new Date(latestAgentLog.timestamp).toLocaleTimeString('en-US', { hour12: false })}]</span>
                                {stripEmojis(latestAgentLog.message)}
                              </p>
-                             {/* Tooltip for long messages */}
-                             <div className="absolute top-full left-0 mt-1 shadow-xl bg-white dark:bg-zinc-900 border border-gray-100 dark:border-white/10 text-gray-700 dark:text-gray-200 p-3 rounded-xl text-[12px] whitespace-pre-wrap w-full z-[60] hidden group-hover:block pointer-events-none">
-                                 {stripEmojis(latestAgentLog.message)}
-                             </div>
                           </div>
                        )}
                     </div>
@@ -253,11 +249,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                        {stripEmojis(logs[logs.length - 1].message)}
                      </span>
                    </div>
-                   {finalResult && (
-                      <span className="text-blue-500/70 ml-[82px] text-[12px] font-bold">
-                        (confidence {Math.round(finalResult.confidence)}%)
-                      </span>
-                   )}
                  </div>
               ) : 'Standby...'}
            </div>
