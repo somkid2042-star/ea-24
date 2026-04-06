@@ -92,7 +92,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
   }, [lastRunTime, interval, jobEnabled, agentStatus.orchestrator]);
 
   return (
-    <div className={`w-full h-full relative flex flex-col transition-all duration-300 bg-white dark:bg-[#0A0D14] rounded-[24px] border border-gray-100 dark:border-white/5 shadow-sm overflow-hidden min-h-[500px] ${!jobEnabled ? 'opacity-70 grayscale-[0.3]' : ''}`}>
+    <div className={`card flex flex-col transition-all duration-300 min-h-[500px] overflow-hidden ${!jobEnabled ? 'opacity-70 grayscale-[0.3]' : ''}`}>
       {isClosed && (
         <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4 text-center">
            <div className="bg-white/90 dark:bg-zinc-950/90 w-[180px] border border-red-500/20 rounded-2xl p-4 shadow-xl">
@@ -103,7 +103,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       )}
 
       {/* Header Section */}
-      <div className="border-b border-gray-100 dark:border-white/5 p-4 flex items-center justify-between bg-white dark:bg-[#0A0D14] z-40 relative">
+      <div className="border-b border-default-200 dark:border-white/5 p-4 flex items-center justify-between bg-transparent z-40 relative">
         <div className="flex items-center gap-3">
           <div className="size-10 rounded-full bg-[#EFF6FF] text-[#3B82F6] flex items-center justify-center shrink-0">
             {jobEnabled ? <LuZap className="size-[22px] fill-[#3B82F6]/20" /> : <LuMonitorOff className="size-[22px]" />}
@@ -154,7 +154,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
       <div className="px-6 pb-6 pt-2 space-y-4">
         
         {/* Server / M1 Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px] relative">
+        <div className="p-4 rounded-xl border border-default-200 dark:border-white/5 bg-default-50 dark:bg-white/5 flex flex-col flex-1 h-[250px] relative">
            {/* Left Edge Status Tab */}
            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
                {agentStatusM1?.orchestrator === 'running' ? (
@@ -163,7 +163,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                        Running
                    </span>
                ) : (
-                   <span className="bg-white dark:bg-[#0A0D14] text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
+                   <span className="bg-white dark:bg-black/20 text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
                        Awaiting Processing
                    </span>
                )}
@@ -190,7 +190,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                   <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
                   {logsM1.length > 0 ? logsM1.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-indigo-200 text-indigo-500 mt-0.5 shadow-sm`}>
+                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-black/20 border-indigo-200 dark:border-indigo-500/30 text-indigo-500 mt-0.5 shadow-sm`}>
                              {agentConfig.find(a => a.key === log.agent)?.icon || <LuTerminal size={10} />}
                           </div>
                           <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
@@ -211,7 +211,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         </div>
 
         {/* AI Logs Timeline */}
-        <div className="p-4 rounded-[16px] border-[1.5px] border-default-200 dark:border-white/5 bg-white dark:bg-[#0A0D14] flex flex-col flex-1 h-[250px] relative">
+        <div className="p-4 rounded-xl border border-default-200 dark:border-white/5 bg-default-50 dark:bg-white/5 flex flex-col flex-1 h-[250px] relative">
            {/* Left Edge Status Tab */}
            <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
                {finalResult?.final_decision ? (
@@ -251,7 +251,7 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                   <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
                   {logs.length > 0 ? logs.map((log, i) => (
                       <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-[#0B101E] border-blue-200 text-blue-500 mt-0.5 shadow-sm`}>
+                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-black/20 border-blue-200 dark:border-blue-500/30 text-[#3B82F6] mt-0.5 shadow-sm`}>
                              {agentConfig.find(a => a.key === log.agent)?.icon || <LuBot size={10} />}
                           </div>
                           <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
