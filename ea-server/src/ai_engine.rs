@@ -39,6 +39,8 @@ struct GenerationConfig {
     temperature: f64,
     #[serde(rename = "maxOutputTokens")]
     max_output_tokens: i32,
+    #[serde(rename = "responseMimeType", skip_serializing_if = "Option::is_none")]
+    response_mime_type: Option<String>,
 }
 
 #[derive(Deserialize)]
@@ -191,7 +193,7 @@ pub struct AiAnalysis {
 //  Helper: Call Gemini API
 // ──────────────────────────────────────────────
 
-async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32) -> Result<String, String> {
+async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
     let keys: Vec<&str> = api_keys_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     
@@ -201,7 +203,11 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 
     let request = GeminiRequest {
         contents: vec![Content { parts: vec![Part { text: prompt.to_string() }] }],
-        generation_config: GenerationConfig { temperature: temp, max_output_tokens: max_tokens },
+        generation_config: GenerationConfig {
+            temperature: temp,
+            max_output_tokens: max_tokens,
+            response_mime_type: if json_mode { Some("application/json".to_string()) } else { None },
+        },
     };
 
     let client = reqwest::Client::builder()
@@ -522,7 +528,7 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
   ]
 }}"#);
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 2048).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 2048, true).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
@@ -560,7 +566,7 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
                     else if line.to_uppercase().contains("BEARISH") { sentiment = "BEARISH".to_string(); }
                 }
             }
-            if summary.is_empty() { summary = "ไม่มีสรุปเนื้อหา (พบปัญหาในการแปล)".to_string(); }
+            if summary.is_empty() { summary = format!("ไม่สามารถสรุปรายละเอียดได้เนื่องจากข้อผิดพลาดของข้อมูล แต่ AI ประเมินแนวโน้มเป็น: {}", sentiment); }
             let final_headlines = if th_headlines.is_empty() { headlines } else { th_headlines };
             
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
@@ -642,7 +648,7 @@ RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
 REASONING: [1-2 sentence summary in Thai language]"#, recent.len());
 
-    match call_gemini(gemini_key, model, &prompt, 0.3, 400).await {
+    match call_gemini(gemini_key, model, &prompt, 0.3, 400, false).await {
         Ok(response) => {
             let mut rec = "HOLD".to_string();
             let mut conf = 50.0;
@@ -808,7 +814,7 @@ pub async fn fetch_macro_indicators(
         context_text
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 500).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 500, true).await {
         Ok(res) => {
             let clean_json = res.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
             match serde_json::from_str::<MacroResult>(clean_json) {
@@ -976,7 +982,7 @@ REASONING: [concise summary in Thai language]"#,
         risk_reason = risk.reason,
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 400).await {
+    match call_gemini(gemini_key, model, &prompt, 0.2, 400, false).await {
         Ok(response) => {
             let mut decision = "HOLD".to_string();
             let mut confidence = 50.0;
@@ -1210,7 +1216,7 @@ TF_H1: [BUY/SELL/HOLD]
 TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
 
     // Run chart analysis via Gemini
-        match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600).await {
+        match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600, false).await {
             Ok(text) => {
                 let mut rec = "HOLD".to_string();
                 let mut conf = 50.0;
@@ -1340,7 +1346,7 @@ pub async fn analyze_market(
     let trend = if candles.len() >= 10 { let s=candles[candles.len()-10].close; let e=candles[candles.len()-1].close; if e>s*1.001{"UPTREND"}else if e<s*0.999{"DOWNTREND"}else{"SIDEWAYS"} } else { "UNKNOWN" };
     let pc = if candles.len()>=2 { ((candles[candles.len()-1].close - candles[candles.len()-2].close)/candles[candles.len()-2].close)*100.0 } else { 0.0 };
     let prompt = format!("You are an expert trading analyst. Respond REASONING in Thai language only.\nSymbol: {symbol} | TF: {timeframe} | Price: {current_price:.5} | Change: {pc:.4}% | Trend: {trend} | Strategy: {strategy}\n\nOHLC:\n{candle_str}\n\nAnalyze price action, support/resistance, candlestick patterns then respond:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [concise reasoning in Thai language]");
-    let text = call_gemini(api_key, model, &prompt, 0.3, 500).await?;
+    let text = call_gemini(api_key, model, &prompt, 0.3, 500, false).await?;
     let mut rec="HOLD".to_string(); let mut conf=50.0; let mut reason=String::new();
     for line in text.lines() { let l=line.trim();
         if l.starts_with("RECOMMENDATION:") { let v=l.replace("RECOMMENDATION:","").trim().to_uppercase(); if v.contains("BUY"){rec="BUY".into()}else if v.contains("SELL"){rec="SELL".into()} }
@@ -1353,7 +1359,7 @@ pub async fn analyze_market(
 
 pub async fn test_connection(api_key: &str, model: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
-    let text = call_gemini(api_key, model, "Answer in 1 line in Thai: What AI model are you?", 0.5, 100).await?;
+    let text = call_gemini(api_key, model, "Answer in 1 line in Thai: What AI model are you?", 0.5, 100, false).await?;
     info!("🤖 [AI] Test successful: {}", text.trim());
     Ok(text.trim().to_string())
 }
@@ -1417,7 +1423,7 @@ pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> 
 pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
     let prompt = format!("You are an AI assistant for EA-24 trading system. Always respond in Thai language, keep it concise.\nQuestion: {}", question);
-    call_gemini(api_key, model, &prompt, 0.7, 800).await
+    call_gemini(api_key, model, &prompt, 0.7, 800, false).await
 }
 
 pub fn available_models() -> Vec<(&'static str, &'static str)> {
