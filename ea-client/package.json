@@ -1,7 +1,7 @@
 {
   "name": "ea-client",
   "private": true,
-  "version": "6.3.32",
+  "version": "6.3.33",
   "type": "module",
   "scripts": {
     "dev": "vite",

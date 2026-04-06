@@ -15,7 +15,9 @@ const AiSettings = () => {
   const [selectedModel, setSelectedModel] = useState('');
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [tavilyResult, setTavilyResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
+  const [testingTavily, setTestingTavily] = useState(false);
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
   const [showEmailSection, setShowEmailSection] = useState(false);
   const [showTavilySection, setShowTavilySection] = useState(false);
@@ -80,6 +82,12 @@ const AiSettings = () => {
           setTestResult({ success: data.success, message: data.message });
           setTimeout(() => setTestResult(null), 5000);
         }
+        if (data.type === 'tavily_test_result') {
+          if (tavilyTimeoutRef.current) { clearTimeout(tavilyTimeoutRef.current); tavilyTimeoutRef.current = null; }
+          setTestingTavily(false);
+          setTavilyResult({ success: data.success, message: data.message });
+          setTimeout(() => setTavilyResult(null), 10000);
+        }
         if (data.type === 'config_saved') {
           setEmailSaved(true);
           setTimeout(() => setEmailSaved(false), 2000);
@@ -128,6 +136,26 @@ const AiSettings = () => {
   };
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const tavilyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+    const testTavily = () => {
+    setTestingTavily(true); setTavilyResult(null);
+    const orderedKeys = emails.map(e => e.tavilyKey).filter(k => k.trim());
+      
+    if (orderedKeys.length > 0) {
+      saveConfig('tavily_api_key', orderedKeys.join(','));
+    }
+    setTimeout(() => send({ action: 'test_tavily' }), 300);
+    if (tavilyTimeoutRef.current) clearTimeout(tavilyTimeoutRef.current);
+    tavilyTimeoutRef.current = setTimeout(() => {
+      setTestingTavily(prev => {
+        if (prev) {
+          setTavilyResult({ success: false, message: 'หมดเวลา — Server ไม่ตอบกลับภายใน 15 วินาที' });
+        }
+        return false;
+      });
+    }, 15000);
+  };
+
   const testAi = () => {
     setTesting(true); setTestResult(null);
     const orderedKeys = emails.map(e => e.apiKey).filter(k => k.trim());
@@ -400,12 +428,25 @@ const AiSettings = () => {
           ))}
           <div className="flex items-center gap-3">
             <button 
+              onClick={() => testTavily()}
+              disabled={testingTavily || !emails.some(e => e.tavilyKey.trim())}
+              className="btn px-4 py-2.5 rounded-xl bg-orange-600 text-white hover:bg-orange-700 text-sm font-medium flex items-center gap-2 border-none disabled:opacity-50"
+            >
+              {testingTavily ? <><LuSparkles className="size-4 animate-spin" /> กำลังเช็ค...</> : <><LuZap className="size-4" /> เช็คโควต้า</>}
+            </button>
+            <button 
               onClick={() => saveEmailConfig()}
               className="btn bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-sm font-medium px-4 border-none rounded-xl flex items-center gap-2 transition-colors ml-auto h-9"
             >
               <LuSave className="size-4" /> บันทึกทั้งหมด
             </button>
           </div>
+          
+          {tavilyResult && (
+            <div className={`px-4 py-3 rounded-xl text-sm font-medium flex items-center gap-2 ${tavilyResult.success ? 'bg-green-50 dark:bg-green-500/10 text-green-600' : 'bg-red-50 dark:bg-red-500/10 text-red-600'}`}>
+              {tavilyResult.success ? <><LuCheck className="size-4" /> {tavilyResult.message}</> : <><LuX className="size-4" /> {tavilyResult.message}</>}
+            </div>
+          )}
         </div>
         )}
       </div>

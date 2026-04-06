@@ -1621,6 +1621,31 @@ async fn handle_ws_connection(
                                             }
                                         });
                                     }
+                                    "test_tavily" => {
+                                        info!("🔍 [UI] Tavily connection test requested");
+                                        let api_key = db.get_config("tavily_api_key").await.unwrap_or_default();
+                                        let tx_ai = tx.clone();
+                                        tokio::spawn(async move {
+                                            match ai_engine::test_tavily_connection(&api_key).await {
+                                                Ok(reply) => {
+                                                    let resp = serde_json::json!({
+                                                        "type": "tavily_test_result",
+                                                        "success": true,
+                                                        "message": reply,
+                                                    });
+                                                    let _ = tx_ai.send(resp.to_string());
+                                                }
+                                                Err(e) => {
+                                                    let resp = serde_json::json!({
+                                                        "type": "tavily_test_result",
+                                                        "success": false,
+                                                        "message": e,
+                                                    });
+                                                    let _ = tx_ai.send(resp.to_string());
+                                                }
+                                            }
+                                        });
+                                    }
                                     "ask_ai" => {
                                         let question = client_msg.question.unwrap_or_else(|| "สวัสดี".to_string());
                                         info!("🤖 [UI] AI question: {}", question);

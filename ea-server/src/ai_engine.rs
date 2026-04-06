@@ -1208,6 +1208,62 @@ pub async fn test_connection(api_key: &str, model: &str) -> Result<String, Strin
     Ok(text.trim().to_string())
 }
 
+pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> {
+    if tavily_key.is_empty() { return Err("Tavily API Key is empty".to_string()); }
+    
+    let keys: Vec<&str> = tavily_key.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
+    if keys.is_empty() { return Err("Tavily API Key list is empty".to_string()); }
+    
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(15))
+        .build().map_err(|e| format!("HTTP error: {}", e))?;
+        
+    let mut last_error = String::new();
+    let mut stats = Vec::new();
+    
+    for (i, key) in keys.iter().enumerate() {
+        let resp = match client.get("https://api.tavily.com/usage")
+            .header("Authorization", format!("Bearer {}", key))
+            .send().await {
+                Ok(r) => r,
+                Err(e) => { last_error = format!("Tavily request failed: {}", e); continue; }
+            };
+            
+        if !resp.status().is_success() {
+            let status = resp.status();
+            let body = resp.text().await.unwrap_or_default();
+            last_error = format!("Tavily error ({}): {}", status, body);
+            continue;
+        }
+        
+        let json: serde_json::Value = match resp.json().await {
+            Ok(v) => v,
+            Err(e) => { last_error = format!("Parse error: {}", e); continue; }
+        };
+        
+        let usage = json.get("account")
+            .and_then(|a| a.get("plan_usage"))
+            .or_else(|| json.get("plan_usage"))
+            .and_then(|val| val.as_i64())
+            .unwrap_or(0);
+            
+        let limit = json.get("account")
+            .and_then(|a| a.get("plan_limit"))
+            .or_else(|| json.get("plan_limit"))
+            .and_then(|val| val.as_i64())
+            .unwrap_or(0);
+            
+        let remain = limit - usage;
+        stats.push(format!("Key {}: {}/{} (เหลือ {})", i+1, usage, limit, remain));
+    }
+    
+    if stats.is_empty() {
+        return Err(last_error);
+    }
+    
+    Ok(format!("{}", stats.join(", ")))
+}
+
 pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
     let prompt = format!("You are an AI assistant for EA-24 trading system. Always respond in Thai language, keep it concise.\nQuestion: {}", question);
