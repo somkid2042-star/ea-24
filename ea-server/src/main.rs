@@ -114,6 +114,7 @@ struct EaState {
 pub struct GlobalAiData {
     pub news: Option<NewsResult>,
     pub calendar: Option<CalendarResult>,
+    pub macro_data: Option<ai_engine::MacroResult>,
     pub last_updated: i64,
 }
 
@@ -486,14 +487,16 @@ async fn run_server() {
                 // Fetch in parallel
                 let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_ai_tx);
                 let cal_fut = ai_engine::run_calendar_watcher(sym, &global_ai_tx);
+                let macro_fut = ai_engine::fetch_macro_indicators(&gemini_key, &gemini_model, &tavily_key, &global_ai_tx);
                 
-                let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                let (news_result, cal_result, macro_result) = tokio::join!(news_fut, cal_fut, macro_fut);
                 
                 let update_ts = chrono::Utc::now().timestamp();
                 {
                     let mut st = global_ai_state.write().await;
                     st.news = Some(news_result.clone());
                     st.calendar = Some(cal_result.clone());
+                    st.macro_data = Some(macro_result.clone());
                     st.last_updated = update_ts;
                 }
                 
@@ -504,6 +507,9 @@ async fn run_server() {
                 if let Ok(c_str) = serde_json::to_string(&cal_result) {
                     global_ai_db.set_config("global_calendar_cache", &c_str).await;
                 }
+                if let Ok(m_str) = serde_json::to_string(&macro_result) {
+                    global_ai_db.set_config("global_macro_cache", &m_str).await;
+                }
                 global_ai_db.set_config("global_news_last_updated", &update_ts.to_string()).await;
                 
                 let msg = serde_json::json!({
@@ -511,6 +517,7 @@ async fn run_server() {
                     "data": {
                         "news": news_result,
                         "calendar": cal_result,
+                        "macro_data": macro_result,
                         "last_updated": update_ts
                     }
                 }).to_string();
@@ -1199,6 +1206,11 @@ async fn handle_ws_connection(
                                                         "country": "SYS"
                                                     }]
                                                 })),
+                                                "macro_data": data.macro_data.as_ref().map(|m| serde_json::to_value(m).unwrap_or(serde_json::Value::Null)).unwrap_or_else(|| serde_json::json!({
+                                                    "fed": { "value": "N/A", "date": "-" },
+                                                    "nfp": { "value": "N/A", "date": "-" },
+                                                    "cpi": { "value": "N/A", "date": "-" }
+                                                })),
                                                 "last_updated": if data.last_updated > 0 { data.last_updated } else { chrono::Utc::now().timestamp() }
                                             }
                                         }).to_string();
@@ -1373,13 +1385,15 @@ async fn handle_ws_connection(
                                                         
                                                         let news_fut = ai_engine::run_news_hunter(&gemini_key, &gemini_model, &tavily_key, sym, &global_tx);
                                                         let cal_fut = ai_engine::run_calendar_watcher(sym, &global_tx);
-                                                        let (news_result, cal_result) = tokio::join!(news_fut, cal_fut);
+                                                        let macro_fut = ai_engine::fetch_macro_indicators(&gemini_key, &gemini_model, &tavily_key, &global_tx);
+                                                        let (news_result, cal_result, macro_result) = tokio::join!(news_fut, cal_fut, macro_fut);
                                                         
                                                         let update_ts = chrono::Utc::now().timestamp();
                                                         {
                                                             let mut st = global_state.write().await;
                                                             st.news = Some(news_result.clone());
                                                             st.calendar = Some(cal_result.clone());
+                                                            st.macro_data = Some(macro_result.clone());
                                                             st.last_updated = update_ts;
                                                         }
                                                         
@@ -1388,6 +1402,7 @@ async fn handle_ws_connection(
                                                             "data": {
                                                                 "news": news_result,
                                                                 "calendar": cal_result,
+                                                                "macro_data": macro_result,
                                                                 "last_updated": update_ts
                                                             }
                                                         }).to_string();

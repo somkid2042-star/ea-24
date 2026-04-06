@@ -61,6 +61,7 @@ const AgentSettings = () => {
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
   const [globalNews, setGlobalNews] = useState<any>(null);
   const [globalCalendar, setGlobalCalendar] = useState<any>(null);
+  const [globalMacro, setGlobalMacro] = useState<any>(null);
   const [newsLastUpdated, setNewsLastUpdated] = useState<number>(0);
   const [nextFetchSeconds, setNextFetchSeconds] = useState<number>(0);
   const [isFetchingNews, setIsFetchingNews] = useState<boolean>(false);
@@ -156,6 +157,9 @@ const AgentSettings = () => {
           }
           if (data.data && data.data.calendar) {
             setGlobalCalendar(data.data.calendar);
+          }
+          if (data.data && data.data.macro_data) {
+            setGlobalMacro(data.data.macro_data);
           }
           if (data.data && data.data.last_updated) {
             setNewsLastUpdated(data.data.last_updated);
@@ -604,6 +608,32 @@ const AgentSettings = () => {
                     <span className="text-xs">ไม่มีข้อมูลตารางข่าวในขณะนี้</span>
                   </div>
                 )}
+              </div>
+            )}
+            
+            {/* Display Fetched Macro Data */}
+            {globalMacro && (
+              <div className="mt-8 pt-6 border-t border-default-200 dark:border-gray-700/50">
+                <h3 className="text-sm font-semibold text-default-800 dark:text-gray-200 flex items-center gap-2 mb-4">
+                  <LuSparkles className="text-yellow-500" /> ข้อมูลตัวเลขเศรษฐกิจอเมริกาล่าสุด (AI Macro Search)
+                </h3>
+                <div className="grid gap-4 md:grid-cols-3">
+                  <div className="bg-default-50 dark:bg-gray-900/50 p-4 rounded-xl border border-default-200 dark:border-gray-700/50 flex flex-col justify-between">
+                    <span className="text-xs font-medium text-default-500 dark:text-gray-400">FED Interest Rate</span>
+                    <span className="text-2xl font-bold text-blue-600 dark:text-blue-400 my-1">{globalMacro.fed?.value || "-"}</span>
+                    <span className="text-[10px] text-default-400 dark:text-gray-500 flex items-center gap-1"><LuCalendar className="size-3"/> ประกาศ: {globalMacro.fed?.date || "-"}</span>
+                  </div>
+                  <div className="bg-default-50 dark:bg-gray-900/50 p-4 rounded-xl border border-default-200 dark:border-gray-700/50 flex flex-col justify-between">
+                    <span className="text-xs font-medium text-default-500 dark:text-gray-400">NFP (Non-Farm Payrolls)</span>
+                    <span className="text-2xl font-bold text-green-600 dark:text-green-400 my-1">{globalMacro.nfp?.value || "-"}</span>
+                    <span className="text-[10px] text-default-400 dark:text-gray-500 flex items-center gap-1"><LuCalendar className="size-3"/> ประกาศ: {globalMacro.nfp?.date || "-"}</span>
+                  </div>
+                  <div className="bg-default-50 dark:bg-gray-900/50 p-4 rounded-xl border border-default-200 dark:border-gray-700/50 flex flex-col justify-between">
+                    <span className="text-xs font-medium text-default-500 dark:text-gray-400">CPI (Consumer Price Index)</span>
+                    <span className="text-2xl font-bold text-orange-600 dark:text-orange-400 my-1">{globalMacro.cpi?.value || "-"}</span>
+                    <span className="text-[10px] text-default-400 dark:text-gray-500 flex items-center gap-1"><LuCalendar className="size-3"/> ประกาศ: {globalMacro.cpi?.date || "-"}</span>
+                  </div>
+                </div>
               </div>
             )}
             

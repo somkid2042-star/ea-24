@@ -143,6 +143,19 @@ pub struct CalendarResult {
     pub warning: String,
 }
 
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroItem {
+    pub value: String,
+    pub date: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MacroResult {
+    pub fed: MacroItem,
+    pub nfp: MacroItem,
+    pub cpi: MacroItem,
+}
+
 #[derive(Debug, Clone, Serialize)]
 pub struct RiskResult {
     pub approved: bool,
@@ -744,6 +757,77 @@ pub async fn run_calendar_watcher(
     }).to_string());
 
     CalendarResult { high_impact_soon: high_impact, events: event_names, warning }
+}
+
+pub async fn fetch_macro_indicators(
+    gemini_key: &str,
+    model: &str,
+    tavily_key: &str,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> MacroResult {
+    let fallback = MacroResult {
+        fed: MacroItem { value: "-".to_string(), date: "-".to_string() },
+        nfp: MacroItem { value: "-".to_string(), date: "-".to_string() },
+        cpi: MacroItem { value: "-".to_string(), date: "-".to_string() },
+    };
+
+    if gemini_key.is_empty() { return fallback; }
+    
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": "Macro", "agent": "calendar", "status": "running",
+        "message": "กำลังดึงข้อมูล FED, NFP, CPI ตัวล่าสุดผ่านตารางเศรษฐกิจ..."
+    }).to_string());
+
+    let articles = if !tavily_key.is_empty() {
+        match search_news_tavily(tavily_key, "Latest US Federal Reserve Interest Rate, Non-Farm Payrolls (NFP), and CPI results percentages dates").await {
+            Ok(res) => res,
+            Err(e) => {
+                warn!("Macro Tavily search failed: {}", e);
+                vec![]
+            }
+        }
+    } else {
+        vec![]
+    };
+
+    let mut context_text = String::new();
+    for (i, article) in articles.into_iter().take(5).enumerate() {
+        context_text.push_str(&format!("[{}] Title: {}\nContent: {}\n\n", i+1, article.title, article.content));
+    }
+
+    let prompt = format!(
+        "You are an expert economic analyst. Extract the most recently announced values and their exact announcement dates (in Thai) for the following US macro indicators from the provided search context.\n\
+        1. FED Interest Rate (อัตราดอกเบี้ยนโยบายสหรัฐ)\n\
+        2. NFP (Non-Farm Payrolls)\n\
+        3. CPI (Consumer Price Index Y/Y or M/M)\n\n\
+        Context:\n{}\n\n\
+        Output MUST be ONLY valid JSON matching this exact format, with no markdown formatting or backticks around it:\n\
+        {{\n  \"fed\": {{ \"value\": \"5.50%\", \"date\": \"1 พ.ค. 2024\" }},\n  \"nfp\": {{ \"value\": \"175K\", \"date\": \"3 พ.ค. 2024\" }},\n  \"cpi\": {{ \"value\": \"3.4%\", \"date\": \"15 พ.ค. 2024\" }}\n}}",
+        context_text
+    );
+
+    match call_gemini(gemini_key, model, &prompt).await {
+        Ok(res) => {
+            let clean_json = res.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+            match serde_json::from_str::<MacroResult>(clean_json) {
+                Ok(macro_data) => {
+                    let _ = log_tx.send(serde_json::json!({
+                        "type": "agent_log", "symbol": "Macro", "agent": "calendar", "status": "done",
+                        "message": format!("ดึงข้อมูลเสร็จสิ้น FED: {}, NFP: {}, CPI: {}", macro_data.fed.value, macro_data.nfp.value, macro_data.cpi.value)
+                    }).to_string());
+                    macro_data
+                },
+                Err(e) => {
+                    warn!("Failed to parse Gemini macro result: {} \nResult: {}", e, clean_json);
+                    fallback
+                }
+            }
+        }
+        Err(e) => {
+            warn!("Failed to call Gemini for macro indicators: {}", e);
+            fallback
+        }
+    }
 }
 
 // ──────────────────────────────────────────────
