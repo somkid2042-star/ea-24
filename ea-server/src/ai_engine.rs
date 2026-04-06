@@ -214,17 +214,12 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             let body = resp.text().await.unwrap_or_default();
             last_error = format!("API error ({}): {}", status, body);
             
-            // Loop continuing on Rate Limit (429), Quota/Forbidden (403), or Server Error (500+)
-            if status.as_u16() == 429 || status.as_u16() == 403 || status.is_server_error() {
-                if i < keys.len() - 1 {
-                    warn!("⚠️ Gemini API Key {} hit limit/error ({}), trying next key...", i+1, status);
-                    continue;
-                }
-            } else if status.as_u16() == 400 {
-                // Bad request (likely prompt issue), don't retry on other keys
+            if i < keys.len() - 1 {
+                warn!("⚠️ Gemini API Key {} hit error ({}), trying next key...", i+1, status);
+                continue;
+            } else {
                 return Err(last_error);
             }
-            if i < keys.len() - 1 { continue; } else { return Err(last_error); }
         }
 
         let gemini_resp: GeminiResponse = match resp.json().await {
@@ -237,14 +232,12 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 
         if let Some(err) = gemini_resp.error {
             last_error = format!("Gemini error: {}", err.message);
-            // Check if error is quota related based on message
-            if err.message.to_lowercase().contains("quota") || err.message.contains("429") {
-                 if i < keys.len() - 1 {
-                     warn!("⚠️ Gemini API Key {} hit quota, trying next...", i+1);
-                     continue;
-                 }
+            if i < keys.len() - 1 {
+                warn!("⚠️ Gemini API Key {} hit internal error, trying next...", i+1);
+                continue;
+            } else {
+                return Err(last_error);
             }
-            return Err(last_error);
         }
 
         return gemini_resp.candidates
