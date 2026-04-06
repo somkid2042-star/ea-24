@@ -288,20 +288,7 @@ const DashboardAi = () => {
                                   minWidth="100%"
                               />
                           </div>
-                          <div className="flex flex-col gap-1.5">
-                              <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Strategy</label>
-                              <CustomSelect
-                                  value={job.ai_mode || 'eval_10_strategies'}
-                                  options={[{ label: '10 AI Strategies (วิเคราะห์กลยุทธ์)', value: 'eval_10_strategies' }, { label: 'Deep Data (AI ตัดสินใจเอง 100%)', value: 'deep_data' }]}
-                                  onChange={(val) => {
-                                  const newJobs = [...autoPilotJobs];
-                                  newJobs[idx].ai_mode = val;
-                                  saveJobsToDb(newJobs);
-                                  }}
-                                  className="w-full flex items-center justify-between gap-1 px-3 py-2 rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/5 hover:border-blue-500/50 text-[11px] font-bold text-default-800 dark:text-gray-200 focus:outline-none shadow-sm transition-colors"
-                                  minWidth="100%"
-                              />
-                          </div>
+
                           <div className="flex flex-col gap-1.5">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Lot Size</label>
                               <input
@@ -326,7 +313,7 @@ const DashboardAi = () => {
                                   <span className={`pointer-events-none inline-block h-4 w-4 transform rounded-full shadow-md ring-0 transition duration-200 ease-in-out ${job.auto_trade ? 'translate-x-2.5 bg-white' : '-translate-x-2.5 bg-gray-400 dark:bg-gray-500'}`} />
                               </button>
                           </div>
-                          <div className="col-span-2 flex flex-col gap-1.5 mt-1">
+                          <div className="flex flex-col gap-1.5 justify-center">
                               <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest"><LuClock className="inline size-3 mr-1" />Scan Every (min)</label>
                               <input
                                   type="number"
