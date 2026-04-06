@@ -1276,67 +1276,65 @@ pub async fn run_all_agents_multi_tf(
             "=== {} ({} candles) | Price: {:.5} | Trend: {} ===\n{}", tf, count, price, trend, candle_str
         );
 
-        if ai_mode == "eval_10_strategies" {
-            let ind = crate::strategy::compute_indicators(candles);
-            
-            // Calculate Volume Profile Proxy (HVN)
-            let mut hvn = price;
-            if !candles.is_empty() {
-                let max_high = candles.iter().map(|c| c.high).fold(f64::MIN, f64::max);
-                let min_low = candles.iter().map(|c| c.low).fold(f64::MAX, f64::min);
-                let range = max_high - min_low;
-                if range > 0.0 {
-                    let num_bins = 10;
-                    let bin_size = range / num_bins as f64;
-                    let mut bins = vec![0; num_bins];
-                    for c in candles {
-                        let lower_bin = ((c.low - min_low) / bin_size).floor() as usize;
-                        let upper_bin = ((c.high - min_low) / bin_size).floor() as usize;
-                        for b in lower_bin..=upper_bin.min(num_bins - 1) {
-                            bins[b] += 1;
-                        }
+        let ind = crate::strategy::compute_indicators(candles);
+        
+        // Calculate Volume Profile Proxy (HVN)
+        let mut hvn = price;
+        if !candles.is_empty() {
+            let max_high = candles.iter().map(|c| c.high).fold(f64::MIN, f64::max);
+            let min_low = candles.iter().map(|c| c.low).fold(f64::MAX, f64::min);
+            let range = max_high - min_low;
+            if range > 0.0 {
+                let num_bins = 10;
+                let bin_size = range / num_bins as f64;
+                let mut bins = vec![0; num_bins];
+                for c in candles {
+                    let lower_bin = ((c.low - min_low) / bin_size).floor() as usize;
+                    let upper_bin = ((c.high - min_low) / bin_size).floor() as usize;
+                    for b in lower_bin..=upper_bin.min(num_bins - 1) {
+                        bins[b] += 1;
                     }
-                    let mut best_bin = 0;
-                    let mut max_bincount = 0;
-                    for (i, &count) in bins.iter().enumerate() {
-                        if count > max_bincount {
-                            max_bincount = count;
-                            best_bin = i;
-                        }
-                    }
-                    hvn = min_low + (best_bin as f64 + 0.5) * bin_size;
                 }
+                let mut best_bin = 0;
+                let mut max_bincount = 0;
+                for (i, &count) in bins.iter().enumerate() {
+                    if count > max_bincount {
+                        max_bincount = count;
+                        best_bin = i;
+                    }
+                }
+                hvn = min_low + (best_bin as f64 + 0.5) * bin_size;
             }
-            
-            let extracted = format!(
-                "\n--- ALGORITHMIC FEATURES EXTRACTED ---\n\
-                RSI (14): {:.1}\n\
-                EMA (9/21/50): {:.5} / {:.5} / {:.5}\n\
-                Bollinger Bands: Upper={:.5}, Mid={:.5}, Lower={:.5}\n\
-                Smart Money (SMC): Bullish_FVG=[{}], Bearish_FVG=[{}]\n\
-                Order Blocks: Bullish={:.5}, Bearish={:.5}\n\
-                Volume Profile Proxy: Point of Control (HVN) = {:.5}\n",
-                ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
-                ind.bb_upper, ind.bb_middle, ind.bb_lower,
-                ind.fair_value_gap_bull, ind.fair_value_gap_bear,
-                ind.order_block_bull, ind.order_block_bear,
-                hvn
-            );
-            base_summary.push_str(&extracted);
-
-            let mut strat_results = Vec::new();
-            for &strat in crate::strategy::ALL_STRATEGIES {
-                let (signal, reason) = crate::strategy::evaluate_strategy(strat, &ind);
-                let sig_str = match signal {
-                    crate::strategy::Signal::Buy => "BUY",
-                    crate::strategy::Signal::Sell => "SELL",
-                    crate::strategy::Signal::None => "HOLD",
-                };
-                strat_results.push(format!("{}: {} ({})", strat, sig_str, reason));
-            }
-            base_summary.push_str("\n\n10-Strategy Outputs:\n");
-            base_summary.push_str(&strat_results.join("\n"));
         }
+        
+        let extracted = format!(
+            "\n--- ALGORITHMIC FEATURES EXTRACTED ---\n\
+            RSI (14): {:.1}\n\
+            EMA (9/21/50): {:.5} / {:.5} / {:.5}\n\
+            Bollinger Bands: Upper={:.5}, Mid={:.5}, Lower={:.5}\n\
+            Smart Money (SMC): Bullish_FVG=[{}], Bearish_FVG=[{}]\n\
+            Order Blocks: Bullish={:.5}, Bearish={:.5}\n\
+            Volume Profile Proxy: Point of Control (HVN) = {:.5}\n",
+            ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
+            ind.bb_upper, ind.bb_middle, ind.bb_lower,
+            ind.fair_value_gap_bull, ind.fair_value_gap_bear,
+            ind.order_block_bull, ind.order_block_bear,
+            hvn
+        );
+        base_summary.push_str(&extracted);
+
+        let mut strat_results = Vec::new();
+        for &strat in crate::strategy::ALL_STRATEGIES {
+            let (signal, reason) = crate::strategy::evaluate_strategy(strat, &ind);
+            let sig_str = match signal {
+                crate::strategy::Signal::Buy => "BUY",
+                crate::strategy::Signal::Sell => "SELL",
+                crate::strategy::Signal::None => "HOLD",
+            };
+            strat_results.push(format!("{}: {} ({})", strat, sig_str, reason));
+        }
+        base_summary.push_str("\n\n10-Strategy Outputs:\n");
+        base_summary.push_str(&strat_results.join("\n"));
 
         tf_summaries.push(base_summary);
     }
@@ -1350,13 +1348,14 @@ For each timeframe, identify:
 1. Trend direction
 2. Key support/resistance
 3. Candlestick patterns
+4. The 10-Strategies signals provided
 
 Then determine:
 - Which timeframe gives the BEST entry signal right now?
 - What is the overall market bias from combining all timeframes?
-- If 10-Strategy Outputs are present, evaluate which strategy is most accurate under current market conditions and incorporate that into your decision.
+- Based on ALL timeframes, evaluate the overall confidence percentage for each of the 10 strategies over the overall direction.
 
-Respond in this EXACT format:
+Respond in this EXACT format (Do not use Markdown blocks):
 BEST_TIMEFRAME: [M5/M15/H1/H4]
 RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
@@ -1364,7 +1363,18 @@ REASONING: [2-3 sentence multi-timeframe summary in Thai language]
 TF_M5: [BUY/SELL/HOLD]
 TF_M15: [BUY/SELL/HOLD]
 TF_H1: [BUY/SELL/HOLD]
-TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
+TF_H4: [BUY/SELL/HOLD]
+STRATEGIES:
+1. Trend: [0-100]%
+2. MeanReversion: [0-100]%
+3. Momentum: [0-100]%
+4. Breakout: [0-100]%
+5. SMC: [0-100]%
+6. VolumeProfile: [0-100]%
+7. VWAP: [0-100]%
+8. Grid: [0-100]%
+9. Martingale: [0-100]%
+10. Arbitrage: [0-100]%"#, tf_data = tf_summaries.join("\n\n"));
 
     // Run chart analysis via Gemini
         match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600, false).await {
@@ -1377,35 +1387,62 @@ TF_H4: [BUY/SELL/HOLD]"#, tf_data = tf_summaries.join("\n\n"));
                 let mut tf_m15 = "HOLD".to_string();
                 let mut tf_h1 = "HOLD".to_string();
                 let mut tf_h4 = "HOLD".to_string();
+                let mut strats = Vec::new();
+                let mut in_strats_block = false;
                 
                 for line in text.lines() {
                     let l = line.trim();
-                    if l.starts_with("BEST_TIMEFRAME:") { best_tf = l.replace("BEST_TIMEFRAME:", "").trim().to_string(); }
-                    if l.starts_with("RECOMMENDATION:") {
-                        let v = l.replace("RECOMMENDATION:", "").trim().to_uppercase();
-                        if v.contains("BUY") { rec = "BUY".into() } else if v.contains("SELL") { rec = "SELL".into() }
+                    if l.is_empty() { continue; }
+                    
+                    if l.starts_with("STRATEGIES:") {
+                        in_strats_block = true;
+                        continue;
                     }
-                    if l.starts_with("CONFIDENCE:") {
-                        let v: String = l.replace("CONFIDENCE:", "").trim().chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
-                        conf = v.parse().unwrap_or(50.0);
+
+                    if in_strats_block {
+                        if l.chars().next().unwrap_or(' ').is_ascii_digit() && l.contains(":") {
+                            strats.push(l.to_string());
+                        } else if l.starts_with("BEST_TIMEFRAME:") || l.starts_with("RECOMMENDATION:") {
+                            in_strats_block = false; // Exited strats
+                        } else {
+                            continue;
+                        }
                     }
-                    if l.starts_with("REASONING:") { reason = l.replace("REASONING:", "").trim().to_string(); }
-                    if l.starts_with("TF_M5:") { let v = l.replace("TF_M5:", "").trim().to_uppercase(); tf_m5 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
-                    if l.starts_with("TF_M15:") { let v = l.replace("TF_M15:", "").trim().to_uppercase(); tf_m15 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
-                    if l.starts_with("TF_H1:") { let v = l.replace("TF_H1:", "").trim().to_uppercase(); tf_h1 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
-                    if l.starts_with("TF_H4:") { let v = l.replace("TF_H4:", "").trim().to_uppercase(); tf_h4 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+
+                    if !in_strats_block {
+                        if l.starts_with("BEST_TIMEFRAME:") { best_tf = l.replace("BEST_TIMEFRAME:", "").trim().to_string(); }
+                        if l.starts_with("RECOMMENDATION:") {
+                            let v = l.replace("RECOMMENDATION:", "").trim().to_uppercase();
+                            if v.contains("BUY") { rec = "BUY".into() } else if v.contains("SELL") { rec = "SELL".into() }
+                        }
+                        if l.starts_with("CONFIDENCE:") {
+                            let v: String = l.replace("CONFIDENCE:", "").trim().chars().filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                            conf = v.parse().unwrap_or(50.0);
+                        }
+                        if l.starts_with("REASONING:") { reason = l.replace("REASONING:", "").trim().to_string(); }
+                        if l.starts_with("TF_M5:") { let v = l.replace("TF_M5:", "").trim().to_uppercase(); tf_m5 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                        if l.starts_with("TF_M15:") { let v = l.replace("TF_M15:", "").trim().to_uppercase(); tf_m15 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                        if l.starts_with("TF_H1:") { let v = l.replace("TF_H1:", "").trim().to_uppercase(); tf_h1 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                        if l.starts_with("TF_H4:") { let v = l.replace("TF_H4:", "").trim().to_uppercase(); tf_h4 = if v.contains("BUY"){"BUY".into()} else if v.contains("SELL"){"SELL".into()} else {"HOLD".into()}; }
+                    }
                 }
                 if reason.is_empty() { reason = text.chars().take(200).collect(); }
                 
+                let strats_display = if !strats.is_empty() {
+                    format!("\nSTRATEGIES: {}", strats.join(", "))
+                } else {
+                    "".to_string()
+                };
+
                 let _ = log_tx.send(serde_json::json!({
                     "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
-                    "message": format!("📊 Best TF: {} → {} ({:.0}%) | M5:{} M15:{} H1:{} H4:{}", best_tf, rec, conf, tf_m5, tf_m15, tf_h1, tf_h4)
+                    "message": format!("📊 Best TF: {} → {} ({:.0}%) | M5:{} M15:{} H1:{} H4:{}{}", best_tf, rec, conf, tf_m5, tf_m15, tf_h1, tf_h4, strats_display)
                 }).to_string());
                 
                 ChartResult {
                     recommendation: rec,
                     confidence: conf,
-                    reasoning: format!("[Best: {}] {} | M5:{} M15:{} H1:{} H4:{}", best_tf, reason, tf_m5, tf_m15, tf_h1, tf_h4),
+                    reasoning: format!("[Best: {}] {} | M5:{} M15:{} H1:{} H4:{}\n{}", best_tf, reason, tf_m5, tf_m15, tf_h1, tf_h4, strats.join("\n")),
                 }
             }
             Err(e) => {
