@@ -82,6 +82,8 @@ struct TavilyRequest {
     max_results: i32,
     search_depth: String,
     include_answer: bool,
+    #[serde(skip_serializing_if = "Option::is_none")]
+    days: Option<i32>,
 }
 
 #[derive(Deserialize, Debug)]
@@ -287,7 +289,7 @@ async fn search_news_google_rss(symbol: &str) -> Result<Vec<TavilyResult>, Strin
         _ => format!("{}+trading+price+news", symbol),
     };
 
-    let url = format!("https://news.google.com/rss/search?q={}&hl=en&gl=US&ceid=US:en", query);
+    let url = format!("https://news.google.com/rss/search?q={}+when:1d&hl=en&gl=US&ceid=US:en", query);
     let client = reqwest::Client::builder()
         .timeout(std::time::Duration::from_secs(10))
         .build().map_err(|e| format!("HTTP error: {}", e))?;
@@ -356,6 +358,7 @@ async fn search_news_tavily(tavily_key: &str, symbol: &str) -> Result<Vec<Tavily
             max_results: 5,
             search_depth: "basic".to_string(),
             include_answer: true,
+            days: Some(1),
         };
 
         let resp = match client.post(TAVILY_API_URL).json(&request).send().await {
