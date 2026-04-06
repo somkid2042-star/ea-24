@@ -399,15 +399,6 @@ const AiSettings = () => {
             </div>
           ))}
           <div className="flex items-center gap-3">
-             <button
-              onClick={() => {
-                resetEmailHideTimer();
-                setEmails([...emails, {address: '', password: '', apiKey: '', tavilyKey: ''}]);
-              }}
-              className="flex items-center gap-2 text-xs text-orange-500 hover:text-orange-600 font-medium px-2 py-1.5 rounded-lg hover:bg-orange-500/10 transition-colors"
-            >
-              <LuPlus className="size-3.5" /> เพิ่มแถว
-            </button>
             <button 
               onClick={() => saveEmailConfig()}
               className="btn bg-orange-500/10 text-orange-600 hover:bg-orange-500/20 text-sm font-medium px-4 border-none rounded-xl flex items-center gap-2 transition-colors ml-auto h-9"
