@@ -1141,17 +1141,27 @@ async fn handle_ws_connection(
                                     "get_global_ai_data" => {
                                         info!("🤖 [UI] Requesting global AI data...");
                                         let data = global_ai_data.read().await;
-                                        if data.news.is_some() || data.calendar.is_some() {
-                                            let resp = serde_json::json!({
-                                                "type": "global_ai_data",
-                                                "data": {
-                                                    "news": data.news,
-                                                    "calendar": data.calendar,
-                                                    "last_updated": data.last_updated
-                                                }
-                                            }).to_string();
-                                            let _ = write.send(Message::Text(resp)).await;
-                                        }
+                                        let resp = serde_json::json!({
+                                            "type": "global_ai_data",
+                                            "data": {
+                                                "news": data.news.clone().unwrap_or_else(|| serde_json::json!({
+                                                    "sentiment": "NEUTRAL",
+                                                    "summary": "AI API Keys (Gemini/Tavily) are not configured. Go to Settings > System Config to add them.",
+                                                    "headlines": ["Please configure API keys to unlock AI features."]
+                                                })),
+                                                "calendar": data.calendar.clone().unwrap_or_else(|| serde_json::json!({
+                                                    "high_impact_soon": false,
+                                                    "events": [{
+                                                        "date": chrono::Utc::now().to_rfc3339(),
+                                                        "title": "Awaiting API Configuration",
+                                                        "impact": "Info",
+                                                        "country": "SYS"
+                                                    }]
+                                                })),
+                                                "last_updated": if data.last_updated > 0 { data.last_updated } else { chrono::Utc::now().timestamp() }
+                                            }
+                                        }).to_string();
+                                        let _ = write.send(Message::Text(resp)).await;
                                     }
                                     _ => {}
                                 }
