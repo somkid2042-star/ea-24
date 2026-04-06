@@ -2772,7 +2772,7 @@ use rust_embed::RustEmbed;
 #[folder = "../ea-client/dist/"]
 struct WebAssets;
 
-async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: db::Database) {
+async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: std::sync::Arc<db::Database>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
     let mut buf = vec![0u8; 4096];
@@ -2795,14 +2795,19 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
     // Handle API endpoints
     if relative.starts_with("api/ai_logs") {
         let qs = path.split('?').nth(1).unwrap_or("");
-        let query: std::collections::HashMap<String, String> = form_urlencoded::parse(qs.as_bytes())
-            .into_owned()
-            .collect();
         
-        let symbol = query.get("symbol").map(|s| s.as_str()).unwrap_or("XAUUSD");
-        let limit = query.get("limit").and_then(|l| l.parse::<i64>().ok()).unwrap_or(100);
+        let mut symbol = "XAUUSD".to_string();
+        let mut limit = 100i64;
         
-        let response_json = match db.get_recent_ai_logs(symbol, limit).await {
+        for pair in qs.split('&') {
+            let mut kv = pair.split('=');
+            if let (Some(k), Some(v)) = (kv.next(), kv.next()) {
+                if k == "symbol" { symbol = v.to_string(); }
+                if k == "limit" { if let Ok(l) = v.parse::<i64>() { limit = l; } }
+            }
+        }
+        
+        let response_json = match db.get_recent_ai_logs(&symbol, limit).await {
             Ok(logs) => serde_json::to_string(&logs).unwrap_or_else(|_| "[]".to_string()),
             Err(_) => "[]".to_string(),
         };
