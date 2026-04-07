@@ -406,29 +406,26 @@ const TradingDashboard = () => {
     // 1. Crypto = ตลาดเปิด 24/7
     if (isCryptoSymbol(sym)) return false;
 
-    // 2. ตรวจสอบตารางเสาร์-อาทิตย์ (Forex/Gold/Indices)
+    // 2. ตรวจสอบตารางเสาร์-อาทิตย์ (Forex/Gold/Indices) — เฉพาะเวลาสุดสัปดาห์เท่านั้น
     const now = new Date();
     const day = now.getUTCDay();
     const hour = now.getUTCHours();
-    if (day === 5 && hour >= 21) return true; // วันศุกร์หลัง 21:00 UTC
     if (day === 6) return true; // วันเสาร์
     if (day === 0 && hour < 21) return true; // วันอาทิตย์ก่อน 21:00 UTC
+    if (day === 5 && hour >= 22) return true; // วันศุกร์หลัง 22:00 UTC (เผื่อเวลา broker)
 
-    // 3. ตรวจสอบการอัปเดต Tick — ถ้าหยุดวิ่งเกิน 2 นาที
+    // 3. ตรวจสอบการอัปเดต Tick — ต้องเคยได้รับ tick อย่างน้อย 1 ครั้งก่อน
+    //    และต้องหยุดวิ่งเกิน 5 นาที (300 วินาที) จึงจะถือว่าตลาดปิด
     const lastTickTime = lastPriceUpdateTime[sym];
-    if (lastTickTime && (Date.now() - lastTickTime > 120000)) {
+    if (lastTickTime && lastTickTime > 0 && (Date.now() - lastTickTime > 300000)) {
       return true;
     }
 
-    // 4. ตรวจสอบผ่านอายุของแท่งเทียนล่าสุด
-    if (candles && candles.length > 0 && ['M1', 'M5', 'M15', 'M30', 'H1'].includes(chartTf)) {
-      const lastCandleTime = candles[candles.length - 1].time;
-      const diffSeconds = (Date.now() / 1000) - lastCandleTime;
-      if (diffSeconds > 14400) return true; // 4 ชั่วโมง
-    }
+    // ไม่ใช้การตรวจสอบอายุแท่งเทียนแล้ว — เพราะทำให้เกิด false positive บ่อย
+    // เมื่อโหลดข้อมูลจาก DB ที่มีแท่งเทียนเก่า
 
     return false;
-  }, [isLoadingHistory, lastPriceUpdateTime, candles, chartTf]);
+  }, [isLoadingHistory, lastPriceUpdateTime]);
 
   const [marketCountdown, setMarketCountdown] = useState<string>('');
 
