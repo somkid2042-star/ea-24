@@ -224,8 +224,16 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
     // Round-robin: start from a different key each time to distribute load evenly
     let start_idx = KEY_COUNTER.fetch_add(1, Ordering::Relaxed) % keys.len();
 
+    let cooldown = crate::notify::get_key_manager();
+
     for attempt in 0..keys.len() {
         let i = (start_idx + attempt) % keys.len();
+        
+        // Skip keys in cooldown
+        if !cooldown.is_available(i).await {
+            continue;
+        }
+        
         let key = keys[i];
         let url = format!("{}/{}:generateContent?key={}", GEMINI_API_BASE, model_name, key);
         
@@ -243,8 +251,13 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             let body = resp.text().await.unwrap_or_default();
             last_error = format!("API error ({}): {}", status, body);
             
+            // Mark 429 keys for cooldown
+            if status.as_u16() == 429 {
+                cooldown.mark_rate_limited(i).await;
+            }
+            
             if attempt < keys.len() - 1 {
-                warn!("⚠️ Gemini API Key {} hit error ({}), trying next key...", i+1, status);
+                warn!("⚠️ Gemini Key #{} error ({}), next...", i+1, status);
                 continue;
             } else {
                 return Err(last_error);
@@ -276,6 +289,9 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             .and_then(|p| p.into_iter().next())
             .and_then(|p| p.text)
             .ok_or_else(|| "Empty response".to_string())?;
+
+        // SUCCESS — reset cooldown for this key
+        cooldown.mark_success(i).await;
 
         // ----- DEBUG LOGGING FOR AI AGENTS -----
         let time_now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");

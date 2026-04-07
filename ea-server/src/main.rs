@@ -470,14 +470,35 @@ async fn run_server() {
                         let _ = tx_ai.send(resp.to_string());
                     
                         if result.final_decision == "BUY" || result.final_decision == "SELL" {
+                            // Confidence threshold check (default 55%)
+                            let min_confidence = job["min_confidence"].as_f64().unwrap_or(55.0);
+                            
+                            if result.confidence < min_confidence {
+                                info!("🤖 [Auto-Pilot] {} on {} skipped: confidence {:.0}% < threshold {:.0}%", 
+                                    result.final_decision, sym, result.confidence, min_confidence);
+                                let skip_msg = serde_json::json!({
+                                    "type": "agent_log", "symbol": sym, "agent": "orchestrator", "status": "done",
+                                    "message": format!("⏭️ {} ข้าม: confidence {:.0}% ต่ำกว่า threshold {:.0}%", result.final_decision, result.confidence, min_confidence)
+                                }).to_string();
+                                let _ = tx_ai.send(skip_msg);
+                            } else {
+                                // Auto-scale lot size based on confidence
+                                let scaled_lot = if job["lot_scale"].as_bool().unwrap_or(false) {
+                                    if result.confidence >= 85.0 { auto_lot * 3.0 }
+                                    else if result.confidence >= 70.0 { auto_lot * 2.0 }
+                                    else { auto_lot }
+                                } else {
+                                    auto_lot
+                                };
+                                
                             if auto_trade {
-                                info!("🤖 [Auto-Pilot] Executing {} order automatically on {}", result.final_decision, sym);
+                                info!("🤖 [Auto-Pilot] Executing {} order on {} (conf: {:.0}%, lot: {:.2})", result.final_decision, sym, result.confidence, scaled_lot);
                                 let cmd = serde_json::json!({
                                     "action": "open_trade",
                                     "symbol": sym,
                                     "direction": result.final_decision,
-                                    "lot_size": auto_lot,
-                                    "comment": format!("EA24-{}", job_ai_mode)
+                                    "lot_size": scaled_lot,
+                                    "comment": format!("EA24-{}-{:.0}%", job_ai_mode, result.confidence)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
                                 
@@ -485,25 +506,41 @@ async fn run_server() {
                                     let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
                                     let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
                                     if !tg_token.is_empty() && !tg_chat.is_empty() {
-                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🔥 AI Auto-Execute: {} {}\nLot Size: {}\nConfidence: {}%\nMode: {}", result.final_decision, sym, auto_lot, result.confidence, tp_sl_mode)).await;
+                                        let msg = format!(
+                                            "🔥 <b>AI Auto-Execute</b>\n\n📊 {} <b>{}</b>\n💰 Lot: {:.2}\n🎯 Confidence: {:.0}%\n📝 {}\n⏰ {}",
+                                            result.final_decision, sym, scaled_lot, result.confidence, result.reasoning,
+                                            chrono::Local::now().format("%H:%M:%S")
+                                        );
+                                        notify::send_telegram_notify(&tg_token, &tg_chat, &msg).await;
                                     }
                                 }
                             } else {
-                                info!("🤖 [Auto-Pilot] Proposing {} order on {}, awaiting user confirmation", result.final_decision, sym);
+                                info!("🤖 [Auto-Pilot] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", result.final_decision, sym, result.confidence);
                                 let proposal = serde_json::json!({
                                     "type": "ai_trade_proposal",
                                     "symbol": sym,
                                     "direction": result.final_decision,
                                     "confidence": result.confidence,
                                     "reasoning": result.reasoning,
-                                    "lot_size": auto_lot,
+                                    "lot_size": scaled_lot,
                                     "comment": format!("EA24-{}", job_ai_mode)
                                 }).to_string();
                                 let _ = tx_ai.send(proposal);
                                 
                                 let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
                                 let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                notify::send_telegram_notify(&tg_token, &tg_chat, &format!("🚨 AI Trade Proposal: {} {}\nConfidence: {}%\n\n{}", result.final_decision, sym, result.confidence, result.reasoning)).await;
+                                let msg = format!(
+                                    "🚨 <b>AI Trade Proposal</b>\n\n📊 {} <b>{}</b>\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
+                                    result.final_decision, sym, result.confidence, scaled_lot, result.reasoning
+                                );
+                                notify::send_telegram_with_buttons(
+                                    &tg_token, &tg_chat, &msg,
+                                    vec![
+                                        ("✅ อนุมัติ".to_string(), format!("approve_{}_{}", sym, result.final_decision)),
+                                        ("❌ ปฏิเสธ".to_string(), format!("reject_{}", sym)),
+                                    ]
+                                ).await;
+                            }
                             }
                         }
                     }
@@ -513,6 +550,15 @@ async fn run_server() {
             }
             tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         }
+    });
+
+    // Spawn Telegram Bot command receiver loop
+    let tg_db = database.clone();
+    let tg_tx = tx.clone();
+    let tg_ea_state = ea_state.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
+        notify::start_telegram_bot_loop(tg_db, tg_tx, tg_ea_state).await;
     });
 
     // Spawn Global AI loop (News & Calendar every 1 hour)
