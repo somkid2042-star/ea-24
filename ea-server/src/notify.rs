@@ -342,6 +342,7 @@ pub fn format_trade_close(symbol: &str, direction: &str, lot: f64, pnl: f64) -> 
 }
 
 /// Format EA disconnect notification
+#[allow(dead_code)]
 pub fn format_ea_disconnect() -> String {
     format!(
         "\n⚠️ EA หลุดการเชื่อมต่อ!\n🔌 MT5 ไม่ตอบสนอง\n⏰ {}",
@@ -350,6 +351,7 @@ pub fn format_ea_disconnect() -> String {
 }
 
 /// Format daily summary
+#[allow(dead_code)]
 pub fn format_daily_summary(profit: f64, trades: i64, win_rate: f64) -> String {
     let emoji = if profit >= 0.0 { "📈" } else { "📉" };
     format!(

@@ -86,16 +86,18 @@ struct TavilyRequest {
     days: Option<i32>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug)]
 struct TavilyResponse {
-    answer: Option<String>,
+    pub answer: Option<String>,
     results: Option<Vec<TavilyResult>>,
 }
 
+#[allow(dead_code)]
 #[derive(Deserialize, Debug, Clone)]
 struct TavilyResult {
-    title: Option<String>,
-    url: Option<String>,
+    pub title: Option<String>,
+    pub url: Option<String>,
     content: Option<String>,
 }
 
@@ -1266,7 +1268,7 @@ pub async fn run_all_agents_multi_tf(
     balance: f64, equity: f64,
     open_positions: usize, max_positions: usize,
     max_drawdown_pct: f64, emergency_stop: bool,
-    ai_mode: &str,
+    _ai_mode: &str,
     disabled_agents: &[String],
     global_news: Option<NewsResult>,
     log_tx: &tokio::sync::broadcast::Sender<String>,

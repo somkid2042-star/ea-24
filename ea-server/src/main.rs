@@ -764,7 +764,7 @@ async fn run_server() {
                                 let mut details = String::new();
 
                                 let agents = ["news_hunter", "chart_analyst", "calendar", "risk_manager", "decision_maker"];
-                                let mut messages = [
+                                let messages = [
                                     "[M1] Skipping sentiment limits (Real-time Fast Track)...".to_string(),
                                     "[M1] Computing technical indicators (RSI, EMA)...".to_string(),
                                     "[M1] Checking macroeconomic volatility...".to_string(),

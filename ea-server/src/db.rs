@@ -436,6 +436,7 @@ impl Database {
         let _ = self.tick_tx.try_send(record);
     }
 
+    #[allow(dead_code)]
     pub async fn get_historical_candles(&self, symbol: &str, limit: i64) -> serde_json::Value {
         let query = "
             SELECT 
