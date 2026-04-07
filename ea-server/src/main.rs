@@ -105,6 +105,7 @@ struct EaState {
     symbol: String,
     gap_status: std::collections::HashMap<String, String>,
     last_quote_times: std::collections::HashMap<String, i64>,
+    broker_offset: i64,
     balance: f64,
     equity: f64,
     open_positions: usize,
@@ -262,6 +263,7 @@ async fn run_server() {
         symbol: "".to_string(),
         gap_status: std::collections::HashMap::new(),
         last_quote_times: std::collections::HashMap::new(),
+        broker_offset: 0,
         balance: 0.0,
         equity: 0.0,
         open_positions: 0,
@@ -902,8 +904,13 @@ async fn handle_mt5_connection(
                                             db.log_tick(sym, bid, ask, spread);
                                         }
                                     } else if msg_type == Some("market_watch") {
+                                        let mut state = ea_state.write().await;
+                                        if let Some(st) = val.get("server_time").and_then(|v| v.as_i64()) {
+                                            if st > 0 {
+                                                state.broker_offset = st - chrono::Utc::now().timestamp();
+                                            }
+                                        }
                                         if let Some(symbols) = val.get("symbols").and_then(|s| s.as_array()) {
-                                            let mut state = ea_state.write().await;
                                             for info in symbols {
                                                 let sym = info["symbol"].as_str().unwrap_or("");
                                                 let digits = info["digits"].as_i64().unwrap_or(5);
@@ -2151,15 +2158,24 @@ async fn handle_ws_connection(
                                     "get_tracked_symbols" => {
                                         let symbols = db.get_tracked_symbols().await;
                                         let mut closed_map = serde_json::Map::new();
-                                        let now_ts = chrono::Utc::now().timestamp();
                                         let state = ea_state.read().await;
+                                        let mut now_ts = chrono::Utc::now().timestamp();
+                                        if state.broker_offset != 0 {
+                                            now_ts += state.broker_offset;
+                                        }
+
                                         for sym in &symbols {
                                             // Priority: memory tracked quote time (market_watch), then fallback to db tick
                                             let mut lt = state.last_quote_times.get(sym).copied().unwrap_or(0);
                                             if lt == 0 {
-                                                lt = db.get_latest_tick_timestamp(sym).await;
+                                                lt = db.get_latest_tick_timestamp(sym).await; // This is UTC!
+                                                if lt > 0 && state.broker_offset != 0 {
+                                                    lt += state.broker_offset; // Align DB UTC to Broker Time!
+                                                }
                                             }
-                                            closed_map.insert(sym.clone(), serde_json::Value::Bool(now_ts - lt > 300 && lt > 0));
+                                            // Assume closed if no data (lt == 0) or if data is older than 5 mins
+                                            let is_closed = lt == 0 || (now_ts - lt > 300);
+                                            closed_map.insert(sym.clone(), serde_json::Value::Bool(is_closed));
                                         }
                                         let resp = serde_json::json!({
                                             "type": "tracked_symbols",
