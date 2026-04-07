@@ -737,6 +737,13 @@ async fn run_server() {
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
                                 
+                                // Record AI decision for training data
+                                db_ai.insert_ai_decision(
+                                    &sym, &result.final_decision, result.confidence,
+                                    &result.reasoning, scaled_lot, 0.0, // entry_price filled by MT5 later
+                                    0, &gemini_model, &format!("mode:{}", job_ai_mode),
+                                ).await;
+                                
                                 if telegram_alert {
                                     let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
                                     let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
@@ -1078,19 +1085,78 @@ async fn run_server() {
         }
     });
 
-    // Background Task to persist AI Logs
+    // Background Task to persist AI Logs + Training Data
     let persist_db = database.clone();
     let mut persist_rx = tx.subscribe();
     tokio::spawn(async move {
         while let Ok(msg) = persist_rx.recv().await {
             if let Ok(v) = serde_json::from_str::<serde_json::Value>(&msg) {
                 if let Some(t) = v["type"].as_str() {
-                    if t == "agent_log" || t == "agent_log_m1" {
-                        let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
-                        let agent = v["agent"].as_str().unwrap_or("unknown");
-                        let status = v["status"].as_str().unwrap_or("unknown");
-                        let message = v["message"].as_str().unwrap_or("");
-                        persist_db.insert_ai_log(sym, t, agent, status, message).await;
+                    match t {
+                        // Standard agent logs → ai_logs
+                        "agent_log" | "agent_log_m1" => {
+                            let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
+                            let agent = v["agent"].as_str().unwrap_or("unknown");
+                            let status = v["status"].as_str().unwrap_or("unknown");
+                            let message = v["message"].as_str().unwrap_or("");
+                            persist_db.insert_ai_log(sym, t, agent, status, message).await;
+                        }
+                        
+                        // Verbose prompt+response → ai_training_data (for Gemma fine-tuning)
+                        "agent_log_verbose" => {
+                            let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
+                            let agent = v["agent"].as_str().unwrap_or("unknown");
+                            let prompt = v["prompt"].as_str().unwrap_or("");
+                            let response = v["response"].as_str().unwrap_or("");
+                            if !prompt.is_empty() && !response.is_empty() {
+                                let model = v["model"].as_str().unwrap_or("gemini-2.5-flash");
+                                let decision = v["decision"].as_str();
+                                let confidence = v["confidence"].as_f64().unwrap_or(0.0);
+                                persist_db.insert_training_data(
+                                    sym, agent, prompt, response, model, decision, confidence
+                                ).await;
+                            }
+                        }
+                        
+                        // Order management results → ai_logs
+                        "order_manage_result" => {
+                            let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
+                            let action = v["result"]["action"].as_str().unwrap_or("?");
+                            let reasoning = v["result"]["reasoning"].as_str().unwrap_or("");
+                            let msg = format!("[OrderMgr] {} — {}", action, reasoning);
+                            persist_db.insert_ai_log(sym, "order_manage", "order_manager", action, &msg).await;
+                        }
+                        
+                        // Recovery results → ai_logs
+                        "ai_recovery_result" => {
+                            let sym = v["symbol"].as_str().unwrap_or("UNKNOWN");
+                            let action = v["result"]["action"].as_str().unwrap_or("?");
+                            let reasoning = v["result"]["reasoning"].as_str().unwrap_or("");
+                            let msg = format!("[Recovery] {} — {}", action, reasoning);
+                            persist_db.insert_ai_log(sym, "recovery", "recovery_manager", action, &msg).await;
+                        }
+                        
+                        // News avoidance events → ai_logs
+                        "news_avoidance" => {
+                            let sym = v["symbol"].as_str().unwrap_or("ALL");
+                            let message = v["message"].as_str().unwrap_or("");
+                            persist_db.insert_ai_log(sym, "news_avoidance", "calendar", "warning", message).await;
+                        }
+                        
+                        // Weekly journal → ai_logs
+                        "weekly_journal" => {
+                            let analysis = v["result"]["ai_analysis"].as_str().unwrap_or("");
+                            let msg = format!("[WeeklyJournal] {}", &analysis[..analysis.len().min(500)]);
+                            persist_db.insert_ai_log("ALL", "weekly_journal", "journal", "done", &msg).await;
+                        }
+                        
+                        // Correlation warnings → ai_logs
+                        "correlation_warning" => {
+                            let message = v["message"].as_str().unwrap_or("");
+                            persist_db.insert_ai_log("ALL", "correlation", "correlation_agent", "warning", message).await;
+                        }
+                        
+                        _ => {} // ignore other types
                     }
                 }
             }
@@ -1352,6 +1418,10 @@ async fn handle_mt5_connection(
                                                         let bt = bot_token.clone();
                                                         let cid = chat_id.clone();
                                                         tokio::spawn(async move { crate::notify::send_telegram_notify(&bt, &cid, &msg).await; });
+                                                        
+                                                        // Update AI decision outcome for training data
+                                                        let exit_price = deal["price"].as_f64().unwrap_or(0.0);
+                                                        db.update_decision_outcome(pos_id, exit_price, total_pnl).await;
                                                     }
                                                 }
                                             }

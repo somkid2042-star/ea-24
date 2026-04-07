@@ -156,6 +156,85 @@ impl Database {
         Ok(logs)
     }
 
+    // ──────────────────────────────────────────
+    //  AI Training Data — for Gemma 4 Fine-Tuning
+    // ──────────────────────────────────────────
+
+    /// Save prompt+response pair for future training
+    pub async fn insert_training_data(
+        &self, symbol: &str, agent: &str, prompt: &str, response: &str,
+        model: &str, decision: Option<&str>, confidence: f64,
+    ) {
+        let q = "INSERT INTO ai_training_data (symbol, agent, prompt, response, model, decision, confidence) VALUES ($1, $2, $3, $4, $5, $6, $7)";
+        if let Err(e) = sqlx::query(q)
+            .bind(symbol).bind(agent).bind(prompt).bind(response)
+            .bind(model).bind(decision).bind(confidence)
+            .execute(&self.pool).await
+        {
+            error!("Failed to save training data: {}", e);
+        }
+    }
+
+    /// Record an AI trade decision with context
+    pub async fn insert_ai_decision(
+        &self, symbol: &str, direction: &str, confidence: f64,
+        reasoning: &str, lot_size: f64, entry_price: f64,
+        ticket: i64, model: &str, context: &str,
+    ) {
+        let q = "INSERT INTO ai_decisions (symbol, direction, confidence, reasoning, lot_size, entry_price, ticket, model, context) VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9)";
+        if let Err(e) = sqlx::query(q)
+            .bind(symbol).bind(direction).bind(confidence)
+            .bind(reasoning).bind(lot_size).bind(entry_price)
+            .bind(ticket).bind(model).bind(context)
+            .execute(&self.pool).await
+        {
+            error!("Failed to save AI decision: {}", e);
+        }
+    }
+
+    /// Update decision outcome when trade closes
+    pub async fn update_decision_outcome(
+        &self, ticket: i64, exit_price: f64, pnl: f64,
+    ) {
+        let outcome = if pnl >= 0.0 { "win" } else { "loss" };
+        let q = "UPDATE ai_decisions SET exit_price = $1, pnl = $2, outcome = $3, closed_at = NOW() WHERE ticket = $4 AND outcome = 'pending'";
+        if let Err(e) = sqlx::query(q)
+            .bind(exit_price).bind(pnl)
+            .bind(outcome).bind(ticket)
+            .execute(&self.pool).await
+        {
+            error!("Failed to update decision outcome: {}", e);
+        }
+    }
+
+    /// Export training data as JSONL (for Gemma fine-tuning)
+    #[allow(dead_code)]
+    pub async fn export_training_data(&self, limit: i64) -> Vec<serde_json::Value> {
+        let q = "SELECT t.symbol, t.agent, t.prompt, t.response, t.model, t.decision, t.confidence, t.timestamp,
+                 d.direction, d.pnl, d.outcome
+                 FROM ai_training_data t
+                 LEFT JOIN ai_decisions d ON t.symbol = d.symbol AND t.timestamp::date = d.timestamp::date
+                 ORDER BY t.timestamp DESC LIMIT $1";
+        if let Ok(rows) = sqlx::query(q).bind(limit).fetch_all(&self.pool).await {
+            return rows.iter().map(|row| {
+                use sqlx::Row;
+                serde_json::json!({
+                    "symbol": row.try_get::<String, _>("symbol").unwrap_or_default(),
+                    "agent": row.try_get::<String, _>("agent").unwrap_or_default(),
+                    "prompt": row.try_get::<String, _>("prompt").unwrap_or_default(),
+                    "response": row.try_get::<String, _>("response").unwrap_or_default(),
+                    "model": row.try_get::<String, _>("model").unwrap_or_default(),
+                    "decision": row.try_get::<String, _>("decision").unwrap_or_default(),
+                    "confidence": row.try_get::<f64, _>("confidence").unwrap_or(0.0),
+                    "direction": row.try_get::<String, _>("direction").unwrap_or_default(),
+                    "pnl": row.try_get::<f64, _>("pnl").unwrap_or(0.0),
+                    "outcome": row.try_get::<String, _>("outcome").unwrap_or_default(),
+                })
+            }).collect();
+        }
+        vec![]
+    }
+
     async fn create_tables(pool: &PgPool) -> Result<(), String> {
         let schema = "
             CREATE TABLE IF NOT EXISTS tick_log (
@@ -240,12 +319,45 @@ impl Database {
                 timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            CREATE TABLE IF NOT EXISTS ai_training_data (
+                id          BIGSERIAL PRIMARY KEY,
+                symbol      TEXT NOT NULL,
+                agent       TEXT NOT NULL,
+                prompt      TEXT NOT NULL,
+                response    TEXT NOT NULL,
+                model       TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+                decision    TEXT,
+                confidence  DOUBLE PRECISION DEFAULT 0,
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS ai_decisions (
+                id          BIGSERIAL PRIMARY KEY,
+                symbol      TEXT NOT NULL,
+                direction   TEXT NOT NULL,
+                confidence  DOUBLE PRECISION NOT NULL DEFAULT 0,
+                reasoning   TEXT,
+                lot_size    DOUBLE PRECISION DEFAULT 0.01,
+                entry_price DOUBLE PRECISION DEFAULT 0,
+                exit_price  DOUBLE PRECISION DEFAULT 0,
+                pnl         DOUBLE PRECISION DEFAULT 0,
+                outcome     TEXT DEFAULT 'pending',
+                ticket      BIGINT DEFAULT 0,
+                model       TEXT NOT NULL DEFAULT 'gemini-2.5-flash',
+                context     TEXT,
+                timestamp   TIMESTAMPTZ NOT NULL DEFAULT NOW(),
+                closed_at   TIMESTAMPTZ
+            );
+
             CREATE INDEX IF NOT EXISTS idx_tick_symbol ON tick_log(symbol);
             CREATE INDEX IF NOT EXISTS idx_tick_time ON tick_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_trade_time ON trade_log(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_history_time ON trade_history(time);
             CREATE INDEX IF NOT EXISTS idx_signal_time ON strategy_signals(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_logs_symbol_time ON ai_logs(symbol, timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_ai_training_symbol ON ai_training_data(symbol, timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_ai_decisions_symbol ON ai_decisions(symbol, timestamp DESC);
+            CREATE INDEX IF NOT EXISTS idx_ai_decisions_outcome ON ai_decisions(outcome);
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();
