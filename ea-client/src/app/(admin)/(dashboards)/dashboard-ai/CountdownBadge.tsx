@@ -1,6 +1,6 @@
 import { useEffect, useState } from 'react';
 
-export const CountdownBadge = ({ interval, lastRunTime, isRunning, enabled }: { interval: number, lastRunTime: number | null, isRunning: boolean, enabled: boolean }) => {
+export const CountdownBadge = ({ interval, lastRunTime, isRunning, enabled, marketClosed }: { interval: number, lastRunTime: number | null, isRunning: boolean, enabled: boolean, marketClosed?: boolean }) => {
     const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
 
     useEffect(() => {
@@ -29,6 +29,7 @@ export const CountdownBadge = ({ interval, lastRunTime, isRunning, enabled }: { 
         return () => clearInterval(id);
     }, [lastRunTime, interval, enabled, isRunning]);
 
+    if (marketClosed) return <span className="text-[10px] text-orange-500 font-medium uppercase px-2 py-0.5 rounded border border-orange-200 dark:border-orange-800/50 bg-orange-50 dark:bg-orange-500/10">Market Closed</span>;
     if (!enabled) return <span className="text-[10px] text-gray-500 uppercase px-2 py-0.5 rounded border border-gray-200 dark:border-gray-700">ระงับการทำงาน</span>;
     if (isRunning) return <span className="text-[10px] text-blue-600 dark:text-blue-400 font-bold uppercase animate-pulse px-2 py-0.5 rounded bg-blue-50 dark:bg-blue-900/30">กำลังวิเคราะห์...</span>;
     if (!timeLeft) return null;

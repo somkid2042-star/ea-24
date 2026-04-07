@@ -1,5 +1,4 @@
 import { LuActivity, LuPencil } from 'react-icons/lu';
-import { CountdownBadge } from './CountdownBadge';
 
 const translateObj = { "BUY": "ซื้อ (BUY)", "SELL": "ขาย (SELL)", "HOLD": "รอดูท่าที (HOLD)" };
 
@@ -36,7 +35,7 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, lastR
                         <LuPencil size={12} />
                      </button>
                      <div className="text-[11px] text-gray-500 font-medium">
-                         <CountdownBadge interval={job.interval} lastRunTime={lastRunTime} isRunning={isRunning} enabled={job.enabled !== false} />
+                         M{job.interval}
                      </div>
                    </div>
                </div>

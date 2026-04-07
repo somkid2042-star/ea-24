@@ -638,18 +638,13 @@ const TradingDashboard = () => {
         }
         if (data.type === 'account_data') { setAccount(data as AccountData); setEaConnected(true); }
         if (data.type === 'market_watch') {
-          setMarketWatch(prev => {
+          setMarketWatch(() => {
             const now = Date.now();
             const next = data.symbols?.map((s: any) => ({ ...s, serverTime: data.server_time })) || [];
             setLastPriceUpdateTime(prevTime => {
               const newTimes = { ...prevTime };
               next.forEach((nxt: any) => {
-                const old = prev.find(p => p.symbol === nxt.symbol);
-                if (!old || old.bid !== nxt.bid || old.ask !== nxt.ask) {
-                  newTimes[nxt.symbol] = now;
-                } else if (!newTimes[nxt.symbol]) {
-                  newTimes[nxt.symbol] = now;
-                }
+                newTimes[nxt.symbol] = now;
               });
               return newTimes;
             });

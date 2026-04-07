@@ -64,9 +64,18 @@ const DashboardAi = () => {
                if (!Array.isArray(data)) return;
                const newLogs: any[] = [];
                const newM1Logs: any[] = [];
+               const newVerboseLogs: any[] = [];
                data.forEach(d => {
-                   const logRow = { timestamp: d.timestamp, agent: d.agent, status: d.status, message: d.message };
-                   if (d.type === 'agent_log') newLogs.push(logRow);
+                   const logRow = { ...d, timestamp: d.timestamp || Date.now() };
+                   if (d.type === 'agent_log') {
+                       newLogs.push(logRow);
+                       newVerboseLogs.push({
+                           timestamp: logRow.timestamp,
+                           agent: logRow.agent,
+                           prompt: '[SYSTEM RECOVERY] ข้อมูลการวิเคราะห์ล่าสุดถูกโหลดจากประวัติเดิม (ไม่สามารถกู้คืน Raw Prompt ของรอบก่อนหน้าได้)',
+                           response: logRow.message
+                       });
+                   }
                    if (d.type === 'agent_log_m1') newM1Logs.push(logRow);
                });
                
@@ -88,6 +97,12 @@ const DashboardAi = () => {
                         }
                      });
                      return {...prev, [job.symbol]: currentStatuses};
+                  });
+               }
+               if (newVerboseLogs.length > 0) {
+                  setVerboseLogsBySymbol(prev => {
+                     if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
+                     return {...prev, [job.symbol]: newVerboseLogs};
                   });
                }
                if (newM1Logs.length > 0) {
@@ -179,7 +194,7 @@ const DashboardAi = () => {
         } else if (data.type === 'agent_log_m1') {
           const symbol = data.symbol;
           const agentStr = data.agent as keyof AgentStatusMap;
-          const newLog = { timestamp: Date.now(), agent: data.agent, status: data.status, message: data.message };
+          const newLog = { ...data, timestamp: Date.now() };
           
           setLogsM1BySymbol(prev => ({
              ...prev,
