@@ -1,4 +1,4 @@
-import React, { useEffect, useState, useRef } from 'react';
+import React, { useEffect, useState, useRef, useMemo } from 'react';
 import { LuGlobe, LuActivity, LuCalendar, LuShield, LuBrainCircuit, LuLoader, LuTerminal, LuBot, LuSettings, LuZap, LuMonitorOff } from 'react-icons/lu';
 
 export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
@@ -50,12 +50,33 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
   const [autoScrollM1, setAutoScrollM1] = useState(true);
   const [autoScrollAI, setAutoScrollAI] = useState(true);
 
+  // M1 Fast-Track Countdown Timer
+  const [secondsToM1, setSecondsToM1] = useState(60 - new Date().getSeconds());
+  useEffect(() => {
+     const timer = setInterval(() => {
+        setSecondsToM1(60 - new Date().getSeconds());
+     }, 1000);
+     return () => clearInterval(timer);
+  }, []);
+
   // Auto-scroll M1 Logs
   useEffect(() => {
      if (autoScrollM1 && logsM1Ref.current) {
          logsM1Ref.current.scrollTop = logsM1Ref.current.scrollHeight;
      }
   }, [logsM1, autoScrollM1]);
+
+  const m1Decision = useMemo(() => {
+    if (!logsM1 || logsM1.length === 0) return null;
+    const lastOrchestrator = [...logsM1].reverse().find(l => l.agent === 'orchestrator' || l.agent === 'Orchestrator');
+    if (lastOrchestrator && lastOrchestrator.message) {
+      if (lastOrchestrator.message.includes('BUY')) return 'BUY';
+      if (lastOrchestrator.message.includes('SELL')) return 'SELL';
+      if (lastOrchestrator.message.includes('HOLD')) return 'HOLD';
+      if (lastOrchestrator.message.includes('รอสัญญาณ')) return 'HOLD';
+    }
+    return null;
+  }, [logsM1]);
 
   // Auto-scroll AI Logs
   useEffect(() => {
@@ -160,11 +181,19 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                {agentStatusM1?.orchestrator === 'running' ? (
                    <span className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm flex items-center gap-1.5 whitespace-nowrap">
                        <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                       Running
+                       กำลังคำนวณ...
+                   </span>
+               ) : m1Decision ? (
+                   <span className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-[0.1em] shadow-sm flex items-center gap-1.5 whitespace-nowrap ${
+                      m1Decision === 'BUY' ? 'bg-green-50 dark:bg-green-500/10 text-green-600 border border-green-200 dark:border-green-500/20' : 
+                      m1Decision === 'SELL' ? 'bg-red-50 dark:bg-red-500/10 text-red-600 border border-red-200 dark:border-red-500/20' : 
+                      'bg-gray-100 dark:bg-white/10 text-gray-500 border border-gray-200 dark:border-white/20'
+                   }`}>
+                      ผลคำนวณ: {m1Decision}
                    </span>
                ) : (
                    <span className="bg-white dark:bg-black/20 text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
-                       Awaiting Processing
+                       รอรับสัญญาณ
                    </span>
                )}
            </div>
@@ -172,7 +201,12 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
            <div className="flex items-center justify-between mb-4 shrink-0 pl-1">
              <div className="flex items-center gap-2">
                  <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
-                 <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5">Server Logs (M1 Fast-Track)</span>
+                 <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5 flex items-center gap-2">
+                    M1 FAST-TRACK
+                    <span className="text-[9px] font-mono bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-sm border border-indigo-200 dark:border-indigo-500/20 tabular-nums">
+                       00:{secondsToM1 === 60 ? '00' : secondsToM1.toString().padStart(2, '0')}
+                    </span>
+                 </span>
              </div>
            </div>
            

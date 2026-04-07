@@ -288,7 +288,7 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             });
             
         // Also log a quick snippet to the console
-        tracing::info!("🤖 [AI MODEL {}] Prompt len: {}, Response len: {}", model_name, prompt.len(), text.len());
+        log::info!("🤖 [AI MODEL {}] Prompt len: {}, Response len: {}", model_name, prompt.len(), text.len());
         
         return Ok(text);
     }
@@ -1112,6 +1112,11 @@ REASONING: [concise summary in Thai language]"#,
 
     match call_gemini(gemini_key, model, &prompt, 0.2, 400, false).await {
         Ok(response) => {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": symbol, "agent": "decision_maker",
+                "prompt": prompt, "response": response
+            }).to_string());
+            
             let mut decision = "HOLD".to_string();
             let mut confidence = 50.0;
             let mut reasoning = String::new();
@@ -1402,6 +1407,11 @@ STRATEGIES:
     // Run chart analysis via Gemini
         match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600, false).await {
             Ok(text) => {
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log_verbose", "symbol": symbol, "agent": "orchestrator",
+                    "prompt": multi_tf_prompt, "response": text
+                }).to_string());
+
                 let mut rec = "HOLD".to_string();
                 let mut conf = 50.0;
                 let mut reason = String::new();
