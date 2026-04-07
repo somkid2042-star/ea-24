@@ -3,7 +3,7 @@ import {
   LuSave, LuNetwork, LuNewspaper, LuCalendar, 
   LuActivity, LuShieldAlert, LuGitMerge, LuFileText,
   LuKey, LuCheck, LuX, LuSparkles, LuZap, LuChevronDown, LuChevronUp, LuPlus, LuTrash2, LuMail, LuSearch, LuOctagon, LuCircleCheck, LuCircleX, LuTrendingDown, LuLayers, LuGauge, LuDollarSign,
-  LuChevronRight, LuEye, LuEyeOff, LuRefreshCw, LuCopy, LuExternalLink
+  LuChevronRight, LuEye, LuEyeOff, LuRefreshCw, LuCopy, LuExternalLink, LuHouse
 } from 'react-icons/lu';
 import { getWsUrl } from '@/utils/config';
 import { openUrl } from '@tauri-apps/plugin-opener';
@@ -56,8 +56,10 @@ const AgentSettings = () => {
   const [models, setModels] = useState<AiModel[]>([]);
   const [testResult, setTestResult] = useState<{ success: boolean; message: string } | null>(null);
   const [tavilyResult, setTavilyResult] = useState<{ success: boolean; message: string } | null>(null);
+  const [ollamaResult, setOllamaResult] = useState<{ success: boolean; message: string } | null>(null);
   const [testing, setTesting] = useState(false);
   const [testingTavily, setTestingTavily] = useState(false);
+  const [testingOllama, setTestingOllama] = useState(false);
   const [emails, setEmails] = useState<{address: string, password: string, apiKey: string, tavilyKey: string}[]>([{address: '', password: '', apiKey: '', tavilyKey: ''}]);
   const [globalNews, setGlobalNews] = useState<any>(null);
   const [globalCalendar, setGlobalCalendar] = useState<any>(null);
@@ -149,6 +151,12 @@ const AgentSettings = () => {
           setTavilyResult({ success: data.success, message: data.message });
           setTimeout(() => setTavilyResult(null), 10000);
         }
+        if (data.type === 'ollama_test_result') {
+          if (ollamaTimeoutRef.current) { clearTimeout(ollamaTimeoutRef.current); ollamaTimeoutRef.current = null; }
+          setTestingOllama(false);
+          setOllamaResult({ success: data.success, message: data.message });
+          setTimeout(() => setOllamaResult(null), 15000);
+        }
         if (data.type === 'global_ai_data') {
           setIsFetchingNews(false);
           if (data.data && data.data.news) {
@@ -232,6 +240,19 @@ const AgentSettings = () => {
 
   const testTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const tavilyTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+  const ollamaTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
+
+  const testOllama = () => {
+    setTestingOllama(true); setOllamaResult(null);
+    send({ action: 'test_ollama' });
+    if (ollamaTimeoutRef.current) clearTimeout(ollamaTimeoutRef.current);
+    ollamaTimeoutRef.current = setTimeout(() => {
+      setTestingOllama(prev => {
+        if (prev) setOllamaResult({ success: false, message: 'หมดเวลา — Ollama ใช้เวลานานมากบน CPU (ปกติสำหรับครั้งแรก)' });
+        return false;
+      });
+    }, 180000); // 3 minutes timeout for CPU inference
+  };
 
   const testTavily = () => {
     setTestingTavily(true); setTavilyResult(null);
@@ -861,6 +882,28 @@ const AgentSettings = () => {
               {tavilyResult && (
                 <div className={`p-3 rounded-xl text-sm max-w-xl ${tavilyResult.success ? 'bg-green-50 text-green-600 dark:bg-green-500/10' : 'bg-red-50 text-red-600 dark:bg-red-500/10'}`}>
                   {tavilyResult.success ? <><LuCheck className="inline mr-1" /> {tavilyResult.message}</> : <><LuX className="inline mr-1" /> {tavilyResult.message}</>}
+                </div>
+              )}
+            </div>
+
+            {/* Ollama Local AI Section */}
+            <div className="space-y-4 mt-6 pt-6 border-t border-default-200 dark:border-gray-700/50">
+              <div className="flex items-center justify-between">
+                <div>
+                  <h5 className="text-sm font-semibold flex items-center gap-2 dark:text-gray-200">
+                    <LuHouse className="text-emerald-500" /> Ollama Local AI (Gemma 4)
+                  </h5>
+                  <p className="text-xs text-default-500 mt-1">โมเดล AI ท้องถิ่นที่รันบนเซิร์ฟเวอร์ (ฟรี ไม่ใช้โควต้า) — ทำหน้าที่เป็น Fallback เมื่อ Gemini ล้มเหลว</p>
+                </div>
+              </div>
+              <div className="flex gap-2 items-center max-w-xl">
+                <button onClick={testOllama} disabled={testingOllama} className="btn px-4 py-2.5 rounded-xl bg-emerald-600 hover:bg-emerald-700 text-white text-sm font-medium flex items-center gap-2 disabled:opacity-50 border-none">
+                  {testingOllama ? <><LuSparkles className="size-4 animate-spin" /> เช็คสถานะ... (อาจใช้เวลา 1-3 นาที)</> : <><LuHouse className="size-4" /> ทดสอบ Ollama</>}
+                </button>
+              </div>
+              {ollamaResult && (
+                <div className={`p-3 rounded-xl text-sm max-w-xl ${ollamaResult.success ? 'bg-green-50 text-green-600 dark:bg-green-500/10 dark:text-green-400' : 'bg-red-50 text-red-600 dark:bg-red-500/10 dark:text-red-400'}`}>
+                  {ollamaResult.success ? <><LuCheck className="inline mr-1" /> {ollamaResult.message}</> : <><LuX className="inline mr-1" /> {ollamaResult.message}</>}
                 </div>
               )}
             </div>

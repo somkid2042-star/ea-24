@@ -1770,7 +1770,6 @@ pub async fn analyze_market(
     api_key: &str, model: &str, symbol: &str, timeframe: &str,
     candles: &[crate::strategy::Candle], current_price: f64, strategy: &str,
 ) -> Result<AiAnalysis, String> {
-    if api_key.is_empty() { return Err("API Key is empty".to_string()); }
     let recent = if candles.len() > 20 { &candles[candles.len()-20..] } else { candles };
     let candle_str: String = recent.iter().map(|c| format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)).collect::<Vec<_>>().join("\n");
     let trend = if candles.len() >= 10 { let s=candles[candles.len()-10].close; let e=candles[candles.len()-1].close; if e>s*1.001{"UPTREND"}else if e<s*0.999{"DOWNTREND"}else{"SIDEWAYS"} } else { "UNKNOWN" };
@@ -1886,7 +1885,6 @@ pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> 
 }
 
 pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String, String> {
-    if api_key.is_empty() { return Err("API Key is empty".to_string()); }
     let prompt = format!("You are an AI assistant for EA-24 trading system. Always respond in Thai language, keep it concise.\nQuestion: {}", question);
     call_ai(api_key, model, &prompt, 0.7, 800, false).await
 }
