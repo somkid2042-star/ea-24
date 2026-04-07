@@ -261,13 +261,36 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             }
         }
 
-        return gemini_resp.candidates
+        let text = gemini_resp.candidates
             .and_then(|c| c.into_iter().next())
             .and_then(|c| c.content)
             .and_then(|c| c.parts)
             .and_then(|p| p.into_iter().next())
             .and_then(|p| p.text)
-            .ok_or_else(|| "Empty response".to_string());
+            .ok_or_else(|| "Empty response".to_string())?;
+
+        // ----- DEBUG LOGGING FOR AI AGENTS -----
+        let time_now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+        let debug_log = format!(
+            "========== AI DEBUG ( {} ) ==========\n⚙️ MODEL: {}\n\n📥 [PROMPT SENT TO AI]:\n{}\n\n📤 [RAW RESPONSE FROM AI]:\n{}\n======================================================\n\n",
+            time_now, model_name, prompt, text
+        );
+
+        // Async write to ai_prompt_debug.txt
+        let _ = tokio::fs::OpenOptions::new()
+            .create(true)
+            .append(true)
+            .open("ai_prompt_debug.txt")
+            .await
+            .map(|mut f| async move {
+                use tokio::io::AsyncWriteExt;
+                let _ = f.write_all(debug_log.as_bytes()).await;
+            });
+            
+        // Also log a quick snippet to the console
+        tracing::info!("🤖 [AI MODEL {}] Prompt len: {}, Response len: {}", model_name, prompt.len(), text.len());
+        
+        return Ok(text);
     }
 
     // If we exhausted all keys
