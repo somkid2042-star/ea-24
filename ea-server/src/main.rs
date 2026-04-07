@@ -627,7 +627,7 @@ async fn run_server() {
                                     raw_data[0] = format!("Pipeline triggered. Active agents: M1 Fast-Track. Current server time: {}", chrono::Utc::now());
                                     
                                     done_messages[1] = format!("Price: {:.5} | RSI: {:.1} | EMA9: {:.5}", price, ind.rsi_14, ind.ema_9);
-                                    raw_data[1] = format!("Latest Candle: O={:.5} H={:.5} L={:.5} C={:.5} Vol={}\nMath: RSI_14≈{:.2}, EMA9≈{:.5}, EMA21≈{:.5}, EMA50≈{:.5}\nBollinger: Up≈{:.5}, Dn≈{:.5}, FVG_Bull={}, FVG_Bear={}", last_c.open, last_c.high, last_c.low, price, last_c.tick_volume, ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50, ind.bb_upper, ind.bb_lower, ind.fair_value_gap_bull, ind.fair_value_gap_bear);
+                                    raw_data[1] = format!("Latest Candle: O={:.5} H={:.5} L={:.5} C={:.5}\nMath: RSI_14≈{:.2}, EMA9≈{:.5}, EMA21≈{:.5}, EMA50≈{:.5}\nBollinger: Up≈{:.5}, Dn≈{:.5}, FVG_Bull={}, FVG_Bear={}", last_c.open, last_c.high, last_c.low, price, ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50, ind.bb_upper, ind.bb_lower, ind.fair_value_gap_bull, ind.fair_value_gap_bear);
                                     
                                     done_messages[2] = format!("Volatility proxy OK.");
                                     let rsi_std = ind.rsi_14 - 50.0;
