@@ -418,6 +418,53 @@ async fn run_server() {
                         }
                         
                         info!("🤖 [Auto-Pilot] Checking {} for existing positions...", sym);
+
+                        // ═══════════════════════════════════════════════
+                        //  Feature 2: Pre-emptive News Avoidance
+                        // ═══════════════════════════════════════════════
+                        let news_warnings = ai_engine::check_upcoming_high_impact_news(&tx_ai).await;
+                        let sym_upper = sym.to_uppercase();
+                        let relevant_news: Vec<_> = news_warnings.iter().filter(|w| {
+                            let country = w.event_country.to_uppercase();
+                            match country.as_str() {
+                                "USD" => sym_upper.contains("USD") || sym_upper.contains("XAU") || sym_upper.contains("BTC"),
+                                "EUR" => sym_upper.contains("EUR"),
+                                "GBP" => sym_upper.contains("GBP"),
+                                "JPY" => sym_upper.contains("JPY"),
+                                "AUD" => sym_upper.contains("AUD"),
+                                "CAD" => sym_upper.contains("CAD"),
+                                "CHF" => sym_upper.contains("CHF"),
+                                _ => false,
+                            }
+                        }).collect();
+                        
+                        if !relevant_news.is_empty() {
+                            let event_name = &relevant_news[0].event_title;
+                            let mins = relevant_news[0].minutes_until;
+                            info!("📅 [News Avoidance] Skipping {} — {} in {} min", sym, event_name, mins);
+                            let skip_msg = serde_json::json!({
+                                "type": "news_avoidance",
+                                "symbol": sym,
+                                "event": event_name,
+                                "minutes_until": mins,
+                                "message": format!("📅 หยุดวิเคราะห์ {} — ข่าว {} ออกในอีก {} นาที", sym, event_name, mins)
+                            }).to_string();
+                            let _ = tx_ai.send(skip_msg);
+                            
+                            if telegram_alert {
+                                let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                    "📅 <b>News Avoidance</b>\n\n⚠️ หยุดวิเคราะห์ {}\n📰 {} ออกในอีก {} นาที\n🛑 ไม่เปิดออเดอร์ใหม่",
+                                    sym, event_name, mins
+                                )).await;
+                            }
+                            continue; // Skip this symbol entirely
+                        }
+
+                        // Read recovery threshold from config (default 3.0%)
+                        let recovery_threshold = db_ai.get_config("recovery_threshold").await
+                            .and_then(|v| v.parse::<f64>().ok()).unwrap_or(3.0);
                         
                         // Check if this symbol already has an open position
                         let sym_position = {
@@ -442,7 +489,85 @@ async fn run_server() {
                                 let state = ea_state_ai.read().await;
                                 if state.balance > 0.0 { state.balance } else { 10000.0 }
                             };
+
+                            // ═══════════════════════════════════════════════
+                            //  Feature 1: Check if Recovery Mode needed
+                            // ═══════════════════════════════════════════════
+                            let pos_pnl = pos["pnl"].as_f64().unwrap_or(0.0);
+                            let pnl_pct = if bal > 0.0 { (pos_pnl / bal).abs() * 100.0 } else { 0.0 };
                             
+                            if pos_pnl < 0.0 && pnl_pct >= recovery_threshold {
+                                info!("🚨 [Recovery] {} #{} drawdown {:.2}% >= threshold {:.1}%, entering Recovery Mode", 
+                                    sym, ticket, pnl_pct, recovery_threshold);
+                                
+                                let recovery = ai_engine::run_ai_recovery_manager(
+                                    &gemini_key, &gemini_model, &sym, &pos, &candles_m5, bal, recovery_threshold, &tx_ai
+                                ).await;
+                                
+                                let _ = tx_ai.send(serde_json::json!({
+                                    "type": "ai_recovery_result", "symbol": sym, "ticket": ticket, "result": recovery
+                                }).to_string());
+                                
+                                match recovery.action.as_str() {
+                                    "HEDGE" => {
+                                        let hedge_lot = recovery.hedge_lot.unwrap_or(0.01);
+                                        let hedge_dir = if pos["type"].as_str().unwrap_or("BUY") == "BUY" { "SELL" } else { "BUY" };
+                                        info!("🔀 [Recovery] HEDGING {} #{} → {} {:.2} lot", sym, ticket, hedge_dir, hedge_lot);
+                                        let cmd = serde_json::json!({
+                                            "action": "open_trade", "symbol": sym,
+                                            "direction": hedge_dir, "lot_size": hedge_lot,
+                                            "comment": format!("EA24-HEDGE-#{}", ticket)
+                                        }).to_string();
+                                        let _ = tx_ai.send(cmd);
+                                        if telegram_alert {
+                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                                "🔀 <b>AI Recovery: HEDGE</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
+                                                sym, ticket, hedge_dir, hedge_lot, recovery.reasoning
+                                            )).await;
+                                        }
+                                    }
+                                    "AVG_DOWN" => {
+                                        let avg_lot = recovery.avg_lot.unwrap_or(0.01);
+                                        let avg_dir = pos["type"].as_str().unwrap_or("BUY");
+                                        info!("📉 [Recovery] AVG_DOWN {} #{} → {} {:.2} lot", sym, ticket, avg_dir, avg_lot);
+                                        let cmd = serde_json::json!({
+                                            "action": "open_trade", "symbol": sym,
+                                            "direction": avg_dir, "lot_size": avg_lot,
+                                            "comment": format!("EA24-AVG-#{}", ticket)
+                                        }).to_string();
+                                        let _ = tx_ai.send(cmd);
+                                        if telegram_alert {
+                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                                "📉 <b>AI Recovery: ถัวเฉลี่ย</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
+                                                sym, ticket, avg_dir, avg_lot, recovery.reasoning
+                                            )).await;
+                                        }
+                                    }
+                                    "CUT" => {
+                                        info!("✂️ [Recovery] CUT LOSS {} #{}", sym, ticket);
+                                        let cmd = serde_json::json!({
+                                            "action": "close_trade", "ticket": ticket
+                                        }).to_string();
+                                        let _ = tx_ai.send(cmd);
+                                        if telegram_alert {
+                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                                "✂️ <b>AI Recovery: ตัดขาดทุน</b>\n\n📊 {} #{}\n💔 DD: {:.2}%\n📝 {}",
+                                                sym, ticket, pnl_pct, recovery.reasoning
+                                            )).await;
+                                        }
+                                    }
+                                    _ => {
+                                        info!("⏸️ [Recovery] HOLD {} #{} — {}", sym, ticket, recovery.reasoning);
+                                    }
+                                }
+                            } else {
+                            // Normal Order Management (not in recovery)
                             let manage_result = ai_engine::run_ai_order_manager(
                                 &gemini_key, &gemini_model, &sym, &pos, &candles_m5, bal, &tx_ai
                             ).await;
@@ -519,6 +644,7 @@ async fn run_server() {
                                     info!("⏸️ [Order Manager] HOLD {} #{} — {}", sym, ticket, manage_result.reasoning);
                                 }
                             }
+                            } // end recovery else (normal order management)
                         } else {
                             // ═══════════════════════════════════════════════
                             //  NORMAL ANALYSIS MODE — no open position, look for new trades
@@ -670,6 +796,96 @@ async fn run_server() {
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
         notify::start_telegram_bot_loop(tg_db, tg_tx, tg_ea_state).await;
+    });
+
+    // ═══════════════════════════════════════════════
+    //  Feature 3: Weekly AI Trade Journal (Friday 22:00 UTC)
+    // ═══════════════════════════════════════════════
+    let journal_db = database.clone();
+    let journal_tx = tx.clone();
+    let _journal_ea_state = ea_state.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(30)).await;
+        let mut last_journal_week: i32 = -1;
+        
+        loop {
+            use chrono::{Datelike, Timelike};
+            let now = chrono::Utc::now();
+            let weekday = now.weekday().num_days_from_monday(); // 0=Mon, 4=Fri
+            let hour = now.hour();
+            let iso_week = now.iso_week().week() as i32;
+            
+            // Run on Friday 22:00+ UTC (once per week)
+            if weekday == 4 && hour >= 22 && iso_week != last_journal_week {
+                last_journal_week = iso_week;
+                info!("📓 [Weekly Journal] Friday evening — generating weekly review...");
+                
+                let gemini_key = journal_db.get_config("gemini_api_key").await.unwrap_or_default();
+                let gemini_model = journal_db.get_config("gemini_model").await.unwrap_or_default();
+                
+                let trades = journal_db.get_weekly_trade_history(7).await;
+                let review = ai_engine::run_weekly_journal(
+                    &gemini_key, &gemini_model, &trades, &journal_tx
+                ).await;
+                
+                // Broadcast to dashboard
+                let _ = journal_tx.send(serde_json::json!({
+                    "type": "weekly_journal",
+                    "result": review
+                }).to_string());
+                
+                // Send to Telegram
+                let tg_token = journal_db.get_config("telegram_bot_token").await.unwrap_or_default();
+                let tg_chat = journal_db.get_config("telegram_chat_id").await.unwrap_or_default();
+                if !tg_token.is_empty() && !tg_chat.is_empty() {
+                    let msg = format!(
+                        "📓 <b>สรุปสัปดาห์โดย AI</b>\n\n\
+                        📊 เทรดทั้งหมด: {}\n\
+                        ✅ ชนะ: {} | ❌ แพ้: {}\n\
+                        🎯 Win Rate: {:.1}%\n\
+                        💰 กำไร/ขาดทุนรวม: ${:.2}\n\
+                        📈 Best: ${:.2} | 📉 Worst: ${:.2}\n\n\
+                        🧠 <b>วิเคราะห์:</b>\n{}\n\n\
+                        💡 <b>แนะนำ:</b>\n{}",
+                        review.total_trades, review.win_count, review.loss_count,
+                        review.win_rate, review.total_profit,
+                        review.best_trade, review.worst_trade,
+                        review.ai_analysis, review.recommendations
+                    );
+                    notify::send_telegram_notify(&tg_token, &tg_chat, &msg).await;
+                }
+                
+                info!("📓 [Weekly Journal] Review complete: {} trades, WR {:.0}%, P&L ${:.2}", 
+                    review.total_trades, review.win_rate, review.total_profit);
+            }
+            
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // Check every 5 min
+        }
+    });
+
+    // ═══════════════════════════════════════════════
+    //  Feature 4: Periodic Correlation Check (every 5 min)
+    // ═══════════════════════════════════════════════
+    let corr_tx = tx.clone();
+    let corr_ea_state = ea_state.clone();
+    tokio::spawn(async move {
+        tokio::time::sleep(tokio::time::Duration::from_secs(60)).await;
+        loop {
+            let positions = {
+                let state = corr_ea_state.read().await;
+                state.positions_detail.clone()
+            };
+            
+            if !positions.is_empty() {
+                let _result = ai_engine::run_correlation_check(
+                    &[], // no pending decisions in this periodic check
+                    &positions,
+                    &corr_tx,
+                );
+            }
+            
+            tokio::time::sleep(tokio::time::Duration::from_secs(300)).await; // Every 5 min
+        }
     });
 
     // Spawn Global AI loop (News & Calendar every 1 hour)

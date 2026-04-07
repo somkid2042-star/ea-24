@@ -657,6 +657,27 @@ impl Database {
         serde_json::Value::Array(Vec::new())
     }
 
+    /// Get trade history for the last N days (for weekly journal)
+    pub async fn get_weekly_trade_history(&self, days: i64) -> Vec<serde_json::Value> {
+        let query = format!(
+            "SELECT ticket, order_id, pos_id, symbol, type, volume, price, profit, swap, commission, magic, time, comment \
+             FROM trade_history WHERE time >= (NOW() - INTERVAL '{} days')::text ORDER BY time DESC",
+            days
+        );
+        if let Ok(rows) = sqlx::query_as::<_, (i64, i64, i64, String, String, f64, f64, f64, f64, f64, i64, String, String)>(&query)
+            .fetch_all(&self.pool).await
+        {
+            return rows.into_iter().map(|row| {
+                serde_json::json!({
+                    "ticket": row.0, "order": row.1, "pos_id": row.2, "symbol": row.3, "type": row.4,
+                    "volume": row.5, "price": row.6, "profit": row.7, "swap": row.8, "commission": row.9,
+                    "magic": row.10, "time": row.11, "comment": row.12
+                })
+            }).collect();
+        }
+        vec![]
+    }
+
     // ──────────────────────────────────────────
     //  Strategy Engine helpers
     // ──────────────────────────────────────────

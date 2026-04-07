@@ -1872,3 +1872,467 @@ REASONING: [brief Thai explanation]"#,
         }
     }
 }
+
+// ──────────────────────────────────────────────
+//  Feature 1: AI Recovery & Hedging Manager
+//  Handles losing positions with HEDGE/AVG/CUT
+// ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct RecoveryResult {
+    pub action: String,        // "HOLD", "HEDGE", "AVG_DOWN", "CUT"
+    pub hedge_lot: Option<f64>,
+    pub avg_lot: Option<f64>,
+    pub reasoning: String,
+    pub confidence: f64,
+}
+
+pub async fn run_ai_recovery_manager(
+    gemini_key: &str,
+    model: &str,
+    symbol: &str,
+    position: &serde_json::Value,
+    candles: &[crate::strategy::Candle],
+    balance: f64,
+    recovery_threshold: f64,  // e.g. 3.0 means -3%
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> RecoveryResult {
+    let ticket = position["ticket"].as_i64().unwrap_or(0);
+    let direction = position["type"].as_str().unwrap_or("BUY");
+    let entry_price = position["open_price"].as_f64().unwrap_or(0.0);
+    let current_price = position["current_price"].as_f64().unwrap_or(0.0);
+    let pnl = position["pnl"].as_f64().unwrap_or(0.0);
+    let lot = position["lot"].as_f64()
+        .or_else(|| position["volume"].as_f64())
+        .unwrap_or(0.01);
+    let current_sl = position["sl"].as_f64().unwrap_or(0.0);
+
+    let pnl_pct = if balance > 0.0 { (pnl / balance) * 100.0 } else { 0.0 };
+
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": symbol, "agent": "recovery_manager", "status": "running",
+        "message": format!("🚨 AI Recovery: {} #{} ขาดทุน {:.2}% (${:.2})", symbol, ticket, pnl_pct, pnl)
+    }).to_string());
+
+    let candle_summary = if candles.len() >= 5 {
+        let recent = &candles[candles.len()-5..];
+        let high = recent.iter().map(|c| c.high).fold(f64::NEG_INFINITY, f64::max);
+        let low = recent.iter().map(|c| c.low).fold(f64::INFINITY, f64::min);
+        let trend = if recent.last().unwrap().close > recent.first().unwrap().close { "REVERSAL_UP" } else { "CONTINUING_DOWN" };
+        format!("Last 5 candles: High={:.5}, Low={:.5}, Trend={}", high, low, trend)
+    } else {
+        "No data".to_string()
+    };
+
+    let prompt = format!(
+r#"You are a crisis management AI for trading. A position is losing badly and needs intervention.
+
+## Losing Position
+- Symbol: {symbol}
+- Direction: {direction}
+- Entry: {entry_price:.5}
+- Current: {current_price:.5}
+- P&L: ${pnl:.2} ({pnl_pct:.2}% of ${balance:.0})
+- Lot: {lot:.2}
+- SL: {current_sl:.5}
+- Recovery Threshold: -{recovery_threshold:.1}%
+
+## Market Context
+{candle_summary}
+
+## Recovery Options
+1. HOLD — ถ้าเห็นว่ากลับทิศมาได้ ยังไม่ถึงจุด panic
+2. HEDGE — เปิดสวนทิศทาง (50% ของ lot) เพื่อล็อคขาดทุน → ระบุ hedge_lot
+3. AVG_DOWN — ถัวเฉลี่ย (เปิดตามทิศเดิมอีก 50% lot) → ระบุ avg_lot
+4. CUT — ปิดตัดขาดทุนทันที ถ้าสถานการณ์แย่มาก
+
+## Response Format
+ACTION: [HOLD/HEDGE/AVG_DOWN/CUT]
+LOT: [lot size for hedge/avg or 0]
+CONFIDENCE: [0-100]
+REASONING: [brief Thai explanation]"#);
+
+    match call_gemini(gemini_key, model, &prompt, 0.2, 300, false).await {
+        Ok(response) => {
+            let mut action = "HOLD".to_string();
+            let mut extra_lot = None;
+            let mut confidence = 50.0;
+            let mut reasoning = String::new();
+
+            for line in response.lines() {
+                let l = line.trim();
+                if l.starts_with("ACTION:") {
+                    let v = l.replace("ACTION:", "").trim().to_uppercase();
+                    if v.contains("HEDGE") { action = "HEDGE".into(); }
+                    else if v.contains("AVG") { action = "AVG_DOWN".into(); }
+                    else if v.contains("CUT") { action = "CUT".into(); }
+                }
+                if l.starts_with("LOT:") {
+                    let v: String = l.replace("LOT:", "").trim().chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                    let lv = v.parse::<f64>().unwrap_or(0.0);
+                    if lv > 0.0 { extra_lot = Some(lv); }
+                }
+                if l.starts_with("CONFIDENCE:") {
+                    let v: String = l.replace("CONFIDENCE:", "").trim().chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                    confidence = v.parse().unwrap_or(50.0);
+                }
+                if l.starts_with("REASONING:") {
+                    reasoning = l.replace("REASONING:", "").trim().to_string();
+                }
+            }
+            if reasoning.is_empty() { reasoning = response.chars().take(200).collect(); }
+
+            // Default lot for hedge/avg if AI didn't specify
+            if extra_lot.is_none() && (action == "HEDGE" || action == "AVG_DOWN") {
+                extra_lot = Some((lot * 0.5 * 100.0).round() / 100.0); // 50% of original, rounded to 2dp
+            }
+
+            let emoji = match action.as_str() {
+                "HOLD" => "⏸️", "HEDGE" => "🔀", "AVG_DOWN" => "📉", "CUT" => "✂️", _ => "❓"
+            };
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "recovery_manager", "status": "done",
+                "message": format!("{} Recovery: {} (conf: {:.0}%) — {}", emoji, action, confidence, reasoning)
+            }).to_string());
+
+            RecoveryResult {
+                action,
+                hedge_lot: if extra_lot.is_some() { extra_lot } else { None },
+                avg_lot: extra_lot,
+                reasoning,
+                confidence,
+            }
+        }
+        Err(e) => {
+            let msg = format!("❌ Recovery Manager error: {}", e);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "recovery_manager", "status": "error",
+                "message": &msg
+            }).to_string());
+            RecoveryResult { action: "HOLD".into(), hedge_lot: None, avg_lot: None, reasoning: msg, confidence: 0.0 }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+//  Feature 2: Pre-emptive News Avoidance
+//  Check if high-impact news is coming soon
+// ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct NewsAvoidanceResult {
+    pub should_avoid: bool,
+    pub minutes_until: i64,
+    pub event_title: String,
+    pub event_country: String,
+}
+
+pub async fn check_upcoming_high_impact_news(
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> Vec<NewsAvoidanceResult> {
+    let client = match reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(10))
+        .build() {
+        Ok(c) => c,
+        Err(_) => return vec![],
+    };
+
+    let resp = match client.get(FOREX_CALENDAR_URL).send().await {
+        Ok(r) => r,
+        Err(e) => {
+            warn!("📅 News avoidance: fetch failed: {}", e);
+            return vec![];
+        }
+    };
+
+    let events: Vec<ForexCalendarEvent> = match resp.json().await {
+        Ok(e) => e,
+        Err(_) => return vec![],
+    };
+
+    let now = chrono::Utc::now();
+    let mut warnings = vec![];
+
+    for event in &events {
+        // Only high impact
+        let is_high = event.impact.as_ref().map(|i| i == "High").unwrap_or(false);
+        if !is_high { continue; }
+
+        // Parse event time
+        let event_time = event.date.as_ref().and_then(|d| {
+            chrono::NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S%z")
+                .or_else(|_| chrono::NaiveDateTime::parse_from_str(d, "%Y-%m-%dT%H:%M:%S"))
+                .ok()
+                .map(|dt| dt.and_utc())
+        });
+
+        if let Some(event_dt) = event_time {
+            let diff_minutes = (event_dt - now).num_minutes();
+            // Warning: 0 to 30 minutes from now
+            if diff_minutes >= 0 && diff_minutes <= 30 {
+                let title = event.title.clone().unwrap_or("Unknown".into());
+                let country = event.country.clone().unwrap_or("?".into());
+                warnings.push(NewsAvoidanceResult {
+                    should_avoid: true,
+                    minutes_until: diff_minutes,
+                    event_title: title.clone(),
+                    event_country: country.clone(),
+                });
+                info!("📅 [News Avoidance] ⚠️ {} ({}) in {} minutes!", title, country, diff_minutes);
+            }
+        }
+    }
+
+    if !warnings.is_empty() {
+        let titles: Vec<String> = warnings.iter().map(|w| format!("{} ({})", w.event_title, w.event_country)).collect();
+        let _ = log_tx.send(serde_json::json!({
+            "type": "news_avoidance",
+            "events": titles,
+            "message": format!("⚠️ ข่าวสำคัญ {} รายการ ใน 30 นาที: {}", warnings.len(), titles.join(", "))
+        }).to_string());
+    }
+
+    warnings
+}
+
+// ──────────────────────────────────────────────
+//  Feature 3: Weekly AI Trade Journal & Reviewer
+// ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct WeeklyReview {
+    pub total_trades: usize,
+    pub win_count: usize,
+    pub loss_count: usize,
+    pub total_profit: f64,
+    pub win_rate: f64,
+    pub best_trade: f64,
+    pub worst_trade: f64,
+    pub ai_analysis: String,
+    pub recommendations: String,
+}
+
+pub async fn run_weekly_journal(
+    gemini_key: &str,
+    model: &str,
+    trades: &[serde_json::Value],
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> WeeklyReview {
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": "ALL", "agent": "weekly_journal", "status": "running",
+        "message": "📓 กำลังสร้างรายงานสรุปสัปดาห์..."
+    }).to_string());
+
+    let mut total_profit = 0.0;
+    let mut win_count = 0usize;
+    let mut loss_count = 0usize;
+    let mut best_trade = f64::NEG_INFINITY;
+    let mut worst_trade = f64::INFINITY;
+    let mut trade_details = Vec::new();
+
+    for t in trades {
+        let profit = t["profit"].as_f64().unwrap_or(0.0);
+        let swap = t["swap"].as_f64().unwrap_or(0.0);
+        let comm = t["commission"].as_f64().unwrap_or(0.0);
+        let net = profit + swap + comm;
+        let symbol = t["symbol"].as_str().unwrap_or("?");
+        let deal_type = t["type"].as_str().unwrap_or("?");
+        let volume = t["volume"].as_f64().unwrap_or(0.0);
+
+        // Skip balance/deposit type deals
+        if deal_type == "DEAL_TYPE_BALANCE" || deal_type == "balance" || symbol.is_empty() { continue; }
+
+        total_profit += net;
+        if net >= 0.0 { win_count += 1; } else { loss_count += 1; }
+        if net > best_trade { best_trade = net; }
+        if net < worst_trade { worst_trade = net; }
+        trade_details.push(format!("{} {} {:.2}lot → ${:.2}", symbol, deal_type, volume, net));
+    }
+
+    let total_trades = win_count + loss_count;
+    let win_rate = if total_trades > 0 { (win_count as f64 / total_trades as f64) * 100.0 } else { 0.0 };
+    if best_trade == f64::NEG_INFINITY { best_trade = 0.0; }
+    if worst_trade == f64::INFINITY { worst_trade = 0.0; }
+
+    // Build summary for AI
+    let trade_list = if trade_details.len() > 20 {
+        trade_details[..20].join("\n")
+    } else {
+        trade_details.join("\n")
+    };
+
+    let prompt = format!(
+r#"You are a professional fund manager reviewing the past week's trading performance.
+Always respond in Thai language.
+
+## Weekly Performance Summary
+- Total Trades: {total_trades}
+- Win/Loss: {win_count}/{loss_count}
+- Win Rate: {win_rate:.1}%
+- Total P&L: ${total_profit:.2}
+- Best Trade: ${best_trade:.2}
+- Worst Trade: ${worst_trade:.2}
+
+## Trade Details
+{trade_list}
+
+## Instructions
+1. วิเคราะห์ผลงานสัปดาห์นี้ — อะไรดี อะไรพลาด
+2. ระบุรูปแบบ (pattern) ที่เห็น เช่น ชนะบ่อยใน symbol ไหน แพ้บ่อยช่วงไหน
+3. แนะนำการปรับปรุงสำหรับสัปดาห์หน้า (ควรเพิ่ม/ลด confidence threshold? เปลี่ยน lot size?)
+
+Respond:
+ANALYSIS: [สรุปวิเคราะห์]
+RECOMMENDATIONS: [แนะนำปรับปรุง]"#);
+
+    let (ai_analysis, recommendations) = if !gemini_key.is_empty() && total_trades > 0 {
+        match call_gemini(gemini_key, model, &prompt, 0.5, 800, false).await {
+            Ok(response) => {
+                let mut analysis = String::new();
+                let mut recs = String::new();
+                let mut current_section = "";
+                for line in response.lines() {
+                    let l = line.trim();
+                    if l.starts_with("ANALYSIS:") {
+                        current_section = "analysis";
+                        analysis = l.replace("ANALYSIS:", "").trim().to_string();
+                    } else if l.starts_with("RECOMMENDATIONS:") {
+                        current_section = "recs";
+                        recs = l.replace("RECOMMENDATIONS:", "").trim().to_string();
+                    } else if !l.is_empty() {
+                        match current_section {
+                            "analysis" => { analysis.push(' '); analysis.push_str(l); }
+                            "recs" => { recs.push(' '); recs.push_str(l); }
+                            _ => {}
+                        }
+                    }
+                }
+                if analysis.is_empty() { analysis = response.chars().take(400).collect(); }
+                (analysis, recs)
+            }
+            Err(e) => (format!("AI Error: {}", e), String::new()),
+        }
+    } else {
+        ("ไม่มีเทรดในสัปดาห์นี้".to_string(), String::new())
+    };
+
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": "ALL", "agent": "weekly_journal", "status": "done",
+        "message": format!("📓 สรุป: {} trades, WR {:.0}%, P&L ${:.2}", total_trades, win_rate, total_profit)
+    }).to_string());
+
+    WeeklyReview {
+        total_trades, win_count, loss_count,
+        total_profit, win_rate, best_trade, worst_trade,
+        ai_analysis, recommendations,
+    }
+}
+
+// ──────────────────────────────────────────────
+//  Feature 4: Multi-Asset Correlation Agent
+//  Detect over-exposure across currency pairs
+// ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct CorrelationResult {
+    pub currency_exposure: std::collections::HashMap<String, f64>,
+    pub warnings: Vec<String>,
+    pub max_exposure_currency: String,
+    pub max_exposure_value: f64,
+    pub should_reduce: bool,
+}
+
+pub fn run_correlation_check(
+    pending_decisions: &[(String, String, f64)], // (symbol, direction, lot)
+    existing_positions: &[serde_json::Value],
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> CorrelationResult {
+    let mut exposure: std::collections::HashMap<String, f64> = std::collections::HashMap::new();
+
+    // Helper: extract currencies from symbol
+    let extract_currencies = |sym: &str| -> (String, String) {
+        let s = sym.to_uppercase().replace(".", "");
+        if s.len() >= 6 {
+            (s[..3].to_string(), s[3..6].to_string())
+        } else {
+            // Handle XAU, BTC etc
+            if s.contains("XAU") || s.contains("GOLD") { return ("XAU".into(), "USD".into()); }
+            if s.contains("BTC") { return ("BTC".into(), "USD".into()); }
+            if s.contains("ETH") { return ("ETH".into(), "USD".into()); }
+            (s.clone(), "USD".into())
+        }
+    };
+
+    // Process existing positions
+    for pos in existing_positions {
+        let sym = pos["symbol"].as_str().unwrap_or("");
+        let dir = pos["type"].as_str().unwrap_or("BUY");
+        let lot = pos["lot"].as_f64()
+            .or_else(|| pos["volume"].as_f64())
+            .unwrap_or(0.01);
+
+        let (base, quote) = extract_currencies(sym);
+        if dir == "BUY" {
+            *exposure.entry(base.clone()).or_insert(0.0) += lot;
+            *exposure.entry(quote.clone()).or_insert(0.0) -= lot;
+        } else {
+            *exposure.entry(base.clone()).or_insert(0.0) -= lot;
+            *exposure.entry(quote.clone()).or_insert(0.0) += lot;
+        }
+    }
+
+    // Process pending decisions
+    for (sym, dir, lot) in pending_decisions {
+        let (base, quote) = extract_currencies(sym);
+        if dir == "BUY" {
+            *exposure.entry(base.clone()).or_insert(0.0) += lot;
+            *exposure.entry(quote.clone()).or_insert(0.0) -= lot;
+        } else {
+            *exposure.entry(base.clone()).or_insert(0.0) -= lot;
+            *exposure.entry(quote.clone()).or_insert(0.0) += lot;
+        }
+    }
+
+    // Check for over-exposure (> 2x in any currency)
+    let mut warnings = Vec::new();
+    let mut max_currency = String::new();
+    let mut max_exposure = 0.0f64;
+
+    for (currency, exp) in &exposure {
+        let abs_exp = exp.abs();
+        if abs_exp > max_exposure {
+            max_exposure = abs_exp;
+            max_currency = currency.clone();
+        }
+        if abs_exp > 0.02 { // More than 0.02 lot exposure in single currency
+            let direction = if *exp > 0.0 { "Long" } else { "Short" };
+            warnings.push(format!("⚠️ {} {} {:.2} lot — Over-exposure!", currency, direction, abs_exp));
+        }
+    }
+
+    let should_reduce = !warnings.is_empty();
+
+    if !warnings.is_empty() {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "correlation_warning",
+            "warnings": warnings,
+            "exposure": exposure,
+            "message": format!("🔗 Correlation Alert: {} warnings detected", warnings.len())
+        }).to_string());
+    } else {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": "ALL", "agent": "correlation", "status": "done",
+            "message": "🔗 ✅ ไม่มี Over-exposure — สมดุลดี"
+        }).to_string());
+    }
+
+    CorrelationResult {
+        currency_exposure: exposure,
+        warnings,
+        max_exposure_currency: max_currency,
+        max_exposure_value: max_exposure,
+        should_reduce,
+    }
+}
