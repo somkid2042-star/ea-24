@@ -268,7 +268,7 @@ const DashboardAi = () => {
           };
           setVerboseLogsBySymbol(prev => ({
              ...prev,
-             [sym]: [...(prev[sym] || []), newLog].slice(-20) // keep last 20 verbose logs per symbol to prevent memory issues
+             [sym]: [...(prev[sym] || []), newLog].slice(-500) // keep last 500 verbose logs per symbol
           }));
         }
       } catch (_e) {}

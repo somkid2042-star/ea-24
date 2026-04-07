@@ -604,6 +604,10 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
             
             info!("{} Sentiment: {} — {}", agent, sentiment, summary);
             let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": symbol, "agent": "news_hunter",
+                "prompt": prompt.clone(), "response": response.clone()
+            }).to_string());
+            let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "news_hunter", "status": "done",
                 "message": format!("✅ Sentiment: {} — {}", sentiment, summary)
             }).to_string());
@@ -739,16 +743,16 @@ RECOMMENDATION: [BUY/SELL/HOLD]
 CONFIDENCE: [0-100]
 REASONING: [1-2 sentence summary in Thai language]
 STRATEGIES:
-1. Trend: [X]%
-2. BB: [X]%
-3. RSI: [X]%
-4. OB: [X]%
-5. FVG: [X]%
-6. HVN: [X]%
-7. Breakout: [X]%
-8. S/D: [X]%
-9. Candle: [X]%
-10. Structure: [X]%"#, 
+1. Trend: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+2. BB: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+3. RSI: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+4. OB: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+5. FVG: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+6. HVN: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+7. Breakout: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+8. S/D: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+9. Candle: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]
+10. Structure: [X]% (BUY/SELL/HOLD) - [เหตุผลสั้นๆ 1 ประโยคภาษาไทย]"#, 
         recent.len(),
         symbol=symbol, timeframe=timeframe, price=price, trend=trend,
         rsi=ind.rsi_14, ema9=ind.ema_9, ema21=ind.ema_21, ema50=ind.ema_50,
@@ -798,6 +802,10 @@ STRATEGIES:
             };
             
             info!("{} {} — confidence {:.0}%", agent, rec, conf);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": symbol, "agent": "chart_analyst",
+                "prompt": prompt.clone(), "response": response.clone()
+            }).to_string());
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "chart_analyst", "status": "done",
                 "message": full_message
@@ -945,6 +953,10 @@ pub async fn fetch_macro_indicators(
     match call_gemini(gemini_key, model, &prompt, 0.2, 500, true).await {
         Ok(res) => {
             let clean_json = res.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": "Macro", "agent": "calendar_macro",
+                "prompt": prompt.clone(), "response": res.clone()
+            }).to_string());
             match serde_json::from_str::<MacroResult>(clean_json) {
                 Ok(macro_data) => {
                     let _ = log_tx.send(serde_json::json!({
