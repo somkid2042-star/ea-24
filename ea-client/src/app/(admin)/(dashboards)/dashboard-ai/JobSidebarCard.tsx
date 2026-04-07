@@ -2,14 +2,12 @@ import { LuActivity, LuPencil } from 'react-icons/lu';
 
 const translateObj = { "BUY": "ซื้อ (BUY)", "SELL": "ขาย (SELL)", "HOLD": "รอดูท่าที (HOLD)" };
 
-export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, lastRunTime, agentStatusM1Map }: any) => {
+export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result }: any) => {
 
     const decisionObj = result?.final_decision;
     const finalDecision = decisionObj && (translateObj as any)[decisionObj.toUpperCase()] 
                           ? (translateObj as any)[decisionObj.toUpperCase()] 
                           : decisionObj || 'AWAITING PROCESSING';
-
-    const isRunning = agentStatusM1Map?.orchestrator === 'running';
 
     return (
         <div 
