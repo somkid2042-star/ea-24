@@ -1691,3 +1691,182 @@ pub fn available_models() -> Vec<(&'static str, &'static str)> {
         ("gemma-3-4b-it", "Gemma 3 4B (โมเดลเปิด)"),
     ]
 }
+
+// ──────────────────────────────────────────────
+//  AI Order Manager: Manage existing positions
+// ──────────────────────────────────────────────
+
+#[derive(Debug, Clone, Serialize)]
+pub struct OrderManageResult {
+    pub action: String,        // "HOLD", "BREAK_EVEN", "TRAIL", "PARTIAL_CLOSE", "CLOSE"
+    pub new_sl: Option<f64>,
+    pub trail_distance: Option<f64>,
+    pub close_percent: Option<f64>,  // 50.0 for half, 100.0 for full
+    pub reasoning: String,
+    pub confidence: f64,
+}
+
+pub async fn run_ai_order_manager(
+    gemini_key: &str,
+    model: &str,
+    symbol: &str,
+    position: &serde_json::Value,
+    candles: &[crate::strategy::Candle],
+    balance: f64,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> OrderManageResult {
+    let ticket = position["ticket"].as_i64().unwrap_or(0);
+    let direction = position["type"].as_str().unwrap_or("BUY");
+    let entry_price = position["open_price"].as_f64().unwrap_or(0.0);
+    let current_price = position["current_price"].as_f64().unwrap_or(0.0);
+    let pnl = position["pnl"].as_f64().unwrap_or(0.0);
+    let lot = position["lot"].as_f64()
+        .or_else(|| position["volume"].as_f64())
+        .unwrap_or(0.01);
+    let current_sl = position["sl"].as_f64().unwrap_or(0.0);
+    let current_tp = position["tp"].as_f64().unwrap_or(0.0);
+
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": symbol, "agent": "order_manager", "status": "running",
+        "message": format!("🛡️ AI ดูแลออเดอร์ {} #{} ({} {:.2} lot, P&L: {:.2}$)", symbol, ticket, direction, lot, pnl)
+    }).to_string());
+
+    // Build candle summary for AI context
+    let candle_summary = if candles.len() >= 5 {
+        let recent = &candles[candles.len()-5..];
+        let high = recent.iter().map(|c| c.high).fold(f64::NEG_INFINITY, f64::max);
+        let low = recent.iter().map(|c| c.low).fold(f64::INFINITY, f64::min);
+        let trend = if recent.last().unwrap().close > recent.first().unwrap().close { "UPTREND" } else { "DOWNTREND" };
+        format!("Last 5 candles: High={:.5}, Low={:.5}, Trend={}", high, low, trend)
+    } else {
+        "No candle data available".to_string()
+    };
+
+    let pnl_pct = if balance > 0.0 { (pnl / balance) * 100.0 } else { 0.0 };
+    let pips_from_entry = if direction == "BUY" { 
+        current_price - entry_price 
+    } else { 
+        entry_price - current_price 
+    };
+
+    let prompt = format!(
+r#"You are an AI trade manager. You are managing an EXISTING open position. Analyze and decide what to do.
+
+## Current Position
+- Symbol: {symbol}
+- Direction: {direction}
+- Entry Price: {entry_price:.5}
+- Current Price: {current_price:.5}
+- P&L: ${pnl:.2} ({pnl_pct:.2}% of balance)
+- Lot Size: {lot:.2}
+- Current SL: {current_sl:.5}
+- Current TP: {current_tp:.5}
+- Pips from entry: {pips:.1}
+
+## Market Context
+{candle_summary}
+
+## Rules
+1. HOLD — ถ้ายังไม่ถึงจุดที่ต้องทำอะไร คงสถานะเดิม
+2. BREAK_EVEN — ถ้ากำไร ≥ 15 pips → เลื่อน SL มาที่ entry price
+3. TRAIL — ถ้ากำไรดี → เลื่อน SL ตามราคา (ระบุ new_sl)
+4. PARTIAL_CLOSE — ถ้ากำไร ≥ 30 pips → ปิด 50% ล็อคกำไรบางส่วน
+5. CLOSE — ถ้าตลาดกลับทิศแรง หรือถึงเป้าหมายแล้ว → ปิดทั้งหมด
+
+## Response Format (MUST follow exactly)
+ACTION: [HOLD/BREAK_EVEN/TRAIL/PARTIAL_CLOSE/CLOSE]
+NEW_SL: [price or 0]
+CONFIDENCE: [0-100]
+REASONING: [brief Thai explanation]"#,
+        pips = pips_from_entry * 10000.0 // approximate pips
+    );
+
+    match call_gemini(gemini_key, model, &prompt, 0.2, 300, false).await {
+        Ok(response) => {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": symbol, "agent": "order_manager",
+                "prompt": prompt, "response": response
+            }).to_string());
+
+            let mut action = "HOLD".to_string();
+            let mut new_sl = None;
+            let mut confidence = 50.0;
+            let mut reasoning = String::new();
+
+            for line in response.lines() {
+                let l = line.trim();
+                if l.starts_with("ACTION:") {
+                    let v = l.replace("ACTION:", "").trim().to_uppercase();
+                    if v.contains("BREAK_EVEN") { action = "BREAK_EVEN".into(); }
+                    else if v.contains("TRAIL") { action = "TRAIL".into(); }
+                    else if v.contains("PARTIAL_CLOSE") { action = "PARTIAL_CLOSE".into(); }
+                    else if v.contains("CLOSE") && !v.contains("PARTIAL") { action = "CLOSE".into(); }
+                }
+                if l.starts_with("NEW_SL:") {
+                    let v: String = l.replace("NEW_SL:", "").trim().chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                    let sl_val = v.parse::<f64>().unwrap_or(0.0);
+                    if sl_val > 0.0 { new_sl = Some(sl_val); }
+                }
+                if l.starts_with("CONFIDENCE:") {
+                    let v: String = l.replace("CONFIDENCE:", "").trim().chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                    confidence = v.parse().unwrap_or(50.0);
+                }
+                if l.starts_with("REASONING:") {
+                    reasoning = l.replace("REASONING:", "").trim().to_string();
+                }
+            }
+            if reasoning.is_empty() { reasoning = response.chars().take(200).collect(); }
+
+            // For BREAK_EVEN, auto-set SL to entry price
+            if action == "BREAK_EVEN" && new_sl.is_none() {
+                new_sl = Some(entry_price);
+            }
+
+            let action_emoji = match action.as_str() {
+                "HOLD" => "⏸️",
+                "BREAK_EVEN" => "🔒",
+                "TRAIL" => "📈",
+                "PARTIAL_CLOSE" => "✂️",
+                "CLOSE" => "🔴",
+                _ => "❓",
+            };
+
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "order_manager", "status": "done",
+                "message": format!("{} ตัดสินใจ: {} (conf: {:.0}%) — {}", action_emoji, action, confidence, reasoning)
+            }).to_string());
+
+            let close_pct = match action.as_str() {
+                "PARTIAL_CLOSE" => Some(50.0),
+                "CLOSE" => Some(100.0),
+                _ => None,
+            };
+
+            OrderManageResult {
+                action,
+                new_sl,
+                trail_distance: None,
+                close_percent: close_pct,
+                reasoning,
+                confidence,
+            }
+        }
+        Err(e) => {
+            let msg = format!("❌ AI Order Manager error: {}", e);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "order_manager", "status": "error",
+                "message": &msg
+            }).to_string());
+            OrderManageResult {
+                action: "HOLD".to_string(),
+                new_sl: None,
+                trail_distance: None,
+                close_percent: None,
+                reasoning: msg,
+                confidence: 0.0,
+            }
+        }
+    }
+}

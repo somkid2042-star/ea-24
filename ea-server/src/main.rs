@@ -109,6 +109,8 @@ struct EaState {
     balance: f64,
     equity: f64,
     open_positions: usize,
+    /// Detailed position info from MT5 (updated via account_data)
+    positions_detail: Vec<serde_json::Value>,
 }
 
 #[derive(Debug, Clone, Serialize)]
@@ -267,6 +269,7 @@ async fn run_server() {
         balance: 0.0,
         equity: 0.0,
         open_positions: 0,
+        positions_detail: vec![],
     }));
 
     let mut initial_news = None;
@@ -414,6 +417,112 @@ async fn run_server() {
                             // continue; // Temporarily removed for weekend testing!
                         }
                         
+                        info!("🤖 [Auto-Pilot] Checking {} for existing positions...", sym);
+                        
+                        // Check if this symbol already has an open position
+                        let sym_position = {
+                            let state = ea_state_ai.read().await;
+                            state.positions_detail.iter()
+                                .find(|p| p["symbol"].as_str().unwrap_or("") == sym)
+                                .cloned()
+                        };
+                        
+                        if let Some(pos) = sym_position {
+                            // ═══════════════════════════════════════════════
+                            //  AI ORDER MANAGEMENT MODE — manage existing position
+                            // ═══════════════════════════════════════════════
+                            let ticket = pos["ticket"].as_i64().unwrap_or(0);
+                            info!("🛡️ [Auto-Pilot] {} has open position #{}, switching to AI Order Manager", sym, ticket);
+                            
+                            let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
+                            let _ = tx_ai.send(start_msg);
+                            
+                            let candles_m5 = db_ai.get_candles_for_strategy(&sym, 5, 20).await;
+                            let bal = {
+                                let state = ea_state_ai.read().await;
+                                if state.balance > 0.0 { state.balance } else { 10000.0 }
+                            };
+                            
+                            let manage_result = ai_engine::run_ai_order_manager(
+                                &gemini_key, &gemini_model, &sym, &pos, &candles_m5, bal, &tx_ai
+                            ).await;
+                            
+                            // Broadcast result
+                            let resp = serde_json::json!({
+                                "type": "order_manage_result",
+                                "symbol": sym,
+                                "ticket": ticket,
+                                "result": manage_result
+                            });
+                            let _ = tx_ai.send(resp.to_string());
+                            
+                            // Execute the AI decision
+                            match manage_result.action.as_str() {
+                                "BREAK_EVEN" | "TRAIL" => {
+                                    if let Some(new_sl) = manage_result.new_sl {
+                                        info!("🔒 [Order Manager] Moving SL to {:.5} for {} #{}", new_sl, sym, ticket);
+                                        let cmd = serde_json::json!({
+                                            "action": "modify_sl",
+                                            "ticket": ticket,
+                                            "new_sl": new_sl
+                                        }).to_string();
+                                        let _ = tx_ai.send(cmd);
+                                        
+                                        if telegram_alert {
+                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            let emoji = if manage_result.action == "BREAK_EVEN" { "🔒" } else { "📈" };
+                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                                "{} <b>AI Order Manager</b>\n\n📊 {} #{}\n🎯 {} → SL เลื่อนไป {:.5}\n📝 {}",
+                                                emoji, sym, ticket, manage_result.action, new_sl, manage_result.reasoning
+                                            )).await;
+                                        }
+                                    }
+                                }
+                                "CLOSE" => {
+                                    info!("🔴 [Order Manager] CLOSING {} #{}", sym, ticket);
+                                    let cmd = serde_json::json!({
+                                        "action": "close_trade",
+                                        "ticket": ticket
+                                    }).to_string();
+                                    let _ = tx_ai.send(cmd);
+                                    
+                                    if telegram_alert {
+                                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                            "🔴 <b>AI ปิดออเดอร์</b>\n\n📊 {} #{}\n📝 {}",
+                                            sym, ticket, manage_result.reasoning
+                                        )).await;
+                                    }
+                                }
+                                "PARTIAL_CLOSE" => {
+                                    info!("✂️ [Order Manager] Partial close 50% {} #{}", sym, ticket);
+                                    let cmd = serde_json::json!({
+                                        "action": "partial_close",
+                                        "ticket": ticket,
+                                        "percent": 50.0
+                                    }).to_string();
+                                    let _ = tx_ai.send(cmd);
+                                    
+                                    if telegram_alert {
+                                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                            "✂️ <b>AI ปิดบางส่วน 50%</b>\n\n📊 {} #{}\n📝 {}",
+                                            sym, ticket, manage_result.reasoning
+                                        )).await;
+                                    }
+                                }
+                                _ => {
+                                    // HOLD — do nothing
+                                    info!("⏸️ [Order Manager] HOLD {} #{} — {}", sym, ticket, manage_result.reasoning);
+                                }
+                            }
+                        } else {
+                            // ═══════════════════════════════════════════════
+                            //  NORMAL ANALYSIS MODE — no open position, look for new trades
+                            // ═══════════════════════════════════════════════
                         info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
                         
                         let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
@@ -543,8 +652,10 @@ async fn run_server() {
                             }
                             }
                         }
-                    }
-                }
+                    } // end else (normal analysis mode)
+                    } // end if should_run
+                } // end for job
+                
             } else {
                  last_runs.clear();
             }
@@ -1084,6 +1195,7 @@ async fn handle_mt5_connection(
                                                 st.balance = balance;
                                                 st.equity = equity;
                                                 st.open_positions = positions.len();
+                                                st.positions_detail = positions.clone();
                                             }
 
                                             for p in positions {
