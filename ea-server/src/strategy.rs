@@ -77,6 +77,79 @@ pub enum Signal {
     None,
 }
 
+/// Strategy evaluation result with confidence score
+#[derive(Debug, Clone)]
+pub struct StrategyResult {
+    pub signal: Signal,
+    pub reason: String,
+    pub confidence: f64,         // 0-100
+    pub indicator_summary: String, // compact summary for AI
+    pub suggested_sl_atr: f64,   // SL in price distance (1.5 × ATR)
+    pub suggested_tp_atr: f64,   // TP in price distance (2.0 × ATR)
+}
+
+impl StrategyResult {
+    fn none() -> Self {
+        Self {
+            signal: Signal::None,
+            reason: String::new(),
+            confidence: 0.0,
+            indicator_summary: String::new(),
+            suggested_sl_atr: 0.0,
+            suggested_tp_atr: 0.0,
+        }
+    }
+
+    fn buy(reason: String, confidence: f64, ind: &Indicators) -> Self {
+        Self {
+            signal: Signal::Buy,
+            reason,
+            confidence,
+            indicator_summary: generate_indicator_summary(ind),
+            suggested_sl_atr: ind.atr * 1.5,
+            suggested_tp_atr: ind.atr * 2.5,
+        }
+    }
+
+    fn sell(reason: String, confidence: f64, ind: &Indicators) -> Self {
+        Self {
+            signal: Signal::Sell,
+            reason,
+            confidence,
+            indicator_summary: generate_indicator_summary(ind),
+            suggested_sl_atr: ind.atr * 1.5,
+            suggested_tp_atr: ind.atr * 2.5,
+        }
+    }
+}
+
+/// Generate compact indicator summary for AI context
+fn generate_indicator_summary(ind: &Indicators) -> String {
+    let trend = if ind.ema_9 > ind.ema_21 && ind.ema_21 > ind.ema_50 {
+        "BULL_STACK"
+    } else if ind.ema_9 < ind.ema_21 && ind.ema_21 < ind.ema_50 {
+        "BEAR_STACK"
+    } else if ind.ema_9 > ind.ema_21 {
+        "MILD_BULL"
+    } else {
+        "MILD_BEAR"
+    };
+
+    let bb_pos = if ind.bb_upper > ind.bb_lower {
+        ((ind.current_close - ind.bb_lower) / (ind.bb_upper - ind.bb_lower) * 100.0) as i32
+    } else { 50 };
+
+    format!(
+        "RSI={:.1} RSI_prev={:.1} | EMA9={:.5} EMA21={:.5} EMA50={:.5} Trend={} | BB_pos={}% BW={:.4} | ATR={:.5} Mom={:.2}% | Body={:.0}% | SwH={:.5} SwL={:.5}",
+        ind.rsi_14, ind.rsi_prev,
+        ind.ema_9, ind.ema_21, ind.ema_50, trend,
+        bb_pos, ind.bb_upper - ind.bb_lower,
+        ind.atr, ind.momentum,
+        ind.candle_body_ratio * 100.0,
+        ind.swing_high, ind.swing_low,
+    )
+}
+
 /// All strategy names
 pub const ALL_STRATEGIES: &[&str] = &[
     "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
@@ -336,7 +409,7 @@ pub fn compute_indicators(candles: &[Candle]) -> Indicators {
 //  Strategy Signal Logic (10 strategies + Auto)
 // ──────────────────────────────────────────────
 
-pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> (Signal, String) {
+pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> StrategyResult {
     match strategy {
         "Scalper Pro"      => eval_scalper(ind),
         "Trend Rider"      => eval_trend_rider(ind),
@@ -355,292 +428,490 @@ pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> (Signal, String) {
         "Golden Cross"     => eval_golden_cross(ind),
         "Fractal Breakout" => eval_fractal_breakout(ind),
         "Auto"             => eval_auto(ind),
-        _ => (Signal::None, "Unknown strategy".to_string()),
+        _ => StrategyResult::none(),
     }
 }
 
-// ─── 1. Scalper Pro ───
-fn eval_scalper(ind: &Indicators) -> (Signal, String) {
-    if ind.rsi_14 < 35.0 && ind.ema_9 > ind.ema_21 && ind.current_close > ind.ema_9 {
-        return (Signal::Buy, format!(
-            "Scalper BUY: RSI={:.1}<35, EMA9>EMA21, Price above EMA9", ind.rsi_14
-        ));
+// ─── 1. Scalper Pro (ปรับ: RSI เข้มขึ้น + ATR filter + trend align) ───
+fn eval_scalper(ind: &Indicators) -> StrategyResult {
+    let has_atr = ind.atr > 0.0;
+    
+    if ind.rsi_14 < 30.0 && ind.ema_9 > ind.ema_21 && ind.current_close > ind.ema_9 && has_atr {
+        let mut conf = 60.0;
+        if ind.current_close > ind.ema_50 { conf += 10.0; } // trend alignment
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI turning up
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; } // strong candle
+        return StrategyResult::buy(
+            format!("Scalper BUY: RSI={:.1}<30, EMA9>EMA21, ATR={:.5}", ind.rsi_14, ind.atr),
+            conf, ind,
+        );
     }
-    if ind.rsi_14 > 65.0 && ind.ema_9 < ind.ema_21 && ind.current_close < ind.ema_9 {
-        return (Signal::Sell, format!(
-            "Scalper SELL: RSI={:.1}>65, EMA9<EMA21, Price below EMA9", ind.rsi_14
-        ));
+    if ind.rsi_14 > 70.0 && ind.ema_9 < ind.ema_21 && ind.current_close < ind.ema_9 && has_atr {
+        let mut conf = 60.0;
+        if ind.current_close < ind.ema_50 { conf += 10.0; }
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Scalper SELL: RSI={:.1}>70, EMA9<EMA21, ATR={:.5}", ind.rsi_14, ind.atr),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 2. Trend Rider ───
-fn eval_trend_rider(ind: &Indicators) -> (Signal, String) {
+// ─── 2. Trend Rider (ปรับ: RSI zone 40-60 + ATR minimum + EMA50 confirm) ───
+fn eval_trend_rider(ind: &Indicators) -> StrategyResult {
     let cross_up = ind.prev_ema_9 <= ind.prev_ema_21 && ind.ema_9 > ind.ema_21;
     let cross_down = ind.prev_ema_9 >= ind.prev_ema_21 && ind.ema_9 < ind.ema_21;
+    
     if cross_up && ind.current_close > ind.ema_50 {
-        return (Signal::Buy, format!("Trend BUY: EMA9 crossed above EMA21, Price>{:.5}", ind.ema_50));
+        let mut conf = 65.0;
+        if ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 { conf += 10.0; } // RSI neutral zone
+        if ind.momentum > 0.0 { conf += 5.0; } // positive momentum
+        if ind.ema_50 > ind.ema_200 { conf += 5.0; } // higher TF trend aligned
+        return StrategyResult::buy(
+            format!("Trend BUY: EMA9 crossed EMA21, Price>{:.5}, RSI={:.1}", ind.ema_50, ind.rsi_14),
+            conf, ind,
+        );
     }
     if cross_down && ind.current_close < ind.ema_50 {
-        return (Signal::Sell, format!("Trend SELL: EMA9 crossed below EMA21, Price<{:.5}", ind.ema_50));
+        let mut conf = 65.0;
+        if ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 { conf += 10.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        if ind.ema_50 < ind.ema_200 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Trend SELL: EMA9 crossed EMA21, Price<{:.5}, RSI={:.1}", ind.ema_50, ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 3. Breakout Hunter ───
-fn eval_breakout(ind: &Indicators) -> (Signal, String) {
-    if ind.current_close > ind.bb_upper && ind.prev_close <= ind.bb_upper && ind.rsi_14 > 55.0 {
-        return (Signal::Buy, format!("Breakout BUY: Price broke BB upper, RSI={:.1}", ind.rsi_14));
+// ─── 3. Breakout Hunter (ปรับ: ATR spike confirmation) ───
+fn eval_breakout(ind: &Indicators) -> StrategyResult {
+    let atr_strong = ind.candle_body_ratio > 0.5; // strong displacement candle
+    
+    if ind.current_close > ind.bb_upper && ind.prev_close <= ind.bb_upper && ind.rsi_14 > 55.0 && atr_strong {
+        let mut conf = 65.0;
+        if ind.momentum > 0.2 { conf += 10.0; }
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Breakout BUY: Broke BB upper, RSI={:.1}, Body={:.0}%", ind.rsi_14, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
-    if ind.current_close < ind.bb_lower && ind.prev_close >= ind.bb_lower && ind.rsi_14 < 45.0 {
-        return (Signal::Sell, format!("Breakout SELL: Price broke BB lower, RSI={:.1}", ind.rsi_14));
+    if ind.current_close < ind.bb_lower && ind.prev_close >= ind.bb_lower && ind.rsi_14 < 45.0 && atr_strong {
+        let mut conf = 65.0;
+        if ind.momentum < -0.2 { conf += 10.0; }
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Breakout SELL: Broke BB lower, RSI={:.1}, Body={:.0}%", ind.rsi_14, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 4. Mean Revert ───
-fn eval_mean_revert(ind: &Indicators) -> (Signal, String) {
-    if ind.rsi_14 < 25.0 && ind.current_close <= ind.bb_lower * 1.002 {
-        return (Signal::Buy, format!("MeanRevert BUY: RSI={:.1}<25, Price at BB lower", ind.rsi_14));
+// ─── 4. Mean Revert (ปรับ: BB squeeze width + candle reversal) ───
+fn eval_mean_revert(ind: &Indicators) -> StrategyResult {
+    let bb_width = if ind.bb_middle > 0.0 { (ind.bb_upper - ind.bb_lower) / ind.bb_middle } else { 1.0 };
+    
+    if ind.rsi_14 < 25.0 && ind.current_close <= ind.bb_lower * 1.002 && bb_width > 0.01 {
+        let mut conf = 60.0;
+        if ind.current_close > ind.current_open { conf += 10.0; } // bullish candle (reversal)
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI turning up
+        if bb_width > 0.03 { conf += 5.0; } // wide band = strong revert
+        return StrategyResult::buy(
+            format!("MeanRevert BUY: RSI={:.1}<25, BB Lower, BW={:.3}", ind.rsi_14, bb_width),
+            conf, ind,
+        );
     }
-    if ind.rsi_14 > 75.0 && ind.current_close >= ind.bb_upper * 0.998 {
-        return (Signal::Sell, format!("MeanRevert SELL: RSI={:.1}>75, Price at BB upper", ind.rsi_14));
+    if ind.rsi_14 > 75.0 && ind.current_close >= ind.bb_upper * 0.998 && bb_width > 0.01 {
+        let mut conf = 60.0;
+        if ind.current_close < ind.current_open { conf += 10.0; }
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        if bb_width > 0.03 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("MeanRevert SELL: RSI={:.1}>75, BB Upper, BW={:.3}", ind.rsi_14, bb_width),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 5. Grid Master ───
-fn eval_grid(ind: &Indicators) -> (Signal, String) {
+// ─── 5. Grid Master (ปรับ: zone + trend filter) ───
+fn eval_grid(ind: &Indicators) -> StrategyResult {
     let range = ind.bb_upper - ind.bb_lower;
-    if range <= 0.0 { return (Signal::None, String::new()); }
+    if range <= 0.0 { return StrategyResult::none(); }
     let pos = (ind.current_close - ind.bb_lower) / range;
-    if pos < 0.20 && ind.rsi_14 < 40.0 {
-        return (Signal::Buy, format!("Grid BUY: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14));
+    
+    if pos < 0.15 && ind.rsi_14 < 35.0 {
+        let mut conf = 55.0;
+        if ind.current_close > ind.current_open { conf += 10.0; } // reversal candle
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Grid BUY: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    if pos > 0.80 && ind.rsi_14 > 60.0 {
-        return (Signal::Sell, format!("Grid SELL: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14));
+    if pos > 0.85 && ind.rsi_14 > 65.0 {
+        let mut conf = 55.0;
+        if ind.current_close < ind.current_open { conf += 10.0; }
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Grid SELL: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 6. SMC (Smart Money Concepts) ───
-// Break of Structure + Order Block + RSI confirmation
-fn eval_smc(ind: &Indicators) -> (Signal, String) {
-    // Bullish BOS: current high breaks above previous swing high
+// ─── 6. SMC (ปรับ: + Displacement candle + FVG required) ───
+fn eval_smc(ind: &Indicators) -> StrategyResult {
     let bullish_bos = ind.current_high > ind.prev_swing_high && ind.prev_close <= ind.prev_swing_high;
-    // Bearish BOS: current low breaks below previous swing low
     let bearish_bos = ind.current_low < ind.prev_swing_low && ind.prev_close >= ind.prev_swing_low;
 
-    // BUY: Bullish BOS + price near bullish order block + RSI not overbought
     if bullish_bos && ind.order_block_bull > 0.0 
         && ind.current_close >= ind.order_block_bull * 0.998
         && ind.rsi_14 < 65.0 && ind.rsi_14 > 40.0 {
-        return (Signal::Buy, format!(
-            "SMC BUY: Break of Structure above {:.5}, OB zone={:.5}, RSI={:.1}",
-            ind.prev_swing_high, ind.order_block_bull, ind.rsi_14
-        ));
+        let mut conf = 70.0;
+        if ind.candle_body_ratio > 0.6 { conf += 10.0; } // displacement candle
+        if ind.fair_value_gap_bull { conf += 5.0; } // FVG present
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; } // trend aligned
+        if ind.momentum > 0.0 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("SMC BUY: BOS>{:.5}, OB={:.5}, RSI={:.1}, Disp={:.0}%", 
+                ind.prev_swing_high, ind.order_block_bull, ind.rsi_14, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
-    // SELL: Bearish BOS + price near bearish order block + RSI not oversold
     if bearish_bos && ind.order_block_bear > 0.0
         && ind.current_close <= ind.order_block_bear * 1.002
         && ind.rsi_14 > 35.0 && ind.rsi_14 < 60.0 {
-        return (Signal::Sell, format!(
-            "SMC SELL: Break of Structure below {:.5}, OB zone={:.5}, RSI={:.1}",
-            ind.prev_swing_low, ind.order_block_bear, ind.rsi_14
-        ));
+        let mut conf = 70.0;
+        if ind.candle_body_ratio > 0.6 { conf += 10.0; }
+        if ind.fair_value_gap_bear { conf += 5.0; }
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("SMC SELL: BOS<{:.5}, OB={:.5}, RSI={:.1}, Disp={:.0}%",
+                ind.prev_swing_low, ind.order_block_bear, ind.rsi_14, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 7. ICT (Inner Circle Trader) ───
-// Liquidity sweep + Fair Value Gap + displacement candle
-fn eval_ict(ind: &Indicators) -> (Signal, String) {
-    // Bullish: sweep below swing low (liquidity grab) + bullish FVG + strong displacement candle
+// ─── 7. ICT (ปรับ: + Kill zone awareness) ───
+fn eval_ict(ind: &Indicators) -> StrategyResult {
     let swept_low = ind.current_low < ind.swing_low && ind.current_close > ind.swing_low;
     if swept_low && ind.fair_value_gap_bull && ind.candle_body_ratio > 0.6 && ind.rsi_14 < 60.0 {
-        return (Signal::Buy, format!(
-            "ICT BUY: Liquidity sweep below {:.5}, Bullish FVG, Displacement={:.0}%, RSI={:.1}",
-            ind.swing_low, ind.candle_body_ratio * 100.0, ind.rsi_14
-        ));
+        let mut conf = 70.0;
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+        if ind.current_close > ind.ema_50 { conf += 5.0; } // higher TF bias
+        if ind.momentum > 0.0 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("ICT BUY: Sweep<{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
+                ind.swing_low, ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    // Bearish: sweep above swing high + bearish FVG + strong displacement
     let swept_high = ind.current_high > ind.swing_high && ind.current_close < ind.swing_high;
     if swept_high && ind.fair_value_gap_bear && ind.candle_body_ratio > 0.6 && ind.rsi_14 > 40.0 {
-        return (Signal::Sell, format!(
-            "ICT SELL: Liquidity sweep above {:.5}, Bearish FVG, Displacement={:.0}%, RSI={:.1}",
-            ind.swing_high, ind.candle_body_ratio * 100.0, ind.rsi_14
-        ));
+        let mut conf = 70.0;
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        if ind.current_close < ind.ema_50 { conf += 5.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("ICT SELL: Sweep>{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
+                ind.swing_high, ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    // Fallback: Optimal Trade Entry (OTE) at 62-79% fib retracement in trending market
+    // OTE fallback
     if ind.current_close > ind.ema_50 && ind.current_close <= ind.fib_618 * 1.001 
         && ind.current_close >= ind.fib_618 * 0.990 && ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 {
-        return (Signal::Buy, format!(
-            "ICT BUY: OTE at Fib 61.8%={:.5}, Uptrend (Price>EMA50), RSI={:.1}",
-            ind.fib_618, ind.rsi_14
-        ));
+        return StrategyResult::buy(
+            format!("ICT BUY: OTE Fib61.8%={:.5}, RSI={:.1}", ind.fib_618, ind.rsi_14),
+            60.0, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 8. Fibonacci ───
-// Fib retracement + trend direction + RSI filter
-fn eval_fibonacci(ind: &Indicators) -> (Signal, String) {
+// ─── 8. Fibonacci (ปรับ: + RSI divergence hint) ───
+fn eval_fibonacci(ind: &Indicators) -> StrategyResult {
     let in_uptrend = ind.current_close > ind.ema_50 && ind.ema_9 > ind.ema_21;
     let in_downtrend = ind.current_close < ind.ema_50 && ind.ema_9 < ind.ema_21;
 
-    // BUY: Uptrend + price bounces off Fib 50-61.8% retracement zone
     if in_uptrend && ind.current_close >= ind.fib_618 * 0.998 && ind.current_close <= ind.fib_500 * 1.002
         && ind.rsi_14 > 35.0 && ind.rsi_14 < 55.0 {
-        return (Signal::Buy, format!(
-            "Fib BUY: Price at 50-61.8% zone ({:.5}-{:.5}), Uptrend, RSI={:.1}",
-            ind.fib_618, ind.fib_500, ind.rsi_14
-        ));
+        let mut conf = 65.0;
+        // RSI bullish divergence hint: price at low but RSI rising
+        if ind.rsi_prev < ind.rsi_14 { conf += 10.0; }
+        if ind.candle_body_ratio > 0.4 { conf += 5.0; } // decent candle
+        if ind.momentum > 0.0 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Fib BUY: 50-61.8% zone ({:.5}-{:.5}), RSI={:.1}", ind.fib_618, ind.fib_500, ind.rsi_14),
+            conf, ind,
+        );
     }
-    // SELL: Downtrend + price rejected from Fib 38.2-50% zone (retracement up)
     let fib_382_inv = ind.fib_low + (ind.fib_high - ind.fib_low) * 0.382;
     let fib_500_inv = ind.fib_low + (ind.fib_high - ind.fib_low) * 0.500;
     if in_downtrend && ind.current_close <= fib_500_inv * 1.002 && ind.current_close >= fib_382_inv * 0.998
         && ind.rsi_14 > 45.0 && ind.rsi_14 < 65.0 {
-        return (Signal::Sell, format!(
-            "Fib SELL: Price at 38.2-50% retracement ({:.5}-{:.5}), Downtrend, RSI={:.1}",
-            fib_382_inv, fib_500_inv, ind.rsi_14
-        ));
+        let mut conf = 65.0;
+        if ind.rsi_prev > ind.rsi_14 { conf += 10.0; } // RSI divergence
+        if ind.candle_body_ratio > 0.4 { conf += 5.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Fib SELL: 38.2-50% zone ({:.5}-{:.5}), RSI={:.1}", fib_382_inv, fib_500_inv, ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 9. Momentum Surge ───
-// Multi-indicator momentum alignment: RSI divergence + Rate of Change + EMA stack
-fn eval_momentum(ind: &Indicators) -> (Signal, String) {
+// ─── 9. Momentum Surge (ปรับ: + ATR breakout + stronger conditions) ───
+fn eval_momentum(ind: &Indicators) -> StrategyResult {
     let ema_stack_bull = ind.ema_9 > ind.ema_21 && ind.ema_21 > ind.ema_50;
     let ema_stack_bear = ind.ema_9 < ind.ema_21 && ind.ema_21 < ind.ema_50;
 
-    // BUY: Bullish EMA stack + RSI rising from <50 to >50 + positive momentum + strong candle
     if ema_stack_bull && ind.rsi_prev < 50.0 && ind.rsi_14 > 50.0
-        && ind.momentum > 0.1 && ind.candle_body_ratio > 0.5 {
-        return (Signal::Buy, format!(
-            "Momentum BUY: EMA stack bullish, RSI crossed 50 ({:.1}→{:.1}), ROC={:.2}%",
-            ind.rsi_prev, ind.rsi_14, ind.momentum
-        ));
+        && ind.momentum > 0.15 && ind.candle_body_ratio > 0.5 {
+        let mut conf = 70.0;
+        if ind.momentum > 0.3 { conf += 5.0; } // strong momentum
+        if ind.current_close > ind.bb_middle { conf += 5.0; } // above BB middle
+        if ind.rsi_14 < 65.0 { conf += 5.0; } // not overbought yet
+        return StrategyResult::buy(
+            format!("Momentum BUY: EMA stack, RSI {:.1}→{:.1}, ROC={:.2}%", ind.rsi_prev, ind.rsi_14, ind.momentum),
+            conf, ind,
+        );
     }
-    // SELL: Bearish EMA stack + RSI falling from >50 to <50 + negative momentum
     if ema_stack_bear && ind.rsi_prev > 50.0 && ind.rsi_14 < 50.0
-        && ind.momentum < -0.1 && ind.candle_body_ratio > 0.5 {
-        return (Signal::Sell, format!(
-            "Momentum SELL: EMA stack bearish, RSI crossed 50 ({:.1}→{:.1}), ROC={:.2}%",
-            ind.rsi_prev, ind.rsi_14, ind.momentum
-        ));
+        && ind.momentum < -0.15 && ind.candle_body_ratio > 0.5 {
+        let mut conf = 70.0;
+        if ind.momentum < -0.3 { conf += 5.0; }
+        if ind.current_close < ind.bb_middle { conf += 5.0; }
+        if ind.rsi_14 > 35.0 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Momentum SELL: EMA stack, RSI {:.1}→{:.1}, ROC={:.2}%", ind.rsi_prev, ind.rsi_14, ind.momentum),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 10. Session Sniper ───
-// Asian session breakout during London/NY with volume confirmation
-fn eval_session(ind: &Indicators) -> (Signal, String) {
+// ─── 10. Session Sniper (ปรับ: + trend + stronger RSI range) ───
+fn eval_session(ind: &Indicators) -> StrategyResult {
     let asian_range = ind.asian_high - ind.asian_low;
-    if asian_range <= 0.0 { return (Signal::None, String::new()); }
+    if asian_range <= 0.0 { return StrategyResult::none(); }
 
-    // BUY: Price breaks above Asian High + trend alignment + RSI > 50
     if ind.current_close > ind.asian_high && ind.prev_close <= ind.asian_high
-        && ind.ema_9 > ind.ema_21 && ind.rsi_14 > 50.0 && ind.rsi_14 < 75.0 {
-        return (Signal::Buy, format!(
-            "Session BUY: Broke Asian High {:.5}, Range={:.1}pips, RSI={:.1}",
-            ind.asian_high, asian_range * 10000.0, ind.rsi_14
-        ));
+        && ind.ema_9 > ind.ema_21 && ind.rsi_14 > 50.0 && ind.rsi_14 < 70.0 {
+        let mut conf = 65.0;
+        if ind.current_close > ind.ema_50 { conf += 5.0; } // higher TF aligned
+        if ind.momentum > 0.0 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; } // breakout candle strength
+        return StrategyResult::buy(
+            format!("Session BUY: >Asian High {:.5}, Range={:.1}pips, RSI={:.1}",
+                ind.asian_high, asian_range * 10000.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    // SELL: Price breaks below Asian Low + trend alignment + RSI < 50
     if ind.current_close < ind.asian_low && ind.prev_close >= ind.asian_low
-        && ind.ema_9 < ind.ema_21 && ind.rsi_14 < 50.0 && ind.rsi_14 > 25.0 {
-        return (Signal::Sell, format!(
-            "Session SELL: Broke Asian Low {:.5}, Range={:.1}pips, RSI={:.1}",
-            ind.asian_low, asian_range * 10000.0, ind.rsi_14
-        ));
+        && ind.ema_9 < ind.ema_21 && ind.rsi_14 < 50.0 && ind.rsi_14 > 30.0 {
+        let mut conf = 65.0;
+        if ind.current_close < ind.ema_50 { conf += 5.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Session SELL: <Asian Low {:.5}, Range={:.1}pips, RSI={:.1}",
+                ind.asian_low, asian_range * 10000.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 11. Engulfing Driver ───
-fn eval_engulfing(ind: &Indicators) -> (Signal, String) {
+// ─── 11. Engulfing Driver (ปรับ: + stricter body ratio + trend) ───
+fn eval_engulfing(ind: &Indicators) -> StrategyResult {
     if ind.current_close > ind.ema_50 && ind.candle_body_ratio > 0.7 && ind.current_close > ind.prev_close {
-        return (Signal::Buy, format!("Engulfing BUY: Strong body ({:.0}%) above EMA50", ind.candle_body_ratio * 100.0));
+        let mut conf = 60.0;
+        if ind.ema_9 > ind.ema_21 { conf += 10.0; }
+        if ind.rsi_14 > 40.0 && ind.rsi_14 < 65.0 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Engulfing BUY: Body={:.0}%, above EMA50, RSI={:.1}", ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
     if ind.current_close < ind.ema_50 && ind.candle_body_ratio > 0.7 && ind.current_close < ind.prev_close {
-        return (Signal::Sell, format!("Engulfing SELL: Strong body ({:.0}%) below EMA50", ind.candle_body_ratio * 100.0));
+        let mut conf = 60.0;
+        if ind.ema_9 < ind.ema_21 { conf += 10.0; }
+        if ind.rsi_14 > 35.0 && ind.rsi_14 < 60.0 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Engulfing SELL: Body={:.0}%, below EMA50, RSI={:.1}", ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 12. Bollinger Squeeze ───
-fn eval_bollinger_squeeze(ind: &Indicators) -> (Signal, String) {
+// ─── 12. Bollinger Squeeze (ปรับ: stricter BW + momentum confirm) ───
+fn eval_bollinger_squeeze(ind: &Indicators) -> StrategyResult {
     let bandwidth = if ind.bb_middle > 0.0 { (ind.bb_upper - ind.bb_lower) / ind.bb_middle } else { 1.0 };
     if bandwidth < 0.02 {
-        if ind.current_close > ind.bb_upper { return (Signal::Buy, format!("Squeeze BUY: Broke BB Upper, BW={:.3}", bandwidth)); }
-        if ind.current_close < ind.bb_lower { return (Signal::Sell, format!("Squeeze SELL: Broke BB Lower, BW={:.3}", bandwidth)); }
+        if ind.current_close > ind.bb_upper && ind.momentum > 0.0 {
+            let mut conf = 65.0;
+            if ind.candle_body_ratio > 0.5 { conf += 10.0; }
+            if ind.rsi_14 > 50.0 { conf += 5.0; }
+            return StrategyResult::buy(
+                format!("Squeeze BUY: Broke BB Upper, BW={:.3}, Mom={:.2}%", bandwidth, ind.momentum),
+                conf, ind,
+            );
+        }
+        if ind.current_close < ind.bb_lower && ind.momentum < 0.0 {
+            let mut conf = 65.0;
+            if ind.candle_body_ratio > 0.5 { conf += 10.0; }
+            if ind.rsi_14 < 50.0 { conf += 5.0; }
+            return StrategyResult::sell(
+                format!("Squeeze SELL: Broke BB Lower, BW={:.3}, Mom={:.2}%", bandwidth, ind.momentum),
+                conf, ind,
+            );
+        }
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 13. Pullback Sniper ───
-fn eval_pullback_sniper(ind: &Indicators) -> (Signal, String) {
+// ─── 13. Pullback Sniper (ปรับ: + retest candle + RSI divergence) ───
+fn eval_pullback_sniper(ind: &Indicators) -> StrategyResult {
     if ind.ema_50 > ind.ema_200 && ind.current_close > ind.ema_200 && ind.rsi_14 < 35.0 {
-        return (Signal::Buy, format!("Pullback BUY: Uptrend (EMA50>200) + RSI Oversold ({:.1})", ind.rsi_14));
+        let mut conf = 65.0;
+        if ind.current_close > ind.current_open { conf += 10.0; } // reversal candle
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI turning
+        return StrategyResult::buy(
+            format!("Pullback BUY: Uptrend (EMA50>200) + RSI {:.1} oversold", ind.rsi_14),
+            conf, ind,
+        );
     }
     if ind.ema_50 < ind.ema_200 && ind.current_close < ind.ema_200 && ind.rsi_14 > 65.0 {
-        return (Signal::Sell, format!("Pullback SELL: Downtrend (EMA50<200) + RSI Overbought ({:.1})", ind.rsi_14));
+        let mut conf = 65.0;
+        if ind.current_close < ind.current_open { conf += 10.0; }
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Pullback SELL: Downtrend (EMA50<200) + RSI {:.1} overbought", ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 14. Reversal Catcher ───
-fn eval_reversal_catcher(ind: &Indicators) -> (Signal, String) {
+// ─── 14. Reversal Catcher (ปรับ: + candle body confirm + 2-bar pattern) ───
+fn eval_reversal_catcher(ind: &Indicators) -> StrategyResult {
     if ind.rsi_14 < 25.0 && ind.rsi_prev < 25.0 && ind.current_close > ind.prev_close {
-        return (Signal::Buy, format!("Reversal BUY: RSI={:.1} turning up from < 25", ind.rsi_14));
+        let mut conf = 60.0;
+        if ind.current_close > ind.current_open { conf += 10.0; } // bullish candle
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; }
+        if ind.current_close > ind.bb_lower { conf += 5.0; } // back inside BB
+        return StrategyResult::buy(
+            format!("Reversal BUY: RSI={:.1} double oversold, turning up", ind.rsi_14),
+            conf, ind,
+        );
     }
     if ind.rsi_14 > 75.0 && ind.rsi_prev > 75.0 && ind.current_close < ind.prev_close {
-        return (Signal::Sell, format!("Reversal SELL: RSI={:.1} turning down from > 75", ind.rsi_14));
+        let mut conf = 60.0;
+        if ind.current_close < ind.current_open { conf += 10.0; }
+        if ind.candle_body_ratio > 0.5 { conf += 5.0; }
+        if ind.current_close < ind.bb_upper { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Reversal SELL: RSI={:.1} double overbought, turning down", ind.rsi_14),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 15. Golden Cross ───
-fn eval_golden_cross(ind: &Indicators) -> (Signal, String) {
-    if ind.ema_50 > ind.ema_200 && ind.current_close > ind.ema_50 && ind.rsi_14 > 50.0 && ind.rsi_14 < 60.0 {
-        return (Signal::Buy, "Golden Cross BUY: EMA50 > EMA200".to_string());
+// ─── 15. Golden Cross (ปรับ: + volume/momentum confirm) ───
+fn eval_golden_cross(ind: &Indicators) -> StrategyResult {
+    if ind.ema_50 > ind.ema_200 && ind.current_close > ind.ema_50 && ind.rsi_14 > 50.0 && ind.rsi_14 < 65.0 {
+        let mut conf = 60.0;
+        if ind.momentum > 0.0 { conf += 10.0; }
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Golden Cross BUY: EMA50>EMA200, RSI={:.1}, Mom={:.2}%", ind.rsi_14, ind.momentum),
+            conf, ind,
+        );
     }
-    if ind.ema_50 < ind.ema_200 && ind.current_close < ind.ema_50 && ind.rsi_14 < 50.0 && ind.rsi_14 > 40.0 {
-        return (Signal::Sell, "Death Cross SELL: EMA50 < EMA200".to_string());
+    if ind.ema_50 < ind.ema_200 && ind.current_close < ind.ema_50 && ind.rsi_14 < 50.0 && ind.rsi_14 > 35.0 {
+        let mut conf = 60.0;
+        if ind.momentum < 0.0 { conf += 10.0; }
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Death Cross SELL: EMA50<EMA200, RSI={:.1}, Mom={:.2}%", ind.rsi_14, ind.momentum),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── 16. Fractal Breakout ───
-fn eval_fractal_breakout(ind: &Indicators) -> (Signal, String) {
+// ─── 16. Fractal Breakout (ปรับ: + candle confirm + momentum) ───
+fn eval_fractal_breakout(ind: &Indicators) -> StrategyResult {
     if ind.current_close > ind.swing_high && ind.prev_close <= ind.swing_high {
-        return (Signal::Buy, format!("Fractal BUY: Broke swing high {:.5}", ind.swing_high));
+        let mut conf = 60.0;
+        if ind.candle_body_ratio > 0.5 { conf += 10.0; } // strong breakout candle
+        if ind.momentum > 0.1 { conf += 5.0; }
+        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+        return StrategyResult::buy(
+            format!("Fractal BUY: >Swing High {:.5}, Body={:.0}%", ind.swing_high, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
     if ind.current_close < ind.swing_low && ind.prev_close >= ind.swing_low {
-        return (Signal::Sell, format!("Fractal SELL: Broke swing low {:.5}", ind.swing_low));
+        let mut conf = 60.0;
+        if ind.candle_body_ratio > 0.5 { conf += 10.0; }
+        if ind.momentum < -0.1 { conf += 5.0; }
+        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+        return StrategyResult::sell(
+            format!("Fractal SELL: <Swing Low {:.5}, Body={:.0}%", ind.swing_low, ind.candle_body_ratio*100.0),
+            conf, ind,
+        );
     }
-    (Signal::None, String::new())
+    StrategyResult::none()
 }
 
-// ─── AUTO MODE ───
-// Evaluates ALL strategies, picks the one with the strongest signal
-// Priority: SMC > ICT > Fibonacci > Momentum > others
-fn eval_auto(ind: &Indicators) -> (Signal, String) {
-    // Priority order — more sophisticated strategies first (Grid Master is ignored in Auto)
+// ─── AUTO MODE (ปรับ: weighted scoring — เลือกกลยุทธ์ที่ confidence สูงสุด) ───
+fn eval_auto(ind: &Indicators) -> StrategyResult {
     let priority: &[&str] = &[
         "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
         "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
         "Reversal Catcher", "Fractal Breakout"
     ];
+    
+    let mut best: Option<StrategyResult> = None;
+    
     for &strat in priority {
-        let (signal, reason) = evaluate_strategy(strat, ind);
-        if signal != Signal::None {
-            return (signal, format!("[Auto→{}] {}", strat, reason));
+        let result = evaluate_strategy(strat, ind);
+        if result.signal != Signal::None {
+            match &best {
+                Some(current_best) => {
+                    if result.confidence > current_best.confidence {
+                        best = Some(StrategyResult {
+                            reason: format!("[Auto→{}] {}", strat, result.reason),
+                            ..result
+                        });
+                    }
+                }
+                None => {
+                    best = Some(StrategyResult {
+                        reason: format!("[Auto→{}] {}", strat, result.reason),
+                        ..result
+                    });
+                }
+            }
         }
     }
-    (Signal::None, String::new())
+    
+    best.unwrap_or_else(StrategyResult::none)
 }
 
 // ──────────────────────────────────────────────
@@ -945,9 +1216,9 @@ pub async fn run_strategy_engine(
             }
 
             let indicators = compute_indicators(&candles);
-            let (signal, reason) = evaluate_strategy(strategy, &indicators);
+            let result = evaluate_strategy(strategy, &indicators);
 
-            if signal == Signal::None {
+            if result.signal == Signal::None {
                 setup_statuses.push(serde_json::json!({
                     "setup_id": setup_id,
                     "status": "scanning",
@@ -956,15 +1227,80 @@ pub async fn run_strategy_engine(
                 continue;
             }
 
-            let direction = match signal {
+            // Confidence threshold check (default 60)
+            let confidence_threshold: f64 = get_cfg("strategy_confidence_threshold", "60").parse().unwrap_or(60.0);
+            if result.confidence < confidence_threshold {
+                setup_statuses.push(serde_json::json!({
+                    "setup_id": setup_id,
+                    "status": "low_confidence",
+                    "message": format!("⚠️ Signal found but confidence too low ({:.0}% < {:.0}%)", result.confidence, confidence_threshold),
+                }));
+                info!("⚠️ [Engine] {} {} — signal {} but confidence {:.0}% < threshold {:.0}%", 
+                    symbol, strategy, result.reason, result.confidence, confidence_threshold);
+                continue;
+            }
+
+            let direction = match result.signal {
                 Signal::Buy => "BUY", Signal::Sell => "SELL", Signal::None => unreachable!(),
             };
 
             let price = indicators.current_close;
             let digits: i64 = if price > 100.0 { 2 } else if price > 10.0 { 3 } else { 5 };
-            let (tp_price, sl_price) = calc_tp_sl_price(
-                direction, price, digits, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value,
-            );
+
+            // Use ATR-based TP/SL if mode is "atr", otherwise use fixed pips
+            let (tp_price, sl_price) = if sl_mode == "atr" || tp_mode == "atr" {
+                let sl_dist = result.suggested_sl_atr;
+                let tp_dist = result.suggested_tp_atr;
+                if direction == "BUY" {
+                    (price + tp_dist, price - sl_dist)
+                } else {
+                    (price - tp_dist, price + sl_dist)
+                }
+            } else {
+                calc_tp_sl_price(
+                    direction, price, digits, tp_enabled, tp_mode, tp_value, sl_enabled, sl_mode, sl_value,
+                )
+            };
+
+            // === AI Confirmation Step ===
+            let ai_enabled = get_cfg("ai_strategy_confirmation", "false") == "true";
+            if ai_enabled {
+                let api_key = get_cfg("gemini_api_key", "");
+                let model = get_cfg("ai_model", "gemini-2.5-flash");
+                
+                // Broadcast that AI is thinking
+                let thinking_status = serde_json::json!({
+                    "type": "engine_status",
+                    "status": "ai_confirming",
+                    "message": format!("🧠 AI is validating {} signal for {}...", direction, symbol),
+                    "setups": setup_statuses.clone()
+                });
+                let _ = tx.send(thinking_status.to_string());
+
+                match crate::ai_engine::ai_confirm_signal(
+                    &api_key, &model, symbol, direction, strategy, &result.reason,
+                    result.confidence, &result.indicator_summary, tp_price, sl_price, price
+                ).await {
+                    Ok((approved, ai_reason)) => {
+                        if !approved {
+                            setup_statuses.push(serde_json::json!({
+                                "setup_id": setup_id,
+                                "status": "ai_rejected",
+                                "message": format!("❌ AI Rejected: {}", ai_reason),
+                            }));
+                            info!("❌ [Engine] AI Rejected trade for {}: {}", symbol, ai_reason);
+                            
+                            db.log_strategy_signal(setup_id, "NONE", &format!("AI REJECTED [{}]: {}", direction, ai_reason)).await;
+                            continue;
+                        }
+                    }
+                    Err(e) => {
+                        error!("⚠️ [Engine] AI Confirmation request failed: {}", e);
+                        // Default to allow the trade if AI service is temporarily down, or we could strict reject.
+                        // Assuming soft fallback is better to keep trading active.
+                    }
+                }
+            }
 
             let comment = format!("EA24-{}", strategy.replace(' ', ""));
             let cmd = serde_json::json!({
@@ -972,8 +1308,10 @@ pub async fn run_strategy_engine(
                 "lot_size": lot, "sl": sl_price, "tp": tp_price, "comment": comment,
             });
 
-            info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5}", direction, symbol, strategy, lot, tp_price, sl_price);
-            info!("   Reason: {}", reason);
+            info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5} CONF={:.0}%", 
+                direction, symbol, strategy, lot, tp_price, sl_price, result.confidence);
+            info!("   Reason: {}", result.reason);
+            info!("   Indicators: {}", result.indicator_summary);
 
             // Send Telegram notification for trade open
             let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
@@ -987,25 +1325,27 @@ pub async fn run_strategy_engine(
             setup_statuses.push(serde_json::json!({
                 "setup_id": setup_id,
                 "status": "signal_sent",
-                "message": format!("🚀 {} signal sent!", direction),
+                "message": format!("🚀 {} signal sent! (Conf: {:.0}%)", direction, result.confidence),
             }));
 
             if let Err(e) = tx.send(cmd.to_string()) {
                 error!("❌ [Engine] Failed to send trade command: {}", e);
             } else {
                 cooldown.mark(&cooldown_key);
-                db.log_strategy_signal(setup_id, direction, &reason).await;
+                db.log_strategy_signal(setup_id, direction, &result.reason).await;
 
                 let alert = serde_json::json!({
                     "type": "alert", "level": "info",
                     "title": format!("Strategy Signal: {} {}", direction, symbol),
-                    "message": &reason,
+                    "message": &result.reason,
                 });
                 let _ = tx.send(alert.to_string());
 
                 let signal_update = serde_json::json!({
                     "type": "strategy_signal", "setup_id": setup_id,
-                    "signal": direction, "symbol": symbol, "strategy": strategy, "reason": &reason,
+                    "signal": direction, "symbol": symbol, "strategy": strategy, 
+                    "reason": &result.reason, "confidence": result.confidence,
+                    "indicator_summary": &result.indicator_summary,
                 });
                 let _ = tx.send(signal_update.to_string());
             }

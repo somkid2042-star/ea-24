@@ -1562,13 +1562,17 @@ pub async fn run_all_agents_multi_tf(
 
         let mut strat_results = Vec::new();
         for &strat in crate::strategy::ALL_STRATEGIES {
-            let (signal, reason) = crate::strategy::evaluate_strategy(strat, &ind);
-            let sig_str = match signal {
+            let result = crate::strategy::evaluate_strategy(strat, &ind);
+            let sig_str = match result.signal {
                 crate::strategy::Signal::Buy => "BUY",
                 crate::strategy::Signal::Sell => "SELL",
                 crate::strategy::Signal::None => "HOLD",
             };
-            strat_results.push(format!("{}: {} ({})", strat, sig_str, reason));
+            if result.signal != crate::strategy::Signal::None {
+                strat_results.push(format!("{}: {} [Conf:{:.0}%] ({})", strat, sig_str, result.confidence, result.reason));
+            } else {
+                strat_results.push(format!("{}: {}", strat, sig_str));
+            }
         }
         base_summary.push_str("\n\n10-Strategy Outputs:\n");
         base_summary.push_str(&strat_results.join("\n"));
@@ -1791,6 +1795,65 @@ pub async fn test_connection(api_key: &str, model: &str) -> Result<String, Strin
     let text = call_gemini(api_key, model, "Answer in 1 line in Thai: What AI model are you?", 0.5, 100, false).await?;
     info!("🤖 [AI] Test successful: {}", text.trim());
     Ok(text.trim().to_string())
+}
+
+/// AI confirms/rejects a strategy signal before opening a trade
+/// Returns: (approved: bool, reason: String, modified_tp: Option<f64>, modified_sl: Option<f64>)
+pub async fn ai_confirm_signal(
+    api_key: &str,
+    model: &str,
+    symbol: &str,
+    direction: &str,
+    strategy_name: &str,
+    strategy_reason: &str,
+    confidence: f64,
+    indicator_summary: &str,
+    suggested_tp: f64,
+    suggested_sl: f64,
+    current_price: f64,
+) -> Result<(bool, String), String> {
+    let prompt = format!(
+r#"You are a risk-management AI for the EA-24 automated trading system. A strategy has generated a trade signal. Your job is to quickly validate it.
+
+**Trade Signal:**
+- Symbol: {symbol}
+- Direction: {direction}
+- Strategy: {strategy_name}
+- Confidence Score: {confidence:.0}%
+- Reason: {strategy_reason}
+
+**Market Indicators:**
+{indicator_summary}
+
+**Current Price:** {current_price:.5}
+**Suggested TP:** {suggested_tp:.5} | **SL:** {suggested_sl:.5}
+
+**Your Task:**
+Answer ONLY: "APPROVE" or "REJECT" followed by a short reason (under 50 words) in Thai.
+
+Rules:
+- APPROVE if indicators align with the signal direction and confidence ≥ 60%
+- REJECT if there's a clear conflicting signal (e.g. BUY signal but strong bearish indicators)
+- REJECT if RSI is extreme against the trade direction (BUY with RSI>80 or SELL with RSI<20)
+- When in doubt, APPROVE (let the strategy engine's confidence scoring handle filtering)
+
+Example: "APPROVE — สัญญาณสอดคล้องกับ trend bullish, RSI อยู่ในโซนที่ดี"
+Example: "REJECT — RSI overbought ขัดกับสัญญาณ BUY"
+"#);
+
+    let response = call_ai(api_key, model, &prompt, 0.3, 200, false).await?;
+    let response_upper = response.trim().to_uppercase();
+    
+    let approved = response_upper.starts_with("APPROVE");
+    let reason = response.trim().to_string();
+    
+    if approved {
+        info!("✅ [AI Confirm] {} {} — {}", direction, symbol, reason);
+    } else {
+        warn!("❌ [AI Confirm] REJECTED {} {} — {}", direction, symbol, reason);
+    }
+    
+    Ok((approved, reason))
 }
 
 pub async fn test_ollama_connection() -> Result<String, String> {
