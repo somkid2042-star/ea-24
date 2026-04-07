@@ -13,6 +13,10 @@ const DEFAULT_MODEL: &str = "gemini-2.5-flash";
 const TAVILY_API_URL: &str = "https://api.tavily.com/search";
 const FOREX_CALENDAR_URL: &str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 
+// Ollama Local AI
+const OLLAMA_API_BASE: &str = "http://127.0.0.1:11434";
+const DEFAULT_OLLAMA_MODEL: &str = "gemma4:e4b";
+
 // ──────────────────────────────────────────────
 //  Gemini API Types
 // ──────────────────────────────────────────────
@@ -324,6 +328,173 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 }
 
 // ──────────────────────────────────────────────
+//  Helper: Call Ollama Local AI (Gemma 4 E4B)
+// ──────────────────────────────────────────────
+
+#[derive(Serialize)]
+struct OllamaRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+    options: OllamaOptions,
+}
+
+#[derive(Serialize)]
+struct OllamaOptions {
+    temperature: f64,
+    num_predict: i32,
+}
+
+#[derive(Deserialize)]
+struct OllamaResponse {
+    response: Option<String>,
+    error: Option<String>,
+}
+
+/// Chat-style request for Ollama /api/chat
+#[derive(Serialize)]
+struct OllamaChatRequest {
+    model: String,
+    messages: Vec<OllamaChatMessage>,
+    stream: bool,
+    options: OllamaOptions,
+}
+
+#[derive(Serialize)]
+struct OllamaChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+struct OllamaChatResponse {
+    message: Option<OllamaChatResponseMessage>,
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+struct OllamaChatResponseMessage {
+    content: Option<String>,
+}
+
+async fn call_ollama(model: &str, prompt: &str, temp: f64, max_tokens: i32) -> Result<String, String> {
+    let model_name = if model.is_empty() { DEFAULT_OLLAMA_MODEL } else { model };
+
+    let request = OllamaChatRequest {
+        model: model_name.to_string(),
+        messages: vec![OllamaChatMessage {
+            role: "user".to_string(),
+            content: prompt.to_string(),
+        }],
+        stream: false,
+        options: OllamaOptions {
+            temperature: temp,
+            num_predict: max_tokens,
+        },
+    };
+
+    // Ollama on CPU can be slow — allow up to 5 minutes
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(300))
+        .build().map_err(|e| format!("HTTP client error: {}", e))?;
+
+    let url = format!("{}/api/chat", OLLAMA_API_BASE);
+
+    let resp = client.post(&url)
+        .json(&request)
+        .send()
+        .await
+        .map_err(|e| format!("Ollama request failed (is ollama running?): {}", e))?;
+
+    if !resp.status().is_success() {
+        let status = resp.status();
+        let body = resp.text().await.unwrap_or_default();
+        return Err(format!("Ollama error ({}): {}", status, body));
+    }
+
+    let ollama_resp: OllamaChatResponse = resp.json().await
+        .map_err(|e| format!("Ollama parse error: {}", e))?;
+
+    if let Some(err) = ollama_resp.error {
+        return Err(format!("Ollama error: {}", err));
+    }
+
+    let text = ollama_resp.message
+        .and_then(|m| m.content)
+        .ok_or_else(|| "Ollama returned empty response".to_string())?;
+
+    // Strip thinking blocks if present (Gemma 4 uses <think>...</think>)
+    let clean_text = strip_thinking_blocks(&text);
+
+    // ----- DEBUG LOGGING -----
+    let time_now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
+    let debug_log = format!(
+        "========== OLLAMA DEBUG ( {} ) ==========\n⚙️ MODEL: {} (LOCAL)\n\n📥 [PROMPT]:\n{}\n\n📤 [RESPONSE]:\n{}\n======================================================\n\n",
+        time_now, model_name, prompt, clean_text
+    );
+    let _ = tokio::fs::OpenOptions::new()
+        .create(true).append(true)
+        .open("ai_prompt_debug.txt").await
+        .map(|mut f| async move {
+            use tokio::io::AsyncWriteExt;
+            let _ = f.write_all(debug_log.as_bytes()).await;
+        });
+
+    log::info!("🏠 [OLLAMA {}] Prompt len: {}, Response len: {}", model_name, prompt.len(), clean_text.len());
+
+    Ok(clean_text)
+}
+
+/// Remove <think>...</think> or Thinking blocks from Gemma 4 responses
+fn strip_thinking_blocks(text: &str) -> String {
+    // Remove XML-style thinking tags
+    let mut result = text.to_string();
+    while let Some(start) = result.find("<think>") {
+        if let Some(end) = result.find("</think>") {
+            result = format!("{}{}", &result[..start], &result[end + 8..]);
+        } else {
+            // Unclosed <think> tag — remove from <think> to end
+            result = result[..start].to_string();
+            break;
+        }
+    }
+    result.trim().to_string()
+}
+
+// ──────────────────────────────────────────────
+//  Smart AI Caller: Gemini → Ollama Fallback
+// ──────────────────────────────────────────────
+
+/// Try Gemini API first, if it fails, fallback to local Ollama.
+/// If gemini_key is empty, skip Gemini and go straight to Ollama.
+async fn call_ai(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
+    // If no Gemini key, go straight to Ollama
+    if gemini_key.is_empty() {
+        info!("🏠 [AI] No Gemini API key — using local Ollama");
+        return call_ollama("", prompt, temp, max_tokens).await;
+    }
+
+    // Try Gemini first
+    match call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await {
+        Ok(text) => Ok(text),
+        Err(gemini_err) => {
+            // Gemini failed — try Ollama as fallback
+            warn!("⚠️ [AI] Gemini failed: {} — Falling back to local Ollama...", gemini_err);
+            match call_ollama("", prompt, temp, max_tokens).await {
+                Ok(text) => {
+                    info!("✅ [AI] Ollama fallback succeeded!");
+                    Ok(text)
+                }
+                Err(ollama_err) => {
+                    // Both failed
+                    Err(format!("AI ล้มเหลวทั้งสองระบบ | Gemini: {} | Ollama: {}", gemini_err, ollama_err))
+                }
+            }
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
 //  Agent 1: News Hunter (Google News RSS + Tavily fallback)
 // ──────────────────────────────────────────────
 
@@ -580,7 +751,7 @@ Respond ONLY with a valid JSON object without markdown formatting blocks (DO NOT
   ]
 }}"#);
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 8192, true).await {
+    match call_ai(gemini_key, model, &prompt, 0.2, 8192, true).await {
         Ok(response) => {
             let mut sentiment = "NEUTRAL".to_string();
             let mut summary = String::new();
@@ -788,7 +959,7 @@ STRATEGIES:
         hvn=hvn, candle_str=candle_str, data_note=data_note
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.3, 800, false).await {
+    match call_ai(gemini_key, model, &prompt, 0.3, 800, false).await {
         Ok(response) => {
             let mut rec = "HOLD".to_string();
             let mut conf = 50.0;
@@ -976,7 +1147,7 @@ pub async fn fetch_macro_indicators(
         context_text
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 500, true).await {
+    match call_ai(gemini_key, model, &prompt, 0.2, 500, true).await {
         Ok(res) => {
             let clean_json = res.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
             let _ = log_tx.send(serde_json::json!({
@@ -1148,7 +1319,7 @@ REASONING: [concise summary in Thai language]"#,
         risk_reason = risk.reason,
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 400, false).await {
+    match call_ai(gemini_key, model, &prompt, 0.2, 400, false).await {
         Ok(response) => {
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log_verbose", "symbol": symbol, "agent": "decision_maker",
@@ -1443,7 +1614,7 @@ STRATEGIES:
 10. Arbitrage: [0-100]%"#, tf_data = tf_summaries.join("\n\n"));
 
     // Run chart analysis via Gemini
-        match call_gemini(gemini_key, model, &multi_tf_prompt, 0.3, 600, false).await {
+        match call_ai(gemini_key, model, &multi_tf_prompt, 0.3, 600, false).await {
             Ok(text) => {
                 let _ = log_tx.send(serde_json::json!({
                     "type": "agent_log_verbose", "symbol": symbol, "agent": "orchestrator",
@@ -1605,7 +1776,7 @@ pub async fn analyze_market(
     let trend = if candles.len() >= 10 { let s=candles[candles.len()-10].close; let e=candles[candles.len()-1].close; if e>s*1.001{"UPTREND"}else if e<s*0.999{"DOWNTREND"}else{"SIDEWAYS"} } else { "UNKNOWN" };
     let pc = if candles.len()>=2 { ((candles[candles.len()-1].close - candles[candles.len()-2].close)/candles[candles.len()-2].close)*100.0 } else { 0.0 };
     let prompt = format!("You are an expert trading analyst. Respond REASONING in Thai language only.\nSymbol: {symbol} | TF: {timeframe} | Price: {current_price:.5} | Change: {pc:.4}% | Trend: {trend} | Strategy: {strategy}\n\nOHLC:\n{candle_str}\n\nAnalyze price action, support/resistance, candlestick patterns then respond:\nRECOMMENDATION: [BUY/SELL/HOLD]\nCONFIDENCE: [0-100]\nREASONING: [concise reasoning in Thai language]");
-    let text = call_gemini(api_key, model, &prompt, 0.3, 500, false).await?;
+    let text = call_ai(api_key, model, &prompt, 0.3, 500, false).await?;
     let mut rec="HOLD".to_string(); let mut conf=50.0; let mut reason=String::new();
     for line in text.lines() { let l=line.trim();
         if l.starts_with("RECOMMENDATION:") { let v=l.replace("RECOMMENDATION:","").trim().to_uppercase(); if v.contains("BUY"){rec="BUY".into()}else if v.contains("SELL"){rec="SELL".into()} }
@@ -1621,6 +1792,41 @@ pub async fn test_connection(api_key: &str, model: &str) -> Result<String, Strin
     let text = call_gemini(api_key, model, "Answer in 1 line in Thai: What AI model are you?", 0.5, 100, false).await?;
     info!("🤖 [AI] Test successful: {}", text.trim());
     Ok(text.trim().to_string())
+}
+
+pub async fn test_ollama_connection() -> Result<String, String> {
+    // First check if Ollama is running
+    let client = reqwest::Client::builder()
+        .timeout(std::time::Duration::from_secs(5))
+        .build().map_err(|e| format!("HTTP error: {}", e))?;
+
+    let resp = client.get(format!("{}/api/tags", OLLAMA_API_BASE))
+        .send().await
+        .map_err(|_| "Ollama ไม่ทำงาน — กรุณาเปิด Ollama ก่อน (systemctl start ollama)".to_string())?;
+
+    if !resp.status().is_success() {
+        return Err("Ollama ตอบกลับผิดปกติ".to_string());
+    }
+
+    // List available models
+    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
+    let models: Vec<String> = body["models"].as_array()
+        .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(|s| s.to_string())).collect())
+        .unwrap_or_default();
+
+    if models.is_empty() {
+        return Err("Ollama ทำงานอยู่ แต่ยังไม่มีโมเดล — กรุณา ollama pull gemma4:e4b".to_string());
+    }
+
+    // Quick test with the first available model
+    let test_model = models.first().unwrap();
+    match call_ollama(test_model, "ตอบสั้นๆ 1 ประโยค: คุณคือ AI โมเดลอะไร?", 0.5, 50).await {
+        Ok(text) => {
+            info!("🏠 [Ollama] Test successful: {}", text.trim());
+            Ok(format!("✅ Ollama พร้อมใช้งาน | Models: {} | ตอบ: {}", models.join(", "), text.trim()))
+        }
+        Err(e) => Err(format!("Ollama test failed: {}", e)),
+    }
 }
 
 pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> {
@@ -1682,7 +1888,7 @@ pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> 
 pub async fn ask_ai(api_key: &str, model: &str, question: &str) -> Result<String, String> {
     if api_key.is_empty() { return Err("API Key is empty".to_string()); }
     let prompt = format!("You are an AI assistant for EA-24 trading system. Always respond in Thai language, keep it concise.\nQuestion: {}", question);
-    call_gemini(api_key, model, &prompt, 0.7, 800, false).await
+    call_ai(api_key, model, &prompt, 0.7, 800, false).await
 }
 
 pub fn available_models() -> Vec<(&'static str, &'static str)> {
@@ -1691,6 +1897,7 @@ pub fn available_models() -> Vec<(&'static str, &'static str)> {
         ("gemini-3-flash-preview", "Gemini 3 Flash (ใหม่ล่าสุด)"),
         ("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite (เร็วมาก)"),
         ("gemma-3-4b-it", "Gemma 3 4B (โมเดลเปิด)"),
+        ("ollama:gemma4:e4b", "🏠 Gemma 4 E4B (Local — Ollama)"),
     ]
 }
 
@@ -1783,7 +1990,7 @@ REASONING: [brief Thai explanation]"#,
         pips = pips_from_entry * 10000.0 // approximate pips
     );
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 300, false).await {
+    match call_ai(gemini_key, model, &prompt, 0.2, 300, false).await {
         Ok(response) => {
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log_verbose", "symbol": symbol, "agent": "order_manager",
@@ -1952,7 +2159,7 @@ LOT: [lot size for hedge/avg or 0]
 CONFIDENCE: [0-100]
 REASONING: [brief Thai explanation]"#);
 
-    match call_gemini(gemini_key, model, &prompt, 0.2, 300, false).await {
+    match call_ai(gemini_key, model, &prompt, 0.2, 300, false).await {
         Ok(response) => {
             let mut action = "HOLD".to_string();
             let mut extra_lot = None;
@@ -2188,7 +2395,7 @@ ANALYSIS: [สรุปวิเคราะห์]
 RECOMMENDATIONS: [แนะนำปรับปรุง]"#);
 
     let (ai_analysis, recommendations) = if !gemini_key.is_empty() && total_trades > 0 {
-        match call_gemini(gemini_key, model, &prompt, 0.5, 800, false).await {
+        match call_ai(gemini_key, model, &prompt, 0.5, 800, false).await {
             Ok(response) => {
                 let mut analysis = String::new();
                 let mut recs = String::new();

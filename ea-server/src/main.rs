@@ -2467,6 +2467,30 @@ async fn handle_ws_connection(
                                             }
                                         });
                                     }
+                                    "test_ollama" => {
+                                        info!("🏠 [UI] Ollama connection test requested");
+                                        let tx_ai = tx.clone();
+                                        tokio::spawn(async move {
+                                            match ai_engine::test_ollama_connection().await {
+                                                Ok(reply) => {
+                                                    let resp = serde_json::json!({
+                                                        "type": "ollama_test_result",
+                                                        "success": true,
+                                                        "message": reply,
+                                                    });
+                                                    let _ = tx_ai.send(resp.to_string());
+                                                }
+                                                Err(e) => {
+                                                    let resp = serde_json::json!({
+                                                        "type": "ollama_test_result",
+                                                        "success": false,
+                                                        "message": e,
+                                                    });
+                                                    let _ = tx_ai.send(resp.to_string());
+                                                }
+                                            }
+                                        });
+                                    }
                                     "ask_ai" => {
                                         let question = client_msg.question.unwrap_or_else(|| "สวัสดี".to_string());
                                         info!("🤖 [UI] AI question: {}", question);
