@@ -196,6 +196,9 @@ pub struct AiAnalysis {
 // ──────────────────────────────────────────────
 
 async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
+    use std::sync::atomic::{AtomicUsize, Ordering};
+    static KEY_COUNTER: AtomicUsize = AtomicUsize::new(0);
+
     let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
     let keys: Vec<&str> = api_keys_str.split(',').map(|s| s.trim()).filter(|s| !s.is_empty()).collect();
     
@@ -218,7 +221,12 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 
     let mut last_error = "Unknown error".to_string();
 
-    for (i, key) in keys.iter().enumerate() {
+    // Round-robin: start from a different key each time to distribute load evenly
+    let start_idx = KEY_COUNTER.fetch_add(1, Ordering::Relaxed) % keys.len();
+
+    for attempt in 0..keys.len() {
+        let i = (start_idx + attempt) % keys.len();
+        let key = keys[i];
         let url = format!("{}/{}:generateContent?key={}", GEMINI_API_BASE, model_name, key);
         
         let resp = match client.post(&url).json(&request).send().await {
@@ -235,7 +243,7 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             let body = resp.text().await.unwrap_or_default();
             last_error = format!("API error ({}): {}", status, body);
             
-            if i < keys.len() - 1 {
+            if attempt < keys.len() - 1 {
                 warn!("⚠️ Gemini API Key {} hit error ({}), trying next key...", i+1, status);
                 continue;
             } else {
@@ -247,13 +255,13 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
             Ok(r) => r,
             Err(e) => {
                 last_error = format!("Parse error: {}", e);
-                if i < keys.len() - 1 { continue; } else { return Err(last_error); }
+                if attempt < keys.len() - 1 { continue; } else { return Err(last_error); }
             }
         };
 
         if let Some(err) = gemini_resp.error {
             last_error = format!("Gemini error: {}", err.message);
-            if i < keys.len() - 1 {
+            if attempt < keys.len() - 1 {
                 warn!("⚠️ Gemini API Key {} hit internal error, trying next...", i+1);
                 continue;
             } else {
