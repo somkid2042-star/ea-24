@@ -13,10 +13,6 @@ const DEFAULT_MODEL: &str = "gemini-2.5-flash";
 const TAVILY_API_URL: &str = "https://api.tavily.com/search";
 const FOREX_CALENDAR_URL: &str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 
-// Ollama Local AI
-const OLLAMA_API_BASE: &str = "http://127.0.0.1:11434";
-const DEFAULT_OLLAMA_MODEL: &str = "gemma4:e4b";
-
 // ──────────────────────────────────────────────
 //  Gemini API Types
 // ──────────────────────────────────────────────
@@ -328,173 +324,19 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 }
 
 // ──────────────────────────────────────────────
-//  Helper: Call Ollama Local AI (Gemma 4 E4B)
+//  Smart AI Caller (Gemini / Google AI Studio)
 // ──────────────────────────────────────────────
 
-#[derive(Serialize)]
-#[allow(dead_code)]
-struct OllamaRequest {
-    model: String,
-    prompt: String,
-    stream: bool,
-    options: OllamaOptions,
-}
-
-#[derive(Serialize)]
-struct OllamaOptions {
-    temperature: f64,
-    num_predict: i32,
-}
-
-#[derive(Deserialize)]
-#[allow(dead_code)]
-struct OllamaResponse {
-    response: Option<String>,
-    error: Option<String>,
-}
-
-/// Chat-style request for Ollama /api/chat
-#[derive(Serialize)]
-struct OllamaChatRequest {
-    model: String,
-    messages: Vec<OllamaChatMessage>,
-    stream: bool,
-    options: OllamaOptions,
-}
-
-#[derive(Serialize)]
-struct OllamaChatMessage {
-    role: String,
-    content: String,
-}
-
-#[derive(Deserialize)]
-struct OllamaChatResponse {
-    message: Option<OllamaChatResponseMessage>,
-    error: Option<String>,
-}
-
-#[derive(Deserialize)]
-struct OllamaChatResponseMessage {
-    content: Option<String>,
-}
-
-async fn call_ollama(model: &str, prompt: &str, temp: f64, max_tokens: i32) -> Result<String, String> {
-    let model_name = if model.is_empty() { DEFAULT_OLLAMA_MODEL } else { model };
-
-    let request = OllamaChatRequest {
-        model: model_name.to_string(),
-        messages: vec![OllamaChatMessage {
-            role: "user".to_string(),
-            content: prompt.to_string(),
-        }],
-        stream: false,
-        options: OllamaOptions {
-            temperature: temp,
-            num_predict: max_tokens,
-        },
-    };
-
-    // Ollama on CPU can be slow — allow up to 5 minutes
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(300))
-        .build().map_err(|e| format!("HTTP client error: {}", e))?;
-
-    let url = format!("{}/api/chat", OLLAMA_API_BASE);
-
-    let resp = client.post(&url)
-        .json(&request)
-        .send()
-        .await
-        .map_err(|e| format!("Ollama request failed (is ollama running?): {}", e))?;
-
-    if !resp.status().is_success() {
-        let status = resp.status();
-        let body = resp.text().await.unwrap_or_default();
-        return Err(format!("Ollama error ({}): {}", status, body));
-    }
-
-    let ollama_resp: OllamaChatResponse = resp.json().await
-        .map_err(|e| format!("Ollama parse error: {}", e))?;
-
-    if let Some(err) = ollama_resp.error {
-        return Err(format!("Ollama error: {}", err));
-    }
-
-    let text = ollama_resp.message
-        .and_then(|m| m.content)
-        .ok_or_else(|| "Ollama returned empty response".to_string())?;
-
-    // Strip thinking blocks if present (Gemma 4 uses <think>...</think>)
-    let clean_text = strip_thinking_blocks(&text);
-
-    // ----- DEBUG LOGGING -----
-    let time_now = chrono::Local::now().format("%Y-%m-%d %H:%M:%S");
-    let debug_log = format!(
-        "========== OLLAMA DEBUG ( {} ) ==========\n⚙️ MODEL: {} (LOCAL)\n\n📥 [PROMPT]:\n{}\n\n📤 [RESPONSE]:\n{}\n======================================================\n\n",
-        time_now, model_name, prompt, clean_text
-    );
-    let _ = tokio::fs::OpenOptions::new()
-        .create(true).append(true)
-        .open("ai_prompt_debug.txt").await
-        .map(|mut f| async move {
-            use tokio::io::AsyncWriteExt;
-            let _ = f.write_all(debug_log.as_bytes()).await;
-        });
-
-    log::info!("🏠 [OLLAMA {}] Prompt len: {}, Response len: {}", model_name, prompt.len(), clean_text.len());
-
-    Ok(clean_text)
-}
-
-/// Remove <think>...</think> or Thinking blocks from Gemma 4 responses
-fn strip_thinking_blocks(text: &str) -> String {
-    // Remove XML-style thinking tags
-    let mut result = text.to_string();
-    while let Some(start) = result.find("<think>") {
-        if let Some(end) = result.find("</think>") {
-            result = format!("{}{}", &result[..start], &result[end + 8..]);
-        } else {
-            // Unclosed <think> tag — remove from <think> to end
-            result = result[..start].to_string();
-            break;
-        }
-    }
-    result.trim().to_string()
-}
-
-// ──────────────────────────────────────────────
-//  Smart AI Caller: Gemini → Ollama Fallback
-// ──────────────────────────────────────────────
-
-/// Try Gemini API first, if it fails, fallback to local Ollama.
-/// If gemini_key is empty, skip Gemini and go straight to Ollama.
+/// Try Gemini API (which handles API key rotation internally).
 async fn call_ai(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
-    // If no Gemini key, go straight to Ollama
     if gemini_key.is_empty() {
-        info!("🏠 [AI] No Gemini API key — using local Ollama");
-        return call_ollama("", prompt, temp, max_tokens).await;
+        return Err("API Key is empty".to_string());
     }
-
-    // Try Gemini first
-    match call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await {
-        Ok(text) => Ok(text),
-        Err(gemini_err) => {
-            // Gemini failed — try Ollama as fallback
-            warn!("⚠️ [AI] Gemini failed: {} — Falling back to local Ollama...", gemini_err);
-            match call_ollama("", prompt, temp, max_tokens).await {
-                Ok(text) => {
-                    info!("✅ [AI] Ollama fallback succeeded!");
-                    Ok(text)
-                }
-                Err(ollama_err) => {
-                    // Both failed
-                    Err(format!("AI ล้มเหลวทั้งสองระบบ | Gemini: {} | Ollama: {}", gemini_err, ollama_err))
-                }
-            }
-        }
-    }
+    
+    // call_gemini handles rotation through multiple API keys, we just await it
+    call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await
 }
+
 
 // ──────────────────────────────────────────────
 //  Agent 1: News Hunter (Google News RSS + Tavily fallback)
@@ -1858,40 +1700,6 @@ Example: "REJECT — RSI overbought ขัดกับสัญญาณ BUY"
     Ok((approved, reason))
 }
 
-pub async fn test_ollama_connection() -> Result<String, String> {
-    // First check if Ollama is running
-    let client = reqwest::Client::builder()
-        .timeout(std::time::Duration::from_secs(5))
-        .build().map_err(|e| format!("HTTP error: {}", e))?;
-
-    let resp = client.get(format!("{}/api/tags", OLLAMA_API_BASE))
-        .send().await
-        .map_err(|_| "Ollama ไม่ทำงาน — กรุณาเปิด Ollama ก่อน (systemctl start ollama)".to_string())?;
-
-    if !resp.status().is_success() {
-        return Err("Ollama ตอบกลับผิดปกติ".to_string());
-    }
-
-    // List available models
-    let body: serde_json::Value = resp.json().await.map_err(|e| format!("Parse error: {}", e))?;
-    let models: Vec<String> = body["models"].as_array()
-        .map(|arr| arr.iter().filter_map(|m| m["name"].as_str().map(|s| s.to_string())).collect())
-        .unwrap_or_default();
-
-    if models.is_empty() {
-        return Err("Ollama ทำงานอยู่ แต่ยังไม่มีโมเดล — กรุณา ollama pull gemma4:e4b".to_string());
-    }
-
-    // Quick test with the first available model
-    let test_model = models.first().unwrap();
-    match call_ollama(test_model, "ตอบสั้นๆ 1 ประโยค: คุณคือ AI โมเดลอะไร?", 0.5, 50).await {
-        Ok(text) => {
-            info!("🏠 [Ollama] Test successful: {}", text.trim());
-            Ok(format!("✅ Ollama พร้อมใช้งาน | Models: {} | ตอบ: {}", models.join(", "), text.trim()))
-        }
-        Err(e) => Err(format!("Ollama test failed: {}", e)),
-    }
-}
 
 pub async fn test_tavily_connection(tavily_key: &str) -> Result<String, String> {
     if tavily_key.is_empty() { return Err("Tavily API Key is empty".to_string()); }
@@ -1959,8 +1767,8 @@ pub fn available_models() -> Vec<(&'static str, &'static str)> {
         ("gemini-2.5-flash", "Gemini 2.5 Flash (เสถียร — ฟรี)"),
         ("gemini-3-flash-preview", "Gemini 3 Flash (ใหม่ล่าสุด)"),
         ("gemini-3.1-flash-lite-preview", "Gemini 3.1 Flash Lite (เร็วมาก)"),
+        ("gemma-4-31b-it", "Gemma 4 31B (Google AI Studio)"),
         ("gemma-3-4b-it", "Gemma 3 4B (โมเดลเปิด)"),
-        ("ollama:gemma4:e4b", "🏠 Gemma 4 E4B (Local — Ollama)"),
     ]
 }
 
