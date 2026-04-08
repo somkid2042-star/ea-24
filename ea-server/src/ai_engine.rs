@@ -332,6 +332,7 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 // ──────────────────────────────────────────────
 
 #[derive(Serialize)]
+#[allow(dead_code)]
 struct OllamaRequest {
     model: String,
     prompt: String,
@@ -346,6 +347,7 @@ struct OllamaOptions {
 }
 
 #[derive(Deserialize)]
+#[allow(dead_code)]
 struct OllamaResponse {
     response: Option<String>,
     error: Option<String>,
