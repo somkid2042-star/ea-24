@@ -9,6 +9,7 @@ use std::collections::HashMap;
 use std::sync::Arc;
 use log::{info, warn, error};
 use tokio::sync::{broadcast, RwLock};
+use chrono::Timelike;
 
 use crate::db::Database;
 use crate::EaState;
@@ -67,6 +68,9 @@ pub struct Indicators {
     // Session
     pub asian_high: f64,
     pub asian_low: f64,
+    // Volatility
+    pub atr_20_avg: f64,     // average ATR over last 20 bars
+    pub atr_ratio: f64,      // atr / atr_20_avg — >1 = expanding, <1 = contracting
 }
 
 /// Signal type
@@ -356,6 +360,19 @@ pub fn compute_indicators(candles: &[Candle]) -> Indicators {
     let (bb_upper, bb_middle, bb_lower) = calc_bollinger(&closes, 20, 2.0);
     let atr = calc_atr(candles, 14);
 
+    // ATR average over last 20 bars — used for volatility ratio
+    let atr_20_avg = if candles.len() >= 30 {
+        let mut sum = 0.0;
+        let count = 20usize;
+        let start = candles.len().saturating_sub(count + 14);
+        for i in 0..count {
+            sum += calc_atr(&candles[start..start + 14 + i + 1], 14);
+        }
+        let avg = sum / count as f64;
+        if avg > 0.0 { avg } else { atr }
+    } else { atr };
+    let atr_ratio = if atr_20_avg > 0.0 { atr / atr_20_avg } else { 1.0 };
+
     // Fibonacci: use swing high/low of last 50 candles
     let (swing_high, swing_low, prev_swing_high, prev_swing_low) = find_swings(candles, 3);
     let fib_range = swing_high - swing_low;
@@ -402,6 +419,7 @@ pub fn compute_indicators(candles: &[Candle]) -> Indicators {
         fair_value_gap_bull: fvg_bull, fair_value_gap_bear: fvg_bear,
         rsi_prev, momentum, atr, candle_body_ratio,
         asian_high, asian_low,
+        atr_20_avg, atr_ratio,
     }
 }
 
@@ -602,38 +620,47 @@ fn eval_smc(ind: &Indicators) -> StrategyResult {
     StrategyResult::none()
 }
 
-// ─── 7. ICT (ปรับ: + Kill zone awareness) ───
+// ─── 7. ICT (ปรับ: + Kill zone — London 7-10 UTC, New York 13-16 UTC) ───
 fn eval_ict(ind: &Indicators) -> StrategyResult {
+    // ICT works best during kill zones — penalize outside kill zones
+    let utc_hour = chrono::Utc::now().hour();
+    let in_london_kz = utc_hour >= 7 && utc_hour < 10;
+    let in_ny_kz = utc_hour >= 13 && utc_hour < 16;
+    let in_kill_zone = in_london_kz || in_ny_kz;
+    let kz_bonus = if in_kill_zone { 10.0 } else { -10.0 };
+
     let swept_low = ind.current_low < ind.swing_low && ind.current_close > ind.swing_low;
     if swept_low && ind.fair_value_gap_bull && ind.candle_body_ratio > 0.6 && ind.rsi_14 < 60.0 {
-        let mut conf = 70.0;
+        let mut conf: f64 = 70.0 + kz_bonus;
         if ind.ema_9 > ind.ema_21 { conf += 5.0; }
         if ind.current_close > ind.ema_50 { conf += 5.0; } // higher TF bias
         if ind.momentum > 0.0 { conf += 5.0; }
+        let kz_label = if in_kill_zone { if in_london_kz { "London KZ" } else { "NY KZ" } } else { "Off-KZ" };
         return StrategyResult::buy(
-            format!("ICT BUY: Sweep<{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
-                ind.swing_low, ind.candle_body_ratio*100.0, ind.rsi_14),
-            conf, ind,
+            format!("ICT BUY [{}]: Sweep<{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
+                kz_label, ind.swing_low, ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf.clamp(0.0, 100.0), ind,
         );
     }
     let swept_high = ind.current_high > ind.swing_high && ind.current_close < ind.swing_high;
     if swept_high && ind.fair_value_gap_bear && ind.candle_body_ratio > 0.6 && ind.rsi_14 > 40.0 {
-        let mut conf = 70.0;
+        let mut conf: f64 = 70.0 + kz_bonus;
         if ind.ema_9 < ind.ema_21 { conf += 5.0; }
         if ind.current_close < ind.ema_50 { conf += 5.0; }
         if ind.momentum < 0.0 { conf += 5.0; }
+        let kz_label = if in_kill_zone { if in_london_kz { "London KZ" } else { "NY KZ" } } else { "Off-KZ" };
         return StrategyResult::sell(
-            format!("ICT SELL: Sweep>{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
-                ind.swing_high, ind.candle_body_ratio*100.0, ind.rsi_14),
-            conf, ind,
+            format!("ICT SELL [{}]: Sweep>{:.5}, FVG, Disp={:.0}%, RSI={:.1}",
+                kz_label, ind.swing_high, ind.candle_body_ratio*100.0, ind.rsi_14),
+            conf.clamp(0.0, 100.0), ind,
         );
     }
-    // OTE fallback
-    if ind.current_close > ind.ema_50 && ind.current_close <= ind.fib_618 * 1.001 
+    // OTE fallback — only during kill zones
+    if in_kill_zone && ind.current_close > ind.ema_50 && ind.current_close <= ind.fib_618 * 1.001 
         && ind.current_close >= ind.fib_618 * 0.990 && ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 {
         return StrategyResult::buy(
             format!("ICT BUY: OTE Fib61.8%={:.5}, RSI={:.1}", ind.fib_618, ind.rsi_14),
-            60.0, ind,
+            62.0, ind,
         );
     }
     StrategyResult::none()
@@ -879,39 +906,93 @@ fn eval_fractal_breakout(ind: &Indicators) -> StrategyResult {
     StrategyResult::none()
 }
 
-// ─── AUTO MODE (ปรับ: weighted scoring — เลือกกลยุทธ์ที่ confidence สูงสุด) ───
+// ─── AUTO MODE v2 — Tier-based Ensemble Agreement ───
+// Tier 1 (weight 1.5x): SMC, ICT, Fibonacci — high-precision, structure-based
+// Tier 2 (weight 1.2x): Trend Rider, Pullback Sniper, Momentum Surge
+// Tier 3 (weight 1.0x): Bollinger Squeeze, Session Sniper, Reversal Catcher, Fractal Breakout
+//
+// Gate: ออกสัญญาณเมื่อ:
+//   - Tier-1 ≥ 2 กลยุทธ์ชี้ทิศเดียวกัน, OR
+//   - Tier-1 ≥ 1 + Tier-2 ≥ 1 ชี้ทิศเดียวกัน, OR
+//   - Tier-2+3 ≥ 3 ชี้ทิศเดียวกัน (fallback)
 fn eval_auto(ind: &Indicators) -> StrategyResult {
-    let priority: &[&str] = &[
-        "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
-        "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
-        "Reversal Catcher", "Fractal Breakout"
-    ];
-    
-    let mut best: Option<StrategyResult> = None;
-    
-    for &strat in priority {
-        let result = evaluate_strategy(strat, ind);
-        if result.signal != Signal::None {
-            match &best {
-                Some(current_best) => {
-                    if result.confidence > current_best.confidence {
-                        best = Some(StrategyResult {
-                            reason: format!("[Auto→{}] {}", strat, result.reason),
-                            ..result
-                        });
+    let tier1: &[&str] = &["SMC", "ICT", "Fibonacci"];
+    let tier2: &[&str] = &["Trend Rider", "Pullback Sniper", "Momentum Surge"];
+    let tier3: &[&str] = &["Bollinger Squeeze", "Session Sniper", "Reversal Catcher", "Fractal Breakout"];
+
+    let mut buy_t1 = 0usize; let mut sell_t1 = 0usize;
+    let mut buy_t2 = 0usize; let mut sell_t2 = 0usize;
+    let mut buy_t3 = 0usize; let mut sell_t3 = 0usize;
+    let mut buy_score = 0.0f64; let mut sell_score = 0.0f64;
+    let mut best_buy: Option<StrategyResult> = None;
+    let mut best_sell: Option<StrategyResult> = None;
+    let mut reasons_buy: Vec<String> = Vec::new();
+    let mut reasons_sell: Vec<String> = Vec::new();
+
+    let eval_tier = |strats: &[&str], weight: f64,
+                     buy_cnt: &mut usize, sell_cnt: &mut usize,
+                     b_score: &mut f64, s_score: &mut f64,
+                     best_b: &mut Option<StrategyResult>,
+                     best_s: &mut Option<StrategyResult>,
+                     r_buy: &mut Vec<String>, r_sell: &mut Vec<String>| {
+        for &strat in strats {
+            let res = evaluate_strategy(strat, ind);
+            match res.signal {
+                Signal::Buy => {
+                    *buy_cnt += 1;
+                    *b_score += res.confidence * weight;
+                    r_buy.push(format!("{}({:.0}%)", strat, res.confidence));
+                    if best_b.as_ref().map(|b: &StrategyResult| res.confidence > b.confidence).unwrap_or(true) {
+                        *best_b = Some(res);
                     }
                 }
-                None => {
-                    best = Some(StrategyResult {
-                        reason: format!("[Auto→{}] {}", strat, result.reason),
-                        ..result
-                    });
+                Signal::Sell => {
+                    *sell_cnt += 1;
+                    *s_score += res.confidence * weight;
+                    r_sell.push(format!("{}({:.0}%)", strat, res.confidence));
+                    if best_s.as_ref().map(|b: &StrategyResult| res.confidence > b.confidence).unwrap_or(true) {
+                        *best_s = Some(res);
+                    }
                 }
+                Signal::None => {}
             }
         }
+    };
+
+    eval_tier(tier1, 1.5, &mut buy_t1, &mut sell_t1, &mut buy_score, &mut sell_score, &mut best_buy, &mut best_sell, &mut reasons_buy, &mut reasons_sell);
+    eval_tier(tier2, 1.2, &mut buy_t2, &mut sell_t2, &mut buy_score, &mut sell_score, &mut best_buy, &mut best_sell, &mut reasons_buy, &mut reasons_sell);
+    eval_tier(tier3, 1.0, &mut buy_t3, &mut sell_t3, &mut buy_score, &mut sell_score, &mut best_buy, &mut best_sell, &mut reasons_buy, &mut reasons_sell);
+
+    // Gate conditions
+    let buy_passes = (buy_t1 >= 2) || (buy_t1 >= 1 && buy_t2 >= 1) || (buy_t2 + buy_t3 >= 3);
+    let sell_passes = (sell_t1 >= 2) || (sell_t1 >= 1 && sell_t2 >= 1) || (sell_t2 + sell_t3 >= 3);
+
+    if !buy_passes && !sell_passes {
+        return StrategyResult::none();
     }
-    
-    best.unwrap_or_else(StrategyResult::none)
+
+    if buy_score >= sell_score && buy_passes {
+        if let Some(mut b) = best_buy {
+            let total = buy_t1 + buy_t2 + buy_t3;
+            b.reason = format!("[Auto-Ensemble BUY | T1:{} T2:{} T3:{} | {}]", buy_t1, buy_t2, buy_t3, reasons_buy.join(", "));
+            // Boost confidence based on agreement depth
+            b.confidence = (b.confidence + (total as f64 - 1.0) * 3.0).min(95.0);
+            let avg_score = buy_score / (buy_t1 + buy_t2 + buy_t3).max(1) as f64;
+            b.confidence = b.confidence.max(avg_score).min(95.0);
+            return b;
+        }
+    } else if sell_passes {
+        if let Some(mut s) = best_sell {
+            let total = sell_t1 + sell_t2 + sell_t3;
+            s.reason = format!("[Auto-Ensemble SELL | T1:{} T2:{} T3:{} | {}]", sell_t1, sell_t2, sell_t3, reasons_sell.join(", "));
+            s.confidence = (s.confidence + (total as f64 - 1.0) * 3.0).min(95.0);
+            let avg_score = sell_score / (sell_t1 + sell_t2 + sell_t3).max(1) as f64;
+            s.confidence = s.confidence.max(avg_score).min(95.0);
+            return s;
+        }
+    }
+
+    StrategyResult::none()
 }
 
 // ──────────────────────────────────────────────
