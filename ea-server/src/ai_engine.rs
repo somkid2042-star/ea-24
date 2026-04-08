@@ -1970,6 +1970,7 @@ pub fn available_models() -> Vec<(&'static str, &'static str)> {
 // ──────────────────────────────────────────────
 
 pub async fn gemma_quick_validate(
+    gemini_key: &str,
     symbol: &str,
     direction: &str,
     indicators: &crate::strategy::Indicators,
@@ -2013,13 +2014,13 @@ Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
         history_summary=history_summary, recent_decisions=recent_decisions,
     );
 
-    // Try Ollama (Gemma 4 local) first — it's free and fast
-    match call_ollama("", &prompt, 0.2, 100).await {
+    // Call Google AI Studio instead of local Ollama
+    match call_ai(gemini_key, "gemma-4-31b-it", &prompt, 0.2, 100, false).await {
         Ok(response) => {
             let clean = response.trim().to_uppercase();
             let approved = clean.starts_with("APPROVE");
             let reason = response.trim().to_string();
-            info!("🏠 [Gemma Validate] {} {} → {} — {}", direction, symbol, 
+            info!("☁️ [Gemma Cloud Validate] {} {} → {} — {}", direction, symbol, 
                 if approved { "APPROVE" } else { "REJECT" }, reason);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "gemma_filter", "status": "done",
@@ -2028,13 +2029,13 @@ Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
             (approved, reason)
         }
         Err(e) => {
-            // If Ollama is not available, auto-approve (don't block)
-            warn!("🏠 [Gemma Validate] Ollama unavailable: {} — Auto-approving", e);
+            // Google AI Studio might rate limit, auto-approve if fails
+            warn!("☁️ [Gemma Cloud Validate] API Error: {} — Auto-approving", e);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": symbol, "agent": "gemma_filter", "status": "done",
-                "message": format!("⚠️ Ollama ไม่พร้อม — Auto-approve ({})", e)
+                "message": format!("⚠️ Cloud API Error — Auto-approve ({})", e)
             }).to_string());
-            (true, format!("Auto-approve (Ollama unavailable: {})", e))
+            (true, format!("Auto-approve (API Error: {})", e))
         }
     }
 }

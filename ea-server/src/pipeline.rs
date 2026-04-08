@@ -326,7 +326,7 @@ pub async fn run_smart_pipeline(
     }).collect::<Vec<_>>().join(" | ");
 
     let (gemma_approved, gemma_reason) = ai_engine::gemma_quick_validate(
-        sym, &base_direction, &indicators, &history_summary, &recent_decisions_str, log_tx
+        &ctx.gemini_key, sym, &base_direction, &indicators, &history_summary, &recent_decisions_str, log_tx
     ).await;
 
     stages.push(StageResult {
