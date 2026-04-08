@@ -655,7 +655,6 @@ pub async fn run_smart_pipeline(
     if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
         crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
             "🔥 <b>Pipeline v8 — Signal Ready</b>\n\n\
-
             📊 <b>{} {}</b>\n\
             🎯 Confidence: <b>{:.0}%</b>\n\
             💰 Lot: {:.2}\n\n\

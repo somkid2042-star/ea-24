@@ -49,6 +49,7 @@ impl KeyCooldownManager {
     }
 
     /// Get status summary for all keys (for /status command)
+    #[allow(dead_code)]
     pub async fn get_status_summary(&self, total_keys: usize) -> String {
         let map = self.cooldowns.read().await;
         let available = (0..total_keys).filter(|i| {
@@ -101,6 +102,7 @@ pub async fn send_telegram_notify(bot_token: &str, chat_id: &str, message: &str)
 }
 
 /// Send Telegram message with inline keyboard buttons
+#[allow(dead_code)]
 pub async fn send_telegram_with_buttons(bot_token: &str, chat_id: &str, message: &str, buttons: Vec<(String, String)>) -> bool {
     if bot_token.is_empty() || chat_id.is_empty() {
         return false;
@@ -131,6 +133,7 @@ pub async fn send_telegram_with_buttons(bot_token: &str, chat_id: &str, message:
 //  Telegram Bot: Command Polling Loop
 // ──────────────────────────────────────────────
 
+#[allow(dead_code)]
 pub async fn start_telegram_bot_loop(
     db: Arc<crate::db::Database>,
     tx: tokio::sync::broadcast::Sender<String>,
@@ -198,6 +201,7 @@ pub async fn start_telegram_bot_loop(
     }
 }
 
+#[allow(dead_code)]
 async fn handle_telegram_command(
     text: &str,
     db: &Arc<crate::db::Database>,
