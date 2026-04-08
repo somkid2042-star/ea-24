@@ -1063,9 +1063,9 @@ impl Database {
                 COUNT(*) FILTER (WHERE profit > 0) as wins \
             FROM trade_history \
             WHERE symbol = $1 \
-                AND EXTRACT(HOUR FROM time::timestamp) >= $2 \
-                AND EXTRACT(HOUR FROM time::timestamp) < $3 \
-                AND time::timestamp > NOW() - INTERVAL '{} days'", days
+                AND EXTRACT(HOUR FROM CAST(time AS TIMESTAMP)) >= $2 \
+                AND EXTRACT(HOUR FROM CAST(time AS TIMESTAMP)) < $3 \
+                AND CAST(time AS TIMESTAMP) > NOW() - INTERVAL '{} days'", days
         );
         if let Ok(row) = sqlx::query_as::<_, (i64, i64)>(&q)
             .bind(symbol).bind(session_start_hour).bind(session_end_hour)
