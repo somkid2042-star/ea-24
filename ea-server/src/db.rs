@@ -1000,4 +1000,122 @@ impl Database {
         
         info!("📊 Memory cache initialized: {} total candles for {} symbols", total_loaded, symbols.len());
     }
+
+    // ──────────────────────────────────────────
+    //  Smart Order Pipeline — Performance Stats
+    // ──────────────────────────────────────────
+
+    /// Get win rate & stats for a specific symbol over N days
+    pub async fn get_symbol_performance(&self, symbol: &str, days: i64) -> serde_json::Value {
+        let q = format!(
+            "SELECT \
+                COUNT(*) as total, \
+                COUNT(*) FILTER (WHERE outcome = 'win') as wins, \
+                COUNT(*) FILTER (WHERE outcome = 'loss') as losses, \
+                COALESCE(AVG(pnl), 0) as avg_pnl, \
+                COALESCE(AVG(confidence), 0) as avg_confidence \
+            FROM ai_decisions \
+            WHERE symbol = $1 AND outcome != 'pending' \
+                AND timestamp > NOW() - INTERVAL '{} days'", days
+        );
+        if let Ok(row) = sqlx::query_as::<_, (i64, i64, i64, f64, f64)>(&q)
+            .bind(symbol)
+            .fetch_one(&self.pool).await
+        {
+            let win_rate = if row.0 > 0 { (row.1 as f64 / row.0 as f64) * 100.0 } else { 50.0 };
+            return serde_json::json!({
+                "total_trades": row.0,
+                "wins": row.1,
+                "losses": row.2,
+                "win_rate": win_rate,
+                "avg_pnl": row.3,
+                "avg_confidence": row.4,
+            });
+        }
+        serde_json::json!({ "total_trades": 0, "wins": 0, "losses": 0, "win_rate": 50.0, "avg_pnl": 0.0, "avg_confidence": 0.0 })
+    }
+
+    /// Get win rate for a specific strategy name on a symbol
+    pub async fn get_strategy_performance(&self, symbol: &str, strategy_keyword: &str, days: i64) -> (f64, i64) {
+        let q = format!(
+            "SELECT \
+                COUNT(*) as total, \
+                COUNT(*) FILTER (WHERE outcome = 'win') as wins \
+            FROM ai_decisions \
+            WHERE symbol = $1 AND context ILIKE '%' || $2 || '%' AND outcome != 'pending' \
+                AND timestamp > NOW() - INTERVAL '{} days'", days
+        );
+        if let Ok(row) = sqlx::query_as::<_, (i64, i64)>(&q)
+            .bind(symbol).bind(strategy_keyword)
+            .fetch_one(&self.pool).await
+        {
+            let win_rate = if row.0 > 0 { (row.1 as f64 / row.0 as f64) * 100.0 } else { 50.0 };
+            return (win_rate, row.0);
+        }
+        (50.0, 0)
+    }
+
+    /// Get win rate by trading session (Asia/London/NY) from trade_history
+    pub async fn get_session_performance(&self, symbol: &str, session_start_hour: i32, session_end_hour: i32, days: i64) -> f64 {
+        let q = format!(
+            "SELECT \
+                COUNT(*) as total, \
+                COUNT(*) FILTER (WHERE profit > 0) as wins \
+            FROM trade_history \
+            WHERE symbol = $1 \
+                AND EXTRACT(HOUR FROM time::timestamp) >= $2 \
+                AND EXTRACT(HOUR FROM time::timestamp) < $3 \
+                AND time::timestamp > NOW() - INTERVAL '{} days'", days
+        );
+        if let Ok(row) = sqlx::query_as::<_, (i64, i64)>(&q)
+            .bind(symbol).bind(session_start_hour).bind(session_end_hour)
+            .fetch_one(&self.pool).await
+        {
+            if row.0 > 0 { return (row.1 as f64 / row.0 as f64) * 100.0; }
+        }
+        50.0
+    }
+
+    /// Get recent N decisions for context (for AI prompts)
+    pub async fn get_recent_decisions_context(&self, symbol: &str, limit: i64) -> Vec<serde_json::Value> {
+        let q = "SELECT direction, confidence, pnl, outcome, lot_size, \
+                 EXTRACT(EPOCH FROM timestamp)::BIGINT as ts \
+                 FROM ai_decisions \
+                 WHERE symbol = $1 AND outcome != 'pending' \
+                 ORDER BY timestamp DESC LIMIT $2";
+        if let Ok(rows) = sqlx::query_as::<_, (String, f64, f64, String, f64, i64)>(q)
+            .bind(symbol).bind(limit)
+            .fetch_all(&self.pool).await
+        {
+            return rows.iter().map(|r| serde_json::json!({
+                "direction": r.0, "confidence": r.1, "pnl": r.2,
+                "outcome": r.3, "lot_size": r.4, "timestamp": r.5
+            })).collect();
+        }
+        vec![]
+    }
+
+    /// Get recent win/loss streak for a symbol
+    pub async fn get_recent_streak(&self, symbol: &str) -> i32 {
+        let q = "SELECT outcome FROM ai_decisions \
+                 WHERE symbol = $1 AND outcome != 'pending' \
+                 ORDER BY timestamp DESC LIMIT 10";
+        if let Ok(rows) = sqlx::query_as::<_, (String,)>(q)
+            .bind(symbol)
+            .fetch_all(&self.pool).await
+        {
+            if rows.is_empty() { return 0; }
+            let first_outcome = &rows[0].0;
+            let mut streak: i32 = 0;
+            for r in &rows {
+                if &r.0 == first_outcome {
+                    streak += 1;
+                } else {
+                    break;
+                }
+            }
+            return if first_outcome == "win" { streak } else { -streak };
+        }
+        0
+    }
 }

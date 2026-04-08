@@ -6,6 +6,7 @@ mod updater;
 mod strategy;
 mod notify;
 mod ai_engine;
+mod pipeline;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -367,7 +368,7 @@ async fn run_server() {
                     let interval_min = job["interval"].as_u64().unwrap_or(5);
                     let auto_trade = job["auto_trade"].as_bool().unwrap_or(false);
                     let fallback_lot = db_ai.get_config("ai_auto_lot_size").await.unwrap_or_else(|| "0.01".to_string()).parse().unwrap_or(0.01);
-                    let auto_lot = job["lot_size"].as_f64().unwrap_or(fallback_lot);
+                    let _auto_lot = job["lot_size"].as_f64().unwrap_or(fallback_lot);
                     
                     let telegram_alert = job["telegram_alert"].as_bool().unwrap_or(false);
                     let tp_sl_mode = job["tp_sl_mode"].as_str().unwrap_or("none");
@@ -647,28 +648,16 @@ async fn run_server() {
                             } // end recovery else (normal order management)
                         } else {
                             // ═══════════════════════════════════════════════
-                            //  NORMAL ANALYSIS MODE — no open position, look for new trades
+                            //  SMART ORDER PIPELINE v7 — 6-Stage Decision Engine
                             // ═══════════════════════════════════════════════
-                        info!("🤖 [Auto-Pilot] Triggering Scheduled Multi-Agent Analysis on {}", sym);
+                        info!("🔥 [Auto-Pilot] Starting Smart Pipeline v7 on {}", sym);
                         
                         let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
                         let _ = tx_ai.send(start_msg);
                         
-                        let candles_m5 = db_ai.get_candles_for_strategy(&sym, 5, 50).await;
-                        let candles_m15 = db_ai.get_candles_for_strategy(&sym, 15, 50).await;
-                        let candles_h1 = db_ai.get_candles_for_strategy(&sym, 60, 50).await;
-                        let candles_h4 = db_ai.get_candles_for_strategy(&sym, 240, 30).await;
-                        
-                        let multi_tf_candles = vec![
-                            ("M5", candles_m5),
-                            ("M15", candles_m15),
-                            ("H1", candles_h1),
-                            ("H4", candles_h4),
-                        ];
-                        
-                        let (bal, eq, open_pos) = {
+                        let (bal, eq, open_pos, positions_detail) = {
                             let state = ea_state_ai.read().await;
-                            (state.balance, state.equity, state.open_positions)
+                            (state.balance, state.equity, state.open_positions, state.positions_detail.clone())
                         };
                         
                         let job_ai_mode = job["ai_mode"].as_str().unwrap_or(&ai_mode).to_string();
@@ -685,107 +674,91 @@ async fn run_server() {
                             None
                         };
                         
-                        let result = ai_engine::run_all_agents_multi_tf(
-                            &gemini_key, &gemini_model, &tavily_key,
-                            &sym, &multi_tf_candles,
-                            if bal > 0.0 { bal } else { 10000.0 }, 
-                            if eq > 0.0 { eq } else { 10000.0 }, 
-                            open_pos, 5, 10.0, false, 
-                            &job_ai_mode,
-                            &disabled_agents,
-                            global_news,
-                            &tx_ai
-                        ).await;
+                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
+                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
                         
-                        let resp = serde_json::json!({
-                            "type": "multi_agent_result",
+                        let pipeline_ctx = pipeline::PipelineContext {
+                            symbol: sym.clone(),
+                            balance: if bal > 0.0 { bal } else { 10000.0 },
+                            equity: if eq > 0.0 { eq } else { 10000.0 },
+                            open_positions: open_pos,
+                            positions_detail,
+                            gemini_key: gemini_key.clone(),
+                            gemini_model: gemini_model.clone(),
+                            tavily_key: tavily_key.clone(),
+                            ai_mode: job_ai_mode.clone(),
+                            disabled_agents,
+                            global_news,
+                            job_config: job.clone(),
+                            telegram_alert,
+                            tg_token: tg_token.clone(),
+                            tg_chat: tg_chat.clone(),
+                        };
+                        
+                        let result = pipeline::run_smart_pipeline(&pipeline_ctx, &db_ai, &tx_ai).await;
+                        
+                        // Broadcast pipeline result to dashboard
+                        let _ = tx_ai.send(serde_json::json!({
+                            "type": "pipeline_result",
                             "symbol": sym,
                             "result": result
-                        });
-                        let _ = tx_ai.send(resp.to_string());
-                    
-                        if result.final_decision == "BUY" || result.final_decision == "SELL" {
-                            // Confidence threshold check (default 55%)
-                            let min_confidence = job["min_confidence"].as_f64().unwrap_or(55.0);
-                            
-                            if result.confidence < min_confidence {
-                                info!("🤖 [Auto-Pilot] {} on {} skipped: confidence {:.0}% < threshold {:.0}%", 
-                                    result.final_decision, sym, result.confidence, min_confidence);
-                                let skip_msg = serde_json::json!({
-                                    "type": "agent_log", "symbol": sym, "agent": "orchestrator", "status": "done",
-                                    "message": format!("⏭️ {} ข้าม: confidence {:.0}% ต่ำกว่า threshold {:.0}%", result.final_decision, result.confidence, min_confidence)
-                                }).to_string();
-                                let _ = tx_ai.send(skip_msg);
-                            } else {
-                                // Auto-scale lot size based on confidence
-                                let scaled_lot = if job["lot_scale"].as_bool().unwrap_or(false) {
-                                    if result.confidence >= 85.0 { auto_lot * 3.0 }
-                                    else if result.confidence >= 70.0 { auto_lot * 2.0 }
-                                    else { auto_lot }
-                                } else {
-                                    auto_lot
-                                };
-                                
+                        }).to_string());
+                        
+                        if result.decision == "BUY" || result.decision == "SELL" {
                             if auto_trade {
-                                info!("🤖 [Auto-Pilot] Executing {} order on {} (conf: {:.0}%, lot: {:.2})", result.final_decision, sym, result.confidence, scaled_lot);
+                                info!("🤖 [Pipeline v7] Executing {} on {} (conf: {:.0}%, lot: {:.2})", 
+                                    result.decision, sym, result.confidence, result.lot_size);
                                 let cmd = serde_json::json!({
                                     "action": "open_trade",
                                     "symbol": sym,
-                                    "direction": result.final_decision,
-                                    "lot_size": scaled_lot,
-                                    "comment": format!("EA24-{}-{:.0}%", job_ai_mode, result.confidence)
+                                    "direction": result.decision,
+                                    "lot_size": result.lot_size,
+                                    "comment": format!("EA24v7-{}-{:.0}%", job_ai_mode, result.confidence)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
                                 
                                 // Record AI decision for training data
                                 db_ai.insert_ai_decision(
-                                    &sym, &result.final_decision, result.confidence,
-                                    &result.reasoning, scaled_lot, 0.0, // entry_price filled by MT5 later
-                                    0, &gemini_model, &format!("mode:{}", job_ai_mode),
+                                    &sym, &result.decision, result.confidence,
+                                    &result.reasoning, result.lot_size, 0.0,
+                                    0, &gemini_model, &format!("pipeline_v7:{}", job_ai_mode),
                                 ).await;
                                 
-                                if telegram_alert {
-                                    let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                    let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                    if !tg_token.is_empty() && !tg_chat.is_empty() {
-                                        let msg = format!(
-                                            "🔥 <b>AI Auto-Execute</b>\n\n📊 {} <b>{}</b>\n💰 Lot: {:.2}\n🎯 Confidence: {:.0}%\n📝 {}\n⏰ {}",
-                                            result.final_decision, sym, scaled_lot, result.confidence, result.reasoning,
-                                            chrono::Local::now().format("%H:%M:%S")
-                                        );
-                                        notify::send_telegram_notify(&tg_token, &tg_chat, &msg).await;
-                                    }
-                                }
                             } else {
-                                info!("🤖 [Auto-Pilot] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", result.final_decision, sym, result.confidence);
+                                info!("🤖 [Pipeline v7] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", 
+                                    result.decision, sym, result.confidence);
                                 let proposal = serde_json::json!({
                                     "type": "ai_trade_proposal",
                                     "symbol": sym,
-                                    "direction": result.final_decision,
+                                    "direction": result.decision,
                                     "confidence": result.confidence,
                                     "reasoning": result.reasoning,
-                                    "lot_size": scaled_lot,
-                                    "comment": format!("EA24-{}", job_ai_mode)
+                                    "lot_size": result.lot_size,
+                                    "comment": format!("EA24v7-{}", job_ai_mode),
+                                    "pipeline_stages": result.stages,
+                                    "history": result.history_context,
                                 }).to_string();
                                 let _ = tx_ai.send(proposal);
                                 
-                                let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                let msg = format!(
-                                    "🚨 <b>AI Trade Proposal</b>\n\n📊 {} <b>{}</b>\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
-                                    result.final_decision, sym, result.confidence, scaled_lot, result.reasoning
-                                );
                                 notify::send_telegram_with_buttons(
-                                    &tg_token, &tg_chat, &msg,
+                                    &tg_token, &tg_chat, &format!(
+                                        "🚨 <b>AI Trade Proposal (Pipeline v7)</b>\n\n📊 {} <b>{}</b>\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
+                                        result.decision, sym, result.confidence, result.lot_size, result.reasoning
+                                    ),
                                     vec![
-                                        ("✅ อนุมัติ".to_string(), format!("approve_{}_{}", sym, result.final_decision)),
+                                        ("✅ อนุมัติ".to_string(), format!("approve_{}_{}", sym, result.decision)),
                                         ("❌ ปฏิเสธ".to_string(), format!("reject_{}", sym)),
                                     ]
                                 ).await;
                             }
-                            }
                         }
-                    } // end else (normal analysis mode)
+                        
+                        // Send done event
+                        let _ = tx_ai.send(serde_json::json!({
+                            "type": "agents_done", "symbol": sym,
+                            "message": format!("Pipeline v7 completed: {} ({:.0}%)", result.decision, result.confidence)
+                        }).to_string());
+                    } // end else (Smart Pipeline v7)
                     } // end if should_run
                 } // end for job
                 
@@ -949,6 +922,51 @@ async fn run_server() {
                     }
                 }).to_string();
                 let _ = global_ai_tx.send(msg);
+                
+                // ═══════════════════════════════════════════════
+                //  Telegram News Alert — Only when news changed
+                // ═══════════════════════════════════════════════
+                let tg_token = global_ai_db.get_config("telegram_bot_token").await.unwrap_or_default();
+                let tg_chat = global_ai_db.get_config("telegram_chat_id").await.unwrap_or_default();
+                if !tg_token.is_empty() && !tg_chat.is_empty() {
+                    // Compare with previous sentiment to detect changes
+                    let prev_sentiment = global_ai_db.get_config("_prev_news_sentiment").await.unwrap_or_default();
+                    let new_sentiment = format!("{}|{}", news_result.sentiment, news_result.summary.chars().take(100).collect::<String>());
+                    
+                    if new_sentiment != prev_sentiment {
+                        // News changed! Send Telegram alert
+                        global_ai_db.set_config("_prev_news_sentiment", &new_sentiment).await;
+                        
+                        let sentiment_emoji = match news_result.sentiment.as_str() {
+                            "BULLISH" => "🟢",
+                            "BEARISH" => "🔴",
+                            _ => "🟡",
+                        };
+                        
+                        let cal_summary = if cal_result.high_impact_soon {
+                            format!("⚠️ ข่าวสำคัญกำลังจะมา: {}", cal_result.warning)
+                        } else {
+                            "✅ ไม่มีข่าวสำคัญใกล้ๆ".to_string()
+                        };
+                        
+                        let news_msg = format!(
+                            "📰 <b>อัพเดทข่าวรายชั่วโมง</b>\n\n\
+                            {} <b>Sentiment: {}</b>\n\
+                            📝 {}\n\n\
+                            📅 <b>Calendar:</b>\n{}\n\n\
+                            ⏰ {}",
+                            sentiment_emoji, news_result.sentiment,
+                            news_result.summary,
+                            cal_summary,
+                            chrono::Local::now().format("%H:%M:%S %d/%m/%Y")
+                        );
+                        notify::send_telegram_notify(&tg_token, &tg_chat, &news_msg).await;
+                        info!("📰 [News Alert] Telegram sent — sentiment changed to {}", news_result.sentiment);
+                    } else {
+                        info!("📰 [News Alert] No change in sentiment — skipping Telegram");
+                    }
+                }
+                
                 info!("🤖 [Global-AI] Successfully updated Global News and Calendar. Next fetch in 1 hour.");
                 tokio::time::sleep(tokio::time::Duration::from_secs(3600)).await;
             } else {

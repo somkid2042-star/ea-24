@@ -1963,6 +1963,81 @@ pub fn available_models() -> Vec<(&'static str, &'static str)> {
 }
 
 // ──────────────────────────────────────────────
+//  Pipeline v7: Gemma 4 Quick Validate (Local)
+//  Fast pre-filter to reject false signals
+// ──────────────────────────────────────────────
+
+pub async fn gemma_quick_validate(
+    symbol: &str,
+    direction: &str,
+    indicators: &crate::strategy::Indicators,
+    history_summary: &str,
+    recent_decisions: &str,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+) -> (bool, String) {
+    let trend = if indicators.ema_9 > indicators.ema_21 && indicators.ema_21 > indicators.ema_50 {
+        "STRONG UPTREND"
+    } else if indicators.ema_9 < indicators.ema_21 && indicators.ema_21 < indicators.ema_50 {
+        "STRONG DOWNTREND"
+    } else if indicators.ema_9 > indicators.ema_21 {
+        "MILD UPTREND"
+    } else {
+        "MILD DOWNTREND"
+    };
+
+    let prompt = format!(
+r#"You are a quick trade signal validator. Answer ONLY with "APPROVE" or "REJECT" followed by 1 short reason in Thai.
+
+Signal: {direction} {symbol}
+RSI: {rsi:.1} | Trend: {trend} | ATR: {atr:.5}
+EMA9: {ema9:.5} > EMA21: {ema21:.5} > EMA50: {ema50:.5}
+BB: Upper={bb_up:.5} Mid={bb_mid:.5} Lower={bb_low:.5}
+FVG Bull: {fvg_bull} | FVG Bear: {fvg_bear}
+History: {history_summary}
+Recent: {recent_decisions}
+
+Rules:
+- APPROVE if signal aligns with trend & RSI is reasonable
+- REJECT if BUY with RSI>80 or SELL with RSI<20
+- REJECT if signal conflicts with strong trend
+- When in doubt, APPROVE
+
+Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
+        direction=direction, symbol=symbol,
+        rsi=indicators.rsi_14, trend=trend, atr=indicators.atr,
+        ema9=indicators.ema_9, ema21=indicators.ema_21, ema50=indicators.ema_50,
+        bb_up=indicators.bb_upper, bb_mid=indicators.bb_middle, bb_low=indicators.bb_lower,
+        fvg_bull=indicators.fair_value_gap_bull, fvg_bear=indicators.fair_value_gap_bear,
+        history_summary=history_summary, recent_decisions=recent_decisions,
+    );
+
+    // Try Ollama (Gemma 4 local) first — it's free and fast
+    match call_ollama("", &prompt, 0.2, 100).await {
+        Ok(response) => {
+            let clean = response.trim().to_uppercase();
+            let approved = clean.starts_with("APPROVE");
+            let reason = response.trim().to_string();
+            info!("🏠 [Gemma Validate] {} {} → {} — {}", direction, symbol, 
+                if approved { "APPROVE" } else { "REJECT" }, reason);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "gemma_filter", "status": "done",
+                "message": format!("{} {}", if approved { "✅" } else { "❌" }, reason)
+            }).to_string());
+            (approved, reason)
+        }
+        Err(e) => {
+            // If Ollama is not available, auto-approve (don't block)
+            warn!("🏠 [Gemma Validate] Ollama unavailable: {} — Auto-approving", e);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "gemma_filter", "status": "done",
+                "message": format!("⚠️ Ollama ไม่พร้อม — Auto-approve ({})", e)
+            }).to_string());
+            (true, format!("Auto-approve (Ollama unavailable: {})", e))
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
 //  AI Order Manager: Manage existing positions
 // ──────────────────────────────────────────────
 
