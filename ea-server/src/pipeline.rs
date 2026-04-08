@@ -14,7 +14,7 @@ use tokio::sync::broadcast;
 
 use crate::db::Database;
 use crate::ai_engine;
-use crate::notify;
+
 use crate::strategy;
 
 /// Pipeline context — all data needed for the decision
@@ -32,9 +32,8 @@ pub struct PipelineContext {
     pub disabled_agents: Vec<String>,
     pub global_news: Option<ai_engine::NewsResult>,
     pub job_config: serde_json::Value,
-    pub telegram_alert: bool,
-    pub tg_token: String,
-    pub tg_chat: String,
+    pub discord_alert: bool,
+    pub discord_channel_order: String,
 }
 
 /// Result from each pipeline stage
@@ -287,8 +286,8 @@ pub async fn run_smart_pipeline(
             "type": "agent_log", "symbol": sym, "agent": "pipeline", "status": "done", "message": msg
         }).to_string());
 
-        if ctx.telegram_alert && !ctx.tg_token.is_empty() {
-            notify::send_telegram_notify(&ctx.tg_token, &ctx.tg_chat, &format!(
+        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
                 "⏭️ <b>Pipeline Skip</b>\n\n📊 {} {}\n🎯 Confidence: {:.0}% < {:.0}%\n📜 History WR: {:.0}%\n⚡ Streak: {}",
                 base_direction, sym, adjusted_confidence, min_confidence, symbol_win_rate, recent_streak
             )).await;
@@ -342,8 +341,8 @@ pub async fn run_smart_pipeline(
             "type": "agent_log", "symbol": sym, "agent": "pipeline", "status": "done", "message": msg
         }).to_string());
 
-        if ctx.telegram_alert && !ctx.tg_token.is_empty() {
-            notify::send_telegram_notify(&ctx.tg_token, &ctx.tg_chat, &format!(
+        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
                 "🏠 <b>Gemma Reject</b>\n\n📊 {} {}\n🎯 Confidence: {:.0}%\n❌ {}", 
                 base_direction, sym, adjusted_confidence, gemma_reason
             )).await;
@@ -410,8 +409,8 @@ pub async fn run_smart_pipeline(
             "type": "agent_log", "symbol": sym, "agent": "pipeline", "status": "done", "message": msg
         }).to_string());
 
-        if ctx.telegram_alert && !ctx.tg_token.is_empty() {
-            notify::send_telegram_notify(&ctx.tg_token, &ctx.tg_chat, &format!(
+        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
                 "☁️ <b>Gemini Disagree</b>\n\n📊 Pipeline: {} vs Gemini: {}\n🎯 {} ({:.0}%)\n❌ {}",
                 base_direction, gemini_decision, sym, gemini_confidence, gemini_reasoning
             )).await;
@@ -470,8 +469,8 @@ pub async fn run_smart_pipeline(
             "type": "agent_log", "symbol": sym, "agent": "pipeline", "status": "done", "message": msg
         }).to_string());
 
-        if ctx.telegram_alert && !ctx.tg_token.is_empty() {
-            notify::send_telegram_notify(&ctx.tg_token, &ctx.tg_chat, &format!(
+        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
                 "📅 <b>News Avoidance</b>\n\n📊 {} {}\n📰 {} ในอีก {} นาที\n🛑 ไม่เปิดออเดอร์ใหม่",
                 base_direction, sym, event_name, mins
             )).await;
@@ -529,8 +528,8 @@ pub async fn run_smart_pipeline(
     }).collect::<Vec<_>>().join("\n");
 
     // Final Telegram alert for successful pipeline
-    if ctx.telegram_alert && !ctx.tg_token.is_empty() {
-        notify::send_telegram_notify(&ctx.tg_token, &ctx.tg_chat, &format!(
+    if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+        crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
             "🔥 <b>Pipeline v7 — Signal Ready</b>\n\n\
             📊 <b>{} {}</b>\n\
             🎯 Confidence: <b>{:.0}%</b>\n\

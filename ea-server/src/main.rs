@@ -5,6 +5,7 @@ mod db;
 mod updater;
 mod strategy;
 mod notify;
+mod discord_bot;
 mod ai_engine;
 mod pipeline;
 
@@ -371,6 +372,7 @@ async fn run_server() {
                     let _auto_lot = job["lot_size"].as_f64().unwrap_or(fallback_lot);
                     
                     let telegram_alert = job["telegram_alert"].as_bool().unwrap_or(false);
+                    let discord_alert = job["discord_alert"].as_bool().unwrap_or(telegram_alert);
                     let tp_sl_mode = job["tp_sl_mode"].as_str().unwrap_or("none");
                     let tp_value = job["tp_value"].as_f64().unwrap_or(0.0);
                     let sl_value = job["sl_value"].as_f64().unwrap_or(0.0);
@@ -452,14 +454,13 @@ async fn run_server() {
                             }).to_string();
                             let _ = tx_ai.send(skip_msg);
                             
-                            if telegram_alert {
-                                let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                            if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_news").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                     "📅 <b>News Avoidance</b>\n\n⚠️ หยุดวิเคราะห์ {}\n📰 {} ออกในอีก {} นาที\n🛑 ไม่เปิดออเดอร์ใหม่",
                                     sym, event_name, mins
                                 )).await;
-                            }
+                                        }
                             continue; // Skip this symbol entirely
                         }
 
@@ -520,10 +521,9 @@ async fn run_server() {
                                             "comment": format!("EA24-HEDGE-#{}", ticket)
                                         }).to_string();
                                         let _ = tx_ai.send(cmd);
-                                        if telegram_alert {
-                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                        if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                                 "🔀 <b>AI Recovery: HEDGE</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
                                                 sym, ticket, hedge_dir, hedge_lot, recovery.reasoning
                                             )).await;
@@ -539,10 +539,9 @@ async fn run_server() {
                                             "comment": format!("EA24-AVG-#{}", ticket)
                                         }).to_string();
                                         let _ = tx_ai.send(cmd);
-                                        if telegram_alert {
-                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                        if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                                 "📉 <b>AI Recovery: ถัวเฉลี่ย</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
                                                 sym, ticket, avg_dir, avg_lot, recovery.reasoning
                                             )).await;
@@ -554,10 +553,9 @@ async fn run_server() {
                                             "action": "close_trade", "ticket": ticket
                                         }).to_string();
                                         let _ = tx_ai.send(cmd);
-                                        if telegram_alert {
-                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                        if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                                 "✂️ <b>AI Recovery: ตัดขาดทุน</b>\n\n📊 {} #{}\n💔 DD: {:.2}%\n📝 {}",
                                                 sym, ticket, pnl_pct, recovery.reasoning
                                             )).await;
@@ -613,14 +611,13 @@ async fn run_server() {
                                     }).to_string();
                                     let _ = tx_ai.send(cmd);
                                     
-                                    if telegram_alert {
-                                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                    if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                             "🔴 <b>AI ปิดออเดอร์</b>\n\n📊 {} #{}\n📝 {}",
                                             sym, ticket, manage_result.reasoning
                                         )).await;
-                                    }
+                                        }
                                 }
                                 "PARTIAL_CLOSE" => {
                                     info!("✂️ [Order Manager] Partial close 50% {} #{}", sym, ticket);
@@ -631,14 +628,13 @@ async fn run_server() {
                                     }).to_string();
                                     let _ = tx_ai.send(cmd);
                                     
-                                    if telegram_alert {
-                                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                        notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
+                                    if discord_alert {
+                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
                                             "✂️ <b>AI ปิดบางส่วน 50%</b>\n\n📊 {} #{}\n📝 {}",
                                             sym, ticket, manage_result.reasoning
                                         )).await;
-                                    }
+                                        }
                                 }
                                 _ => {
                                     // HOLD — do nothing
@@ -674,8 +670,7 @@ async fn run_server() {
                             None
                         };
                         
-                        let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                        let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
+                        let discord_channel_order = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
                         
                         let pipeline_ctx = pipeline::PipelineContext {
                             symbol: sym.clone(),
@@ -690,9 +685,8 @@ async fn run_server() {
                             disabled_agents,
                             global_news,
                             job_config: job.clone(),
-                            telegram_alert,
-                            tg_token: tg_token.clone(),
-                            tg_chat: tg_chat.clone(),
+                            discord_alert,
+                            discord_channel_order,
                         };
                         
                         let result = pipeline::run_smart_pipeline(&pipeline_ctx, &db_ai, &tx_ai).await;
@@ -740,16 +734,11 @@ async fn run_server() {
                                 }).to_string();
                                 let _ = tx_ai.send(proposal);
                                 
-                                notify::send_telegram_with_buttons(
-                                    &tg_token, &tg_chat, &format!(
-                                        "🚨 <b>AI Trade Proposal (Pipeline v7)</b>\n\n📊 {} <b>{}</b>\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
-                                        result.decision, sym, result.confidence, result.lot_size, result.reasoning
-                                    ),
-                                    vec![
-                                        ("✅ อนุมัติ".to_string(), format!("approve_{}_{}", sym, result.decision)),
-                                        ("❌ ปฏิเสธ".to_string(), format!("reject_{}", sym)),
-                                    ]
-                                ).await;
+                                let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                crate::discord_bot::send_to_channel(&chan_id, &format!(
+                                    "🚨 **AI Trade Proposal (Pipeline v7)**\n\n📊 {} **{}**\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
+                                    result.decision, sym, result.confidence, result.lot_size, result.reasoning
+                                )).await;
                             }
                         }
                         
@@ -775,7 +764,7 @@ async fn run_server() {
     let tg_ea_state = ea_state.clone();
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        notify::start_telegram_bot_loop(tg_db, tg_tx, tg_ea_state).await;
+        crate::discord_bot::start_discord_bot(tg_db, tg_tx, tg_ea_state).await;
     });
 
     // ═══════════════════════════════════════════════
@@ -814,26 +803,11 @@ async fn run_server() {
                     "result": review
                 }).to_string());
                 
-                // Send to Telegram
-                let tg_token = journal_db.get_config("telegram_bot_token").await.unwrap_or_default();
-                let tg_chat = journal_db.get_config("telegram_chat_id").await.unwrap_or_default();
-                if !tg_token.is_empty() && !tg_chat.is_empty() {
-                    let msg = format!(
-                        "📓 <b>สรุปสัปดาห์โดย AI</b>\n\n\
-                        📊 เทรดทั้งหมด: {}\n\
-                        ✅ ชนะ: {} | ❌ แพ้: {}\n\
-                        🎯 Win Rate: {:.1}%\n\
-                        💰 กำไร/ขาดทุนรวม: ${:.2}\n\
-                        📈 Best: ${:.2} | 📉 Worst: ${:.2}\n\n\
-                        🧠 <b>วิเคราะห์:</b>\n{}\n\n\
-                        💡 <b>แนะนำ:</b>\n{}",
-                        review.total_trades, review.win_count, review.loss_count,
-                        review.win_rate, review.total_profit,
-                        review.best_trade, review.worst_trade,
-                        review.ai_analysis, review.recommendations
-                    );
-                    notify::send_telegram_notify(&tg_token, &tg_chat, &msg).await;
-                }
+                // Send to Discord
+                let chan_id = journal_db.get_config("discord_channel_report").await.unwrap_or_default();
+                let msg = format!("📓 **สรุปการเทรดประจำสัปดาห์**\n\nกำไร: ${:.2}\nWin Rate: {:.0}%\n\n{}", 
+                    review.total_profit, review.win_rate, review.ai_analysis);
+                crate::discord_bot::send_to_channel(&chan_id, &msg).await;
                 
                 info!("📓 [Weekly Journal] Review complete: {} trades, WR {:.0}%, P&L ${:.2}", 
                     review.total_trades, review.win_rate, review.total_profit);
@@ -1410,10 +1384,10 @@ async fn handle_mt5_connection(
                                             
                                             // 🔔 Send Telegram Notification for closed trades
                                             let notify_close = db.get_config("notify_on_close").await.unwrap_or("true".to_string()) == "true";
-                                            let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
-                                            let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
+                                            let chan_id = db.get_config("discord_channel_report").await.unwrap_or_default();
                                             
-                                            if notify_close && !bot_token.is_empty() && !chat_id.is_empty() {
+                                            
+                                            if notify_close && !chan_id.is_empty() {
                                                 for deal in new_deals {
                                                     let ticket = deal["ticket"].as_i64().unwrap_or(0);
                                                     let pos_id = deal["pos_id"].as_i64().unwrap_or(0);
@@ -1433,9 +1407,8 @@ async fn handle_mt5_connection(
                                                         let dir = if type_str == "1" || type_str.contains("SELL") { "BUY" } else { "SELL" };
                                                         
                                                         let msg = crate::notify::format_trade_close(sym, dir, lot, total_pnl);
-                                                        let bt = bot_token.clone();
-                                                        let cid = chat_id.clone();
-                                                        tokio::spawn(async move { crate::notify::send_telegram_notify(&bt, &cid, &msg).await; });
+                                                        let cid = chan_id.clone();
+                                                        tokio::spawn(async move { crate::discord_bot::send_to_channel(&cid, &msg).await; });
                                                         
                                                         // Update AI decision outcome for training data
                                                         let exit_price = deal["price"].as_f64().unwrap_or(0.0);
@@ -2099,10 +2072,10 @@ async fn handle_ws_connection(
                                         });
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
-                                    "test_telegram_notify" => {
-                                        let bot_token = db.get_config("telegram_bot_token").await.unwrap_or_default();
-                                        let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
-                                        let ok = notify::send_telegram_notify(&bot_token, &chat_id, "✅ ทดสอบแจ้งเตือน EA-24\nระบบแจ้งเตือนผ่าน Telegram ทำงานปกติ!").await;
+                                    "test_discord_notify" => {
+                                        let chan_id = db.get_config("discord_channel_report").await.unwrap_or_default();
+                                        
+                                        let ok = crate::discord_bot::send_to_channel(&chan_id, "✅ ทดสอบแจ้งเตือน EA-24\nระบบแจ้งเตือนผ่าน Discord ทำงานปกติ!").await;
                                         let resp = serde_json::json!({
                                             "type": "telegram_notify_test",
                                             "success": ok,

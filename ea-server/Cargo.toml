@@ -1,6 +1,6 @@
 [package]
 name = "ea-server"
-version = "7.0.1"
+version = "7.1.0"
 edition = "2021"
 
 [dependencies]
@@ -45,6 +45,7 @@ sysinfo = "0.33"
 rust-embed = "8.11.0"
 mime_guess = "2.0.5"
 base64 = "0.22.1"
+serenity = { version = "0.12.5", default-features = false, features = ["rustls_backend", "client", "gateway", "model", "builder"] }
 
 [package.metadata.deb]
 maintainer = "EA Developer"
