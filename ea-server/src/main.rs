@@ -7,7 +7,7 @@ mod strategy;
 mod notify;
 mod discord_bot;
 mod ai_engine;
-mod pipeline;
+mod pipeline_v8;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -644,9 +644,12 @@ async fn run_server() {
                             } // end recovery else (normal order management)
                         } else {
                             // ═══════════════════════════════════════════════
-                            //  SMART ORDER PIPELINE v7 — 6-Stage Decision Engine
+                            //  PIPELINE v8 — 3-Stage Decision Engine
+                            //  1. Server Scan (10 Strategies × 5 TF)
+                            //  2. Gemma 4 Validate (+ History)
+                            //  3. Gemini Confirm (+ News/Calendar)
                             // ═══════════════════════════════════════════════
-                        info!("🔥 [Auto-Pilot] Starting Smart Pipeline v7 on {}", sym);
+                        info!("🔥 [Auto-Pilot] Starting Pipeline v8 on {}", sym);
                         
                         let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
                         let _ = tx_ai.send(start_msg);
@@ -656,12 +659,6 @@ async fn run_server() {
                             (state.balance, state.equity, state.open_positions, state.positions_detail.clone())
                         };
                         
-                        let job_ai_mode = job["ai_mode"].as_str().unwrap_or(&ai_mode).to_string();
-                        let disabled_agents: Vec<String> = job["disabled_agents"]
-                            .as_array()
-                            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(|s| s.to_string())).collect())
-                            .unwrap_or_default();
-                        
                         let is_centralized = db_ai.get_config("agent_centralized").await.unwrap_or_else(|| "true".to_string()) == "true";
                         let global_news = if is_centralized {
                             let state = global_ai_data_ai.read().await;
@@ -669,10 +666,16 @@ async fn run_server() {
                         } else {
                             None
                         };
+                        let global_calendar = if is_centralized {
+                            let state = global_ai_data_ai.read().await;
+                            state.calendar.clone()
+                        } else {
+                            None
+                        };
                         
                         let discord_channel_order = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
                         
-                        let pipeline_ctx = pipeline::PipelineContext {
+                        let pipeline_ctx = pipeline_v8::PipelineV8Context {
                             symbol: sym.clone(),
                             balance: if bal > 0.0 { bal } else { 10000.0 },
                             equity: if eq > 0.0 { eq } else { 10000.0 },
@@ -680,16 +683,14 @@ async fn run_server() {
                             positions_detail,
                             gemini_key: gemini_key.clone(),
                             gemini_model: gemini_model.clone(),
-                            tavily_key: tavily_key.clone(),
-                            ai_mode: job_ai_mode.clone(),
-                            disabled_agents,
-                            global_news,
                             job_config: job.clone(),
                             discord_alert,
                             discord_channel_order,
+                            global_news,
+                            global_calendar,
                         };
                         
-                        let result = pipeline::run_smart_pipeline(&pipeline_ctx, &db_ai, &tx_ai).await;
+                        let result = pipeline_v8::run_pipeline_v8(&pipeline_ctx, &db_ai, &tx_ai).await;
                         
                         // Broadcast pipeline result to dashboard
                         let _ = tx_ai.send(serde_json::json!({
@@ -700,14 +701,14 @@ async fn run_server() {
                         
                         if result.decision == "BUY" || result.decision == "SELL" {
                             if auto_trade {
-                                info!("🤖 [Pipeline v7] Executing {} on {} (conf: {:.0}%, lot: {:.2})", 
+                                info!("🤖 [Pipeline v8] Executing {} on {} (conf: {:.0}%, lot: {:.2})", 
                                     result.decision, sym, result.confidence, result.lot_size);
                                 let cmd = serde_json::json!({
                                     "action": "open_trade",
                                     "symbol": sym,
                                     "direction": result.decision,
                                     "lot_size": result.lot_size,
-                                    "comment": format!("EA24v7-{}-{:.0}%", job_ai_mode, result.confidence)
+                                    "comment": format!("EA24v8-{:.0}%", result.confidence)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);
                                 
@@ -715,11 +716,11 @@ async fn run_server() {
                                 db_ai.insert_ai_decision(
                                     &sym, &result.decision, result.confidence,
                                     &result.reasoning, result.lot_size, 0.0,
-                                    0, &gemini_model, &format!("pipeline_v7:{}", job_ai_mode),
+                                    0, &gemini_model, &format!("pipeline_v8:{}", result.strategy_name),
                                 ).await;
                                 
                             } else {
-                                info!("🤖 [Pipeline v7] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", 
+                                info!("🤖 [Pipeline v8] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", 
                                     result.decision, sym, result.confidence);
                                 let proposal = serde_json::json!({
                                     "type": "ai_trade_proposal",
@@ -728,15 +729,18 @@ async fn run_server() {
                                     "confidence": result.confidence,
                                     "reasoning": result.reasoning,
                                     "lot_size": result.lot_size,
-                                    "comment": format!("EA24v7-{}", job_ai_mode),
-                                    "pipeline_stages": result.stages,
-                                    "history": result.history_context,
+                                    "comment": format!("EA24v8-{}", result.strategy_name),
+                                    "strategy": result.strategy_name,
+                                    "timeframe": result.timeframe,
+                                    "server_scan": result.server_scan,
+                                    "gemma_verdict": result.gemma_verdict,
+                                    "gemini_verdict": result.gemini_verdict,
                                 }).to_string();
                                 let _ = tx_ai.send(proposal);
                                 
                                 let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
                                 crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                    "🚨 **AI Trade Proposal (Pipeline v7)**\n\n📊 {} **{}**\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
+                                    "🚨 **AI Trade Proposal (Pipeline v8)**\n\n📊 {} **{}**\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
                                     result.decision, sym, result.confidence, result.lot_size, result.reasoning
                                 )).await;
                             }
@@ -745,9 +749,9 @@ async fn run_server() {
                         // Send done event
                         let _ = tx_ai.send(serde_json::json!({
                             "type": "agents_done", "symbol": sym,
-                            "message": format!("Pipeline v7 completed: {} ({:.0}%)", result.decision, result.confidence)
+                            "message": format!("Pipeline v8 completed: {} ({:.0}%)", result.decision, result.confidence)
                         }).to_string());
-                    } // end else (Smart Pipeline v7)
+                    } // end else (Pipeline v8)
                     } // end if should_run
                 } // end for job
                 
@@ -950,132 +954,7 @@ async fn run_server() {
         }
     });
 
-    // Spawn Fast-Track M1 System loop (Internal Rust Logic without Gemini API calls)
-    let m1_ai_db = database.clone();
-    let m1_ai_tx = tx.clone();
-    tokio::spawn(async move {
-        tokio::time::sleep(tokio::time::Duration::from_secs(5)).await;
-        loop {
-            let config_raw = m1_ai_db.get_config("ai_autopilot_jobs").await.unwrap_or_default();
-            if !config_raw.is_empty() {
-                if let Ok(jobs) = serde_json::from_str::<Vec<serde_json::Value>>(&config_raw) {
-                    for job in jobs {
-                        let is_enabled = job["enabled"].as_bool().unwrap_or(true);
-                        if is_enabled {
-                            if let Some(sym) = job["symbol"].as_str() {
-                                let sym = sym.to_string();
-                                
-                                // Broadcast M1 pipeline start
-                                let _ = m1_ai_tx.send(serde_json::json!({
-                                    "type": "agents_started_m1",
-                                    "symbol": sym,
-                                    "message": "[M1] Initializing background analysis cycle..."
-                                }).to_string());
-                                
-                                // Fetch recent M1 candles for algo calculation
-                                let candles = m1_ai_db.get_candles_for_strategy(&sym, 1, 50).await;
-                                let mut decision = "HOLD";
-                                let mut conf = 50.0;
-                                let mut details = String::new();
 
-                                let agents = ["news_hunter", "chart_analyst", "calendar", "risk_manager", "decision_maker"];
-                                let messages = [
-                                    "[M1] Skipping sentiment limits (Real-time Fast Track)...".to_string(),
-                                    "[M1] Computing technical indicators (RSI, EMA)...".to_string(),
-                                    "[M1] Checking macroeconomic volatility...".to_string(),
-                                    "[M1] Evaluating drawdown and position exposure...".to_string(),
-                                    "[M1] Aggregating multi-layer strategy signals...".to_string()
-                                ];
-                                
-                                let mut done_messages = messages.clone();
-                                let mut raw_data = vec!["".to_string(); 5];
-                                
-                                if !candles.is_empty() {
-                                    let ind = crate::strategy::compute_indicators(&candles);
-                                    let last_c = candles.last().unwrap();
-                                    let price = last_c.close;
-                                    
-                                    done_messages[0] = format!("Sentiment bypassed OK.");
-                                    raw_data[0] = format!("Pipeline triggered. Active agents: M1 Fast-Track. Current server time: {}", chrono::Utc::now());
-                                    
-                                    done_messages[1] = format!("Price: {:.5} | RSI: {:.1} | EMA9: {:.5}", price, ind.rsi_14, ind.ema_9);
-                                    raw_data[1] = format!("Latest Candle: O={:.5} H={:.5} L={:.5} C={:.5}\nMath: RSI_14≈{:.2}, EMA9≈{:.5}, EMA21≈{:.5}, EMA50≈{:.5}\nBollinger: Up≈{:.5}, Dn≈{:.5}, FVG_Bull={}, FVG_Bear={}", last_c.open, last_c.high, last_c.low, price, ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50, ind.bb_upper, ind.bb_lower, ind.fair_value_gap_bull, ind.fair_value_gap_bear);
-                                    
-                                    done_messages[2] = format!("Volatility proxy OK.");
-                                    let rsi_std = ind.rsi_14 - 50.0;
-                                    raw_data[2] = format!("Market Volatility Estimated: {:.2} (Calculated from RSI standard deviation proxy). No drastic spikes detected in ticks.", rsi_std.abs());
-                                    
-                                    done_messages[3] = format!("Risk constraints met.");
-                                    raw_data[3] = format!("Drawdown threshold: 10%. Max historical DD acceptable. Lot sizing simulated at 0.01 standard contract.");
-                                    
-                                    if ind.rsi_14 < 30.0 && ind.ema_9 > ind.ema_21 {
-                                        decision = "BUY"; conf = 85.0;
-                                    } else if ind.rsi_14 > 70.0 && ind.ema_9 < ind.ema_21 {
-                                        decision = "SELL"; conf = 85.0;
-                                    } else if ind.ema_9 > ind.ema_21 && ind.ema_21 > ind.ema_50 {
-                                        decision = "BUY"; conf = 70.0;
-                                    } else if ind.ema_9 < ind.ema_21 && ind.ema_21 < ind.ema_50 {
-                                        decision = "SELL"; conf = 70.0;
-                                    }
-                                    
-                                    details = format!("RSI {} / Trend {}", ind.rsi_14.round(), if decision == "BUY" { "UP" } else if decision == "SELL" { "DOWN" } else { "SIDEWAYS" });
-                                    done_messages[4] = format!("Signal: {} ({}%) - {}", decision, conf, details);
-                                    raw_data[4] = format!("Final Weights => Trend: {:.1}%, Reversion: {:.1}%, Final Confidence: {:.1}%", if ind.ema_9 > ind.ema_21 { 70.0 } else { 30.0 }, if ind.rsi_14 < 30.0 || ind.rsi_14 > 70.0 { 90.0 } else { 40.0 }, conf);
-                                } else {
-                                    done_messages[4] = "No M1 candle data available. HOLD.".to_string();
-                                    raw_data[4] = "Candle array is empty. Strategy execution aborted.".to_string();
-                                }
-
-                                for (i, agent) in agents.iter().enumerate() {
-                                    let _ = m1_ai_tx.send(serde_json::json!({
-                                        "type": "agent_log_m1",
-                                        "symbol": sym,
-                                        "agent": agent,
-                                        "status": "running",
-                                        "message": if raw_data[i].is_empty() { messages[i].clone() } else { raw_data[i].clone() },
-                                        "data_available": true
-                                    }).to_string());
-                                    
-                                    tokio::time::sleep(tokio::time::Duration::from_millis(300)).await;
-                                    
-                                    let _ = m1_ai_tx.send(serde_json::json!({
-                                        "type": "agent_log_m1",
-                                        "symbol": sym,
-                                        "agent": agent,
-                                        "status": "done",
-                                        "message": format!("{} OK", done_messages[i].replace("[M1] ", "")),
-                                        "raw_calculation_data": raw_data[i].clone()
-                                    }).to_string());
-                                }
-                                
-                                // Orchestrator Final Result for M1 Wait, it also emits to agent_log
-                                let _ = m1_ai_tx.send(serde_json::json!({
-                                    "type": "agent_log_m1",
-                                    "symbol": sym,
-                                    "agent": "orchestrator",
-                                    "status": "done",
-                                    "message": format!("ผลการคำนวณ (Server Algorithm): {} (ความมั่นใจ {}%) - {}", decision, conf, details)
-                                }).to_string());
-                                
-                                // Broadcast M1 done
-                                let _ = m1_ai_tx.send(serde_json::json!({
-                                    "type": "agents_done_m1",
-                                    "symbol": sym,
-                                    "message": "background analysis completed."
-                                }).to_string());
-                            }
-                        }
-                    }
-                }
-            }
-            let now = chrono::Local::now();
-            let mut seconds_to_next_minute = 60 - now.timestamp() % 60;
-            if seconds_to_next_minute == 0 {
-                seconds_to_next_minute = 60;
-            }
-            tokio::time::sleep(tokio::time::Duration::from_secs(seconds_to_next_minute as u64)).await;
-        }
-    });
 
     // Background Task to persist AI Logs + Training Data
     let persist_db = database.clone();

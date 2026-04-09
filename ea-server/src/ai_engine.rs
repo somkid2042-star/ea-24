@@ -428,6 +428,11 @@ async fn call_ai(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tok
     }
 }
 
+/// Public wrapper for call_ai — used by pipeline_v8
+pub async fn call_ai_pub(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
+    call_ai(gemini_key, model, prompt, temp, max_tokens, json_mode).await
+}
+
 
 // ──────────────────────────────────────────────
 //  Agent 1: News Hunter (Google News RSS + Tavily fallback)
