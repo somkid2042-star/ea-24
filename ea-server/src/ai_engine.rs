@@ -324,17 +324,108 @@ async fn call_gemini(api_keys_str: &str, model: &str, prompt: &str, temp: f64, m
 }
 
 // ──────────────────────────────────────────────
-//  Smart AI Caller (Gemini / Google AI Studio)
+//  Smart AI Caller (Gemini → Gemma 4 Cloud Fallback)
 // ──────────────────────────────────────────────
 
-/// Try Gemini API (which handles API key rotation internally).
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct OllamaRequest {
+    model: String,
+    prompt: String,
+    stream: bool,
+    options: OllamaOptions,
+}
+
+#[derive(Serialize)]
+struct OllamaOptions {
+    temperature: f64,
+    num_predict: i32,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OllamaResponse {
+    response: Option<String>,
+    error: Option<String>,
+}
+
+/// Chat-style request for Ollama /api/chat
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct OllamaChatRequest {
+    model: String,
+    messages: Vec<OllamaChatMessage>,
+    stream: bool,
+    options: OllamaOptions,
+}
+
+#[derive(Serialize)]
+#[allow(dead_code)]
+struct OllamaChatMessage {
+    role: String,
+    content: String,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OllamaChatResponse {
+    message: Option<OllamaChatResponseMessage>,
+    error: Option<String>,
+}
+
+#[derive(Deserialize)]
+#[allow(dead_code)]
+struct OllamaChatResponseMessage {
+    content: Option<String>,
+}
+
+/// Remove <think>...</think> or Thinking blocks from Gemma 4 responses
+fn strip_thinking_blocks(text: &str) -> String {
+    // Remove XML-style thinking tags
+    let mut result = text.to_string();
+    while let Some(start) = result.find("<think>") {
+        if let Some(end) = result.find("</think>") {
+            result = format!("{}{}", &result[..start], &result[end + 8..]);
+        } else {
+            // Unclosed <think> tag — remove from <think> to end
+            result = result[..start].to_string();
+            break;
+        }
+    }
+    result.trim().to_string()
+}
+
+/// Try primary model first, if it fails, fallback to Gemma 4 Cloud API.
 async fn call_ai(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
     if gemini_key.is_empty() {
-        return Err("API Key is empty".to_string());
+        return Err("API Key is empty — ไม่มี Gemini API Key".to_string());
     }
-    
-    // call_gemini handles rotation through multiple API keys, we just await it
-    call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await
+
+    // Try primary model first
+    match call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await {
+        Ok(text) => Ok(text),
+        Err(primary_err) => {
+            // Primary model failed — try Gemma 4 Cloud as fallback
+            let fallback_model = "gemma-4-31b-it";
+            let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
+
+            // If already using a Gemma model, don't retry with same family
+            if model_name.contains("gemma") {
+                return Err(format!("AI ล้มเหลว ({}): {}", model_name, primary_err));
+            }
+
+            warn!("⚠️ [AI] {} failed: {} — Falling back to Gemma 4 Cloud...", model_name, primary_err);
+            match call_gemini(gemini_key, fallback_model, prompt, temp, max_tokens, json_mode).await {
+                Ok(text) => {
+                    info!("✅ [AI] Gemma 4 Cloud fallback succeeded!");
+                    Ok(text)
+                }
+                Err(gemma_err) => {
+                    Err(format!("AI ล้มเหลวทั้งสองระบบ | {}: {} | Gemma4: {}", model_name, primary_err, gemma_err))
+                }
+            }
+        }
+    }
 }
 
 
