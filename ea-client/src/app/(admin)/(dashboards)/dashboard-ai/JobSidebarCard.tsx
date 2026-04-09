@@ -1,50 +1,75 @@
-import { LuActivity, LuPencil } from 'react-icons/lu';
+import { LuActivity, LuPencil, LuServer, LuSparkles, LuBrainCircuit, LuLoader } from 'react-icons/lu';
 
-const translateObj = { "BUY": "ซื้อ (BUY)", "SELL": "ขาย (SELL)", "HOLD": "รอดูท่าที (HOLD)" };
+export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, lastRunTime, agentStatusM1Map }: any) => {
 
-export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result }: any) => {
+    const decision = result?.final_decision || result?.decision;
+    const confidence = result?.confidence;
+    
+    // Check if any stage is running
+    const agentStatuses = agentStatusM1Map || {};
+    const isRunning = Object.values(agentStatuses).some((s: any) => s === 'running');
 
-    const decisionObj = result?.final_decision;
-    const finalDecision = decisionObj && (translateObj as any)[decisionObj.toUpperCase()] 
-                          ? (translateObj as any)[decisionObj.toUpperCase()] 
-                          : decisionObj || 'AWAITING PROCESSING';
+    const statusLabel = decision ? (
+        decision === 'BUY' ? 'BUY Signal' :
+        decision === 'SELL' ? 'SELL Signal' :
+        decision === 'HOLD' ? 'HOLD' : decision
+    ) : isRunning ? 'กำลังวิเคราะห์...' : 'รอวิเคราะห์...';
+
+    const statusColor = decision === 'BUY' ? 'text-emerald-500' :
+                        decision === 'SELL' ? 'text-red-500' :
+                        decision === 'HOLD' ? 'text-amber-500' :
+                        isRunning ? 'text-blue-500' : 'text-gray-400';
 
     return (
         <div 
-           className={`relative flex items-center gap-3 px-4 py-3 cursor-pointer transition-colors ${isSelected ? 'bg-gray-200 dark:bg-white/10' : 'hover:bg-gray-100 dark:hover:bg-white/5'}`}
+           className={`flex items-center gap-3 px-4 py-3.5 cursor-pointer transition-all border-l-2 ${
+             isSelected 
+               ? 'bg-blue-50/80 dark:bg-blue-500/5 border-l-blue-500' 
+               : 'hover:bg-gray-50 dark:hover:bg-white/[0.02] border-l-transparent'
+           }`}
            onClick={onClick}
         >
            {/* Avatar */}
            <div className="relative">
-               <div className={`w-12 h-12 rounded-full flex items-center justify-center font-bold text-lg shrink-0 ${job.enabled !== false ? 'bg-gradient-to-br from-blue-400 to-blue-600 text-white' : 'bg-gray-200 text-gray-500'}`}>
-                   {job.symbol.substring(0, 1)}
+               <div className={`size-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
+                 job.enabled !== false 
+                   ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm' 
+                   : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
+               }`}>
+                   {job.symbol.substring(0, 2)}
                </div>
-               <div className={`absolute bottom-0 right-0 w-3 h-3 rounded-full border-2 border-white dark:border-[#090C15] ${job.enabled !== false ? 'bg-emerald-500' : 'bg-red-500'}`} />
+               <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-[#0b0e17] ${
+                 job.enabled !== false 
+                   ? isRunning ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500' 
+                   : 'bg-gray-400'
+               }`} />
            </div>
 
            {/* Content */}
            <div className="flex-1 min-w-0">
-               <div className="flex justify-between items-baseline mb-0.5">
-                   <h3 className="text-[15px] font-bold text-default-900 dark:text-gray-100 truncate pr-2">
+               <div className="flex justify-between items-center mb-0.5">
+                   <h3 className="text-[14px] font-bold text-gray-900 dark:text-white truncate font-mono">
                        {job.symbol}
                    </h3>
-                   <div className="flex items-center gap-2">
-                     <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-gray-400 hover:text-blue-500 transition-colors">
-                        <LuPencil size={12} />
+                   <div className="flex items-center gap-1.5">
+                     <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-gray-300 hover:text-blue-500 transition-colors p-0.5">
+                        <LuPencil size={11} />
                      </button>
-                     <div className="text-[11px] text-gray-500 font-medium">
-                         M{job.interval}
-                     </div>
+                     <span className="text-[10px] text-gray-400 font-medium bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded font-mono">
+                         {job.interval}m
+                     </span>
                    </div>
                </div>
                
-               <p className="text-[13px] text-gray-500 dark:text-gray-400 truncate w-full pr-4 flex items-center gap-1.5">
-                   <LuActivity size={12} className={
-                       finalDecision.includes('BUY') ? 'text-emerald-500' :
-                       finalDecision.includes('SELL') ? 'text-red-500' : 'text-amber-500'
-                   } />
-                   {finalDecision === 'AWAITING PROCESSING' ? 'Waiting to analyze...' : finalDecision}
-               </p>
+               <div className={`text-[12px] font-medium truncate flex items-center gap-1.5 ${statusColor}`}>
+                   {isRunning ? (
+                     <LuLoader size={11} className="animate-spin shrink-0" />
+                   ) : (
+                     <LuActivity size={11} className="shrink-0" />
+                   )}
+                   {statusLabel}
+                   {confidence && <span className="opacity-70 text-[10px]">({confidence}%)</span>}
+               </div>
            </div>
         </div>
     );

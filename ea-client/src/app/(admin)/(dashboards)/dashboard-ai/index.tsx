@@ -1,7 +1,7 @@
 'use client';
 import { useState, useEffect, useRef } from 'react';
 import { getWsUrl } from '@/utils/config';
-import { LuBot, LuCheck, LuX, LuBrainCircuit, LuPlus } from 'react-icons/lu';
+import { LuBot, LuCheck, LuX, LuBrainCircuit, LuPlus, LuSparkles, LuServer, LuZap } from 'react-icons/lu';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
 import { SetupFormModal } from './SetupFormModal';
 import { JobSidebarCard } from './JobSidebarCard';
@@ -21,9 +21,8 @@ type AutoPilotJob = {
   tp_value?: number;
   sl_value?: number;
   ts_value?: number;
+  lot_scale?: boolean;
 };
-
-// Countdown timer for scan interval (removed due to unused variable error)
 
 const DashboardAi = () => {
   const [logsBySymbol, setLogsBySymbol] = useState<Record<string, AiLog[]>>({});
@@ -36,24 +35,24 @@ const DashboardAi = () => {
   const [trackedSymbols, setTrackedSymbols] = useState<string[]>([]);
   const [globalSymbol, setGlobalSymbol] = useState("XAUUSD");
   
-  // M1 states per symbol
-  const [agentStatusM1Map, setAgentStatusM1Map] = useState<Record<string, AgentStatusMap>>({});
-  const [logsM1BySymbol, setLogsM1BySymbol] = useState<Record<string, AiLog[]>>({});
-  
   // Auto-Pilot States
   const [autoPilotJobs, setAutoPilotJobs] = useState<AutoPilotJob[]>([]);
   const [closedMap, setClosedMap] = useState<Record<string, boolean>>({});
   
-  // Chat UI States
+  // UI States
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
   const [verboseLogsBySymbol, setVerboseLogsBySymbol] = useState<Record<string, {timestamp: number, agent: string, prompt: string, response: string}[]>>({});
+  
+  // Modal states — separate from main view
+  const [showAddModal, setShowAddModal] = useState(false);
+  const [editingJob, setEditingJob] = useState<AutoPilotJob | null>(null);
   
   const wsRef = useRef<WebSocket | null>(null);
 
   // Fetch initial history logs
   useEffect(() => {
      if (autoPilotJobs.length === 0) return;
-     const baseWs = getWsUrl(); // e.g. ws://35.201.200.246:8080
+     const baseWs = getWsUrl();
      const httpUrl = baseWs.replace('ws://', 'http://').replace('wss://', 'https://').replace(':8080', ':4173') + (baseWs.endsWith('/') ? '' : '/');
 
      autoPilotJobs.forEach(job => {
@@ -63,7 +62,6 @@ const DashboardAi = () => {
            .then(data => {
                if (!Array.isArray(data)) return;
                const newLogs: any[] = [];
-               const newM1Logs: any[] = [];
                const newVerboseLogs: any[] = [];
                data.forEach(d => {
                    const logRow = { ...d, timestamp: d.timestamp || Date.now() };
@@ -72,16 +70,14 @@ const DashboardAi = () => {
                        newVerboseLogs.push({
                            timestamp: logRow.timestamp,
                            agent: logRow.agent,
-                           prompt: '[SYSTEM RECOVERY] ข้อมูลการวิเคราะห์ล่าสุดถูกโหลดจากประวัติเดิม (ไม่สามารถกู้คืน Raw Prompt ของรอบก่อนหน้าได้)',
+                           prompt: '[SYSTEM RECOVERY] ข้อมูลโหลดจากประวัติเดิม',
                            response: logRow.message
                        });
                    }
-                   if (d.type === 'agent_log_m1') newM1Logs.push(logRow);
                });
                
                if (newLogs.length > 0) {
                   setLogsBySymbol(prev => {
-                     // don't overwrite if we already received realtime
                      if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
                      return {...prev, [job.symbol]: newLogs};
                   });
@@ -103,25 +99,6 @@ const DashboardAi = () => {
                   setVerboseLogsBySymbol(prev => {
                      if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
                      return {...prev, [job.symbol]: newVerboseLogs};
-                  });
-               }
-               if (newM1Logs.length > 0) {
-                  setLogsM1BySymbol(prev => {
-                     if (prev[job.symbol] && prev[job.symbol].length > 0) return prev;
-                     return {...prev, [job.symbol]: newM1Logs};
-                  });
-                  setAgentStatusM1Map(prev => {
-                     if (prev[job.symbol]) return prev;
-                     const currentStatuses: AgentStatusMap = {
-                       news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
-                       risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'idle',
-                     };
-                     newM1Logs.forEach(log => {
-                        if (log.agent && log.status) {
-                           currentStatuses[log.agent as keyof AgentStatusMap] = log.status as any;
-                        }
-                     });
-                     return {...prev, [job.symbol]: currentStatuses};
                   });
                }
            })
@@ -191,61 +168,20 @@ const DashboardAi = () => {
                 };
              });
           }
-        } else if (data.type === 'agent_log_m1') {
-          const symbol = data.symbol;
-          const agentStr = data.agent as keyof AgentStatusMap;
-          const newLog = { ...data, timestamp: Date.now() };
-          
-          setLogsM1BySymbol(prev => ({
-             ...prev,
-             [symbol]: [...(prev[symbol] || []), newLog].slice(-50)
-          }));
-          
-          setAgentStatusM1Map(prev => {
-              const newMap = { ...prev };
-              if (!newMap[symbol]) {
-                  newMap[symbol] = {
-                      orchestrator: 'running',
-                      news_hunter: 'idle', chart_analyst: 'idle',
-                      calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
-                  };
-              }
-              if (agentStr) {
-                 newMap[symbol][agentStr] = data.status as 'idle'|'running'|'done'|'error';
-              }
-              return newMap;
-          });
-        } else if (data.type === 'agents_started_m1') {
-          const symbol = data.symbol;
-          setAgentStatusM1Map(prev => {
-              const newMap = { ...prev };
-              newMap[symbol] = {
-                  orchestrator: 'running',
-                  news_hunter: 'idle', chart_analyst: 'idle',
-                  calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
-              };
-              return newMap;
-          });
-        } else if (data.type === 'agents_done_m1') {
-          const symbol = data.symbol;
-          setAgentStatusM1Map(prev => {
-              const newMap = { ...prev };
-              newMap[symbol] = {
-                  orchestrator: 'idle',
-                  news_hunter: 'idle', chart_analyst: 'idle',
-                  calendar: 'idle', risk_manager: 'idle', decision_maker: 'idle'
-              };
-              return newMap;
-          });
         }
         
-        if (data.type === 'multi_agent_result') {
+        if (data.type === 'multi_agent_result' || data.type === 'pipeline_result') {
           const sym = data.symbol || globalSymbol;
           setFinalResultBySymbol(prev => ({ ...prev, [sym]: data.result }));
-          
           setAgentStatusBySymbol(prev => {
              const currentStatuses = prev[sym] || {} as AgentStatusMap;
-             return { ...prev, [sym]: { ...currentStatuses, orchestrator: 'done' } };
+             return { ...prev, [sym]: { 
+               ...currentStatuses, 
+               orchestrator: 'done',
+               pipeline_v8: 'done',
+               gemma_filter: currentStatuses.gemma_filter === 'running' ? 'done' : currentStatuses.gemma_filter,
+               gemini_confirm: currentStatuses.gemini_confirm === 'running' ? 'done' : currentStatuses.gemini_confirm,
+             } };
           });
         }
 
@@ -256,7 +192,8 @@ const DashboardAi = () => {
              const newMap = {...prev};
              newMap[sym] = {
                 news_hunter: 'idle', chart_analyst: 'idle', calendar: 'idle',
-                risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'running'
+                risk_manager: 'idle', decision_maker: 'idle', orchestrator: 'running',
+                pipeline_v8: 'idle', gemma_filter: 'idle', gemini_confirm: 'idle',
              };
              return newMap;
           });
@@ -265,7 +202,6 @@ const DashboardAi = () => {
              delete newObj[sym];
              return newObj;
           });
-
           setTradeProposal(null);
         }
 
@@ -283,7 +219,7 @@ const DashboardAi = () => {
           };
           setVerboseLogsBySymbol(prev => ({
              ...prev,
-             [sym]: [...(prev[sym] || []), newLog].slice(-500) // keep last 500 verbose logs per symbol
+             [sym]: [...(prev[sym] || []), newLog].slice(-500)
           }));
         }
       } catch (_e) {}
@@ -308,8 +244,48 @@ const DashboardAi = () => {
   };
 
   const handleEditJob = (job: AutoPilotJob) => {
-      const newJobs = autoPilotJobs.map(j => j.symbol === job.symbol ? { ...j, is_draft: true } : j);
-      saveJobsToDb(newJobs);
+      setEditingJob({ ...job });
+  };
+
+  const handleAddNew = () => {
+     const defaultSymbol = trackedSymbols[0] || 'XAUUSD';
+     setEditingJob({
+       symbol: defaultSymbol,
+       interval: 15,
+       auto_trade: false,
+       lot_size: 0.01,
+       ai_mode: 'eval_10_strategies',
+       is_draft: true,
+     });
+     setShowAddModal(true);
+  };
+
+  const handleSaveModal = (updatedJob: AutoPilotJob) => {
+     if (showAddModal) {
+       // Adding new
+       saveJobsToDb([...autoPilotJobs, { ...updatedJob, is_draft: false }]);
+       setActiveSetupId(updatedJob.symbol);
+     } else {
+       // Editing existing
+       const newJobs = autoPilotJobs.map(j => j.symbol === editingJob?.symbol ? { ...updatedJob, is_draft: false } : j);
+       saveJobsToDb(newJobs);
+     }
+     setEditingJob(null);
+     setShowAddModal(false);
+  };
+
+  const handleDeleteModal = () => {
+     if (!editingJob) return;
+     setConfirmDialog({
+       message: `ลบ Setup "${editingJob.symbol}" ?`,
+       onConfirm: () => {
+         const newJobs = autoPilotJobs.filter(j => j.symbol !== editingJob.symbol);
+         saveJobsToDb(newJobs);
+         if (activeSetupId === editingJob.symbol) setActiveSetupId(null);
+         setEditingJob(null);
+         setShowAddModal(false);
+       }
+     });
   };
 
   const acceptProposal = () => {
@@ -327,25 +303,26 @@ const DashboardAi = () => {
   const rejectProposal = () => setTradeProposal(null);
   
   return (
-    <div className="p-4 md:p-6 lg:p-8 max-w-7xl mx-auto h-[calc(100vh-80px)] min-h-[600px] flex flex-col items-center w-full">
-      <div className="flex w-full h-full bg-white dark:bg-[#090C15] border border-gray-200 dark:border-white/10 rounded-3xl shadow-sm overflow-hidden">
-      {/* SIDEBAR: Setup List */}
-      <div className="w-[300px] lg:w-[350px] flex-shrink-0 border-r border-default-200 dark:border-white/10 flex flex-col bg-[#fafafa] dark:bg-[#0b0e17]">
-        <div className="p-4 flex items-center justify-between">
-          <h1 className="text-xl font-bold text-default-900 dark:text-white">Setups</h1>
+    <div className="p-3 md:p-5 lg:p-6 max-w-7xl mx-auto h-[calc(100vh-80px)] min-h-[600px] flex flex-col items-center w-full">
+      <div className="flex w-full h-full bg-white dark:bg-[#090C15] border border-gray-200 dark:border-white/[0.06] rounded-2xl shadow-sm overflow-hidden">
+      
+      {/* SIDEBAR */}
+      <div className="w-[240px] lg:w-[280px] flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06] flex flex-col bg-[#fafafa] dark:bg-[#0b0e17]">
+        <div className="p-4 flex items-center justify-between border-b border-gray-100 dark:border-white/5">
+          <div className="flex items-center gap-2">
+            <LuZap className="size-4 text-blue-500" />
+            <h1 className="text-sm font-bold text-gray-900 dark:text-white">AI Setups</h1>
+          </div>
           <button 
-              onClick={() => saveJobsToDb([...autoPilotJobs, { symbol: trackedSymbols.includes('BTCUSD') ? 'BTCUSD' : (trackedSymbols[0] || 'BTCUSD'), interval: 15, auto_trade: false, lot_size: 0.01, ai_mode: 'eval_10_strategies', is_draft: true }])}
-              className="w-8 h-8 flex items-center justify-center bg-gray-200 dark:bg-white/10 rounded-md text-gray-600 dark:text-gray-300 hover:bg-gray-300 transition-colors"
+              onClick={handleAddNew}
+              className="size-7 flex items-center justify-center rounded-lg text-gray-400 hover:bg-blue-500 hover:text-white transition-all"
+              title="เพิ่ม Setup ใหม่"
           >
-              <LuPlus size={18} />
+              <LuPlus size={14} />
           </button>
         </div>
 
-        <div className="px-4 pb-2 text-xs font-semibold text-gray-500">
-          All Setups
-        </div>
-        <div className="flex-1 overflow-y-auto custom-scrollbar flex flex-col">
-         <div className="w-full md:w-80 lg:w-[320px] hidden" />
+        <div className="flex-1 overflow-y-auto custom-scrollbar">
                  {autoPilotJobs.map((job, idx) => (
                       <JobSidebarCard 
                           key={`job-card-${job.symbol}-${idx}`}
@@ -355,52 +332,29 @@ const DashboardAi = () => {
                           onEdit={() => handleEditJob(job)}
                           result={finalResultBySymbol[job.symbol]}
                           lastRunTime={lastRunMap[job.symbol] || null}
-                          agentStatusM1Map={agentStatusM1Map[job.symbol]}
+                          agentStatusM1Map={agentStatusBySymbol[job.symbol]}
                       />
                  ))}
                  {autoPilotJobs.length === 0 && (
-                     <div className="text-center p-6 border-2 border-dashed border-default-200 dark:border-white/10 rounded-xl my-auto">
-                         <p className="text-xs text-gray-500">No Setups</p>
+                     <div className="flex flex-col items-center justify-center flex-1 p-8 text-center h-full min-h-[300px]">
+                       <div className="size-12 rounded-xl bg-gray-100 dark:bg-white/5 flex items-center justify-center mb-3">
+                         <LuBot size={20} className="text-gray-400" />
+                       </div>
+                       <p className="text-[12px] text-gray-500 font-medium mb-1">ยังไม่มี Setup</p>
+                       <button onClick={handleAddNew} className="text-[11px] text-blue-500 font-medium hover:underline">
+                         + เพิ่ม Setup ใหม่
+                       </button>
                      </div>
                  )}
              </div>
          </div>
 
-         {/* MAIN UI: Chat View */}
+         {/* MAIN AREA */}
          <div className="flex-1 min-w-0 bg-white dark:bg-[#090C15] flex flex-col relative">
              {activeSetupId ? (() => {
                  const jobIdx = autoPilotJobs.findIndex(j => j.symbol === activeSetupId);
-                 if (jobIdx === -1) return <div className="m-auto text-gray-400 text-sm">Select a setup to view Activity</div>;
+                 if (jobIdx === -1) return <div className="m-auto text-gray-400 text-sm">Select a setup</div>;
                  const job = autoPilotJobs[jobIdx];
-
-                 if (job.is_draft) {
-                     return (
-                         <SetupFormModal 
-                            job={job}
-                            trackedSymbols={trackedSymbols}
-                            onClose={() => {
-                                const newJobs = [...autoPilotJobs];
-                                newJobs[jobIdx].is_draft = false;
-                                saveJobsToDb(newJobs);
-                            }}
-                            onSave={(updatedJob: any) => {
-                                const newJobs = [...autoPilotJobs];
-                                newJobs[jobIdx] = updatedJob;
-                                saveJobsToDb(newJobs);
-                            }}
-                            onDelete={() => {
-                                setConfirmDialog({
-                                    message: `คุณแน่ใจหรือไม่ว่าต้องการลบการตั้งค่าบอท ${job.symbol}?`,
-                                    onConfirm: () => {
-                                        const newJobs = autoPilotJobs.filter((_, i) => i !== jobIdx);
-                                        saveJobsToDb(newJobs);
-                                        setActiveSetupId(null);
-                                    }
-                                });
-                            }}
-                         />
-                     );
-                 }
 
                  return (
                      <SetupChatView
@@ -413,99 +367,127 @@ const DashboardAi = () => {
                         jobIdx={jobIdx}
                         handleEditJob={handleEditJob}
                         logsBySymbol={logsBySymbol}
-                        logsM1BySymbol={logsM1BySymbol}
+                        logsM1BySymbol={{}}
                         agentStatusBySymbol={agentStatusBySymbol}
-                        agentStatusM1Map={agentStatusM1Map}
+                        agentStatusM1Map={{}}
                         finalResultBySymbol={finalResultBySymbol}
                         verboseLogs={verboseLogsBySymbol[activeSetupId] || []}
                      />
                  );
              })() : (
-                 <div className="m-auto flex flex-col items-center justify-center gap-4 text-center">
-                     <div className="size-16 bg-blue-50 dark:bg-white/5 rounded-2xl flex items-center justify-center text-blue-500">
-                         <LuBot size={32} />
+                 <div className="m-auto flex flex-col items-center justify-center gap-5 text-center max-w-md px-6">
+                     <div className="flex items-center gap-3">
+                       <div className="size-12 rounded-xl bg-blue-500/10 flex items-center justify-center text-blue-500">
+                         <LuServer size={22} />
+                       </div>
+                       <div className="text-gray-300 dark:text-gray-600">→</div>
+                       <div className="size-12 rounded-xl bg-purple-500/10 flex items-center justify-center text-purple-500">
+                         <LuSparkles size={22} />
+                       </div>
+                       <div className="text-gray-300 dark:text-gray-600">→</div>
+                       <div className="size-12 rounded-xl bg-amber-500/10 flex items-center justify-center text-amber-500">
+                         <LuBrainCircuit size={22} />
+                       </div>
                      </div>
                      <div>
-                         <h3 className="text-sm font-black text-default-900 dark:text-gray-100">AI Dashboard</h3>
-                         <p className="text-xs text-gray-500 max-w-sm">Select an AI setup from the sidebar to view live processing logs and decision explanations.</p>
+                         <h3 className="text-base font-bold text-gray-900 dark:text-white mb-1">Pipeline v8</h3>
+                         <p className="text-[12px] text-gray-500 leading-relaxed">
+                           Server Scan → Gemma 4 → Gemini<br/>
+                           <span className="text-gray-400">เลือก Setup จากด้านซ้ายเพื่อดูผลวิเคราะห์</span>
+                         </p>
                      </div>
                  </div>
              )}
           </div>
         </div>
+
+      {/* SETUP FORM MODAL — always a real modal overlay */}
+      {editingJob && (
+        <SetupFormModal 
+          job={editingJob}
+          trackedSymbols={trackedSymbols}
+          onClose={() => { setEditingJob(null); setShowAddModal(false); }}
+          onSave={handleSaveModal}
+          onDelete={showAddModal ? () => { setEditingJob(null); setShowAddModal(false); } : handleDeleteModal}
+        />
+      )}
+
+      {/* Trade Proposal Modal */}
       {tradeProposal && (
         <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/80 backdrop-blur-md px-4">
-          <div className="w-full max-w-md rounded-3xl bg-white dark:bg-[#090C15] border border-default-200 dark:border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.8)] p-6 animate-in slide-in-from-bottom-4">
-            <div className="flex items-center gap-4 mb-6">
-              <div className="size-12 rounded-2xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-white shadow-lg shadow-amber-500/20">
-                <LuBrainCircuit className="size-6" />
+          <div className="w-full max-w-md rounded-2xl bg-white dark:bg-[#090C15] border border-gray-200 dark:border-white/10 shadow-2xl p-6">
+            <div className="flex items-center gap-4 mb-5">
+              <div className="size-11 rounded-xl bg-gradient-to-br from-amber-400 to-orange-600 flex items-center justify-center text-white shadow-lg">
+                <LuBrainCircuit className="size-5" />
               </div>
               <div>
-                <h3 className="text-xl font-black text-default-900 dark:text-white/90">รอการยืนยันออเดอร์</h3>
-                <p className="text-xs font-semibold text-default-500 dark:text-white/40">AI Agent แนะนำการเข้าเทรด</p>
+                <h3 className="text-lg font-bold text-gray-900 dark:text-white">รอยืนยันออเดอร์</h3>
+                <p className="text-[11px] text-gray-500">Pipeline v8 แนะนำการเข้าเทรด</p>
               </div>
             </div>
 
-            <div className="rounded-2xl border border-default-200 dark:border-white/5 bg-default-50 dark:bg-white/5 p-4 mb-6 space-y-3 shadow-inner">
+            <div className="rounded-xl border border-gray-100 dark:border-white/5 bg-gray-50 dark:bg-white/5 p-4 mb-5 space-y-2.5">
               {[
-                ['Symbol', tradeProposal.symbol, 'text-[#3B82F6]'],
-                ['Direction', tradeProposal.direction, tradeProposal.direction === 'BUY' ? 'text-emerald-400' : 'text-red-400'],
-                ['Confidence', `${tradeProposal.confidence || 0}%`, 'text-default-700 dark:text-white/80'],
-                ['Lot Size', tradeProposal.lot_size || 0.01, 'text-amber-400 font-mono'],
+                ['Symbol', tradeProposal.symbol, 'text-blue-500 font-mono'],
+                ['Direction', tradeProposal.direction, tradeProposal.direction === 'BUY' ? 'text-emerald-500' : 'text-red-500'],
+                ['Confidence', `${tradeProposal.confidence || 0}%`, 'text-gray-700 dark:text-white'],
+                ['Lot Size', tradeProposal.lot_size || 0.01, 'text-amber-500 font-mono'],
               ].map(([label, value, color]) => (
                 <div key={label as string} className="flex justify-between items-center text-sm">
-                  <span className="text-white/50 font-medium tracking-wide">{label}</span>
-                  <span className={`font-black ${color}`}>{value}</span>
+                  <span className="text-gray-500 font-medium">{label}</span>
+                  <span className={`font-bold ${color}`}>{value}</span>
                 </div>
               ))}
-              <div className="pt-3 mt-3 border-t border-white/10 text-xs text-white/60 leading-relaxed font-medium">
-                <strong className="text-white/80">เหตุผล:</strong> {tradeProposal.reasoning}
-              </div>
+              {tradeProposal.reasoning && (
+                <div className="pt-2.5 mt-2.5 border-t border-gray-200 dark:border-white/10 text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed">
+                  <strong className="text-gray-700 dark:text-gray-300">เหตุผล:</strong> {tradeProposal.reasoning}
+                </div>
+              )}
             </div>
 
             <div className="flex gap-3">
               <button 
                 onClick={rejectProposal}
-                className="flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl bg-white/5 hover:bg-white/10 font-bold text-sm text-white/80 transition-all border border-transparent hover:border-white/10"
+                className="flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl bg-gray-100 dark:bg-white/5 hover:bg-gray-200 dark:hover:bg-white/10 font-bold text-sm text-gray-600 dark:text-gray-400 transition-all"
               >
                 <LuX size={16} /> ยกเลิก
               </button>
               <button 
                 onClick={acceptProposal}
-                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3.5 rounded-xl text-white font-black text-sm transition-all shadow-lg hover:brightness-110 ${
-                  tradeProposal.direction === 'BUY' ? 'bg-gradient-to-r from-emerald-500 to-emerald-600 shadow-emerald-500/25' : 'bg-gradient-to-r from-red-500 to-red-600 shadow-red-500/25'
+                className={`flex-1 flex items-center justify-center gap-2 px-4 py-3 rounded-xl text-white font-bold text-sm transition-all shadow-lg hover:brightness-110 ${
+                  tradeProposal.direction === 'BUY' ? 'bg-emerald-500 shadow-emerald-500/25' : 'bg-red-500 shadow-red-500/25'
                 }`}
               >
-                <LuCheck size={16} /> อนุมัติออเดอร์
+                <LuCheck size={16} /> อนุมัติ
               </button>
             </div>
           </div>
         </div>
       )}
 
-      {/* Confirm Dialog Modal */}
+      {/* Confirm Dialog */}
       {confirmDialog && (
         <div className="fixed inset-0 z-[60] flex items-center justify-center bg-black/80 backdrop-blur-sm px-4">
-          <div className="w-full max-w-sm rounded-3xl bg-white dark:bg-[#0B101E] border border-default-200 dark:border-white/10 shadow-[0_20px_60px_rgba(0,0,0,0.1)] dark:shadow-[0_20px_60px_rgba(0,0,0,0.8)] p-6 relative animate-in slide-in-from-bottom-2">
-            <h3 className="text-xl font-black text-default-900 dark:text-white/90 mb-3 flex items-center gap-2">
-               <LuBot className="size-5 text-amber-500" />
-               แจ้งเตือนยืนยัน
+          <div className="w-full max-w-sm rounded-2xl bg-white dark:bg-[#0B101E] border border-gray-200 dark:border-white/10 shadow-2xl p-6">
+            <h3 className="text-base font-bold text-gray-900 dark:text-white mb-2 flex items-center gap-2">
+               <LuBot className="size-4 text-amber-500" />
+               ยืนยัน
             </h3>
-            <p className="text-sm font-semibold text-default-600 dark:text-white/60 mb-8 leading-relaxed">
+            <p className="text-sm text-gray-600 dark:text-gray-400 mb-6">
                {confirmDialog?.message}
             </p>
-            <div className="flex gap-3 justify-end items-center">
+            <div className="flex gap-3 justify-end">
               <button 
                 onClick={() => setConfirmDialog(null)} 
-                className="px-5 py-2.5 rounded-xl text-xs font-bold text-default-500 dark:text-gray-400 hover:text-default-900 dark:hover:text-white hover:bg-default-100 dark:hover:bg-white/5 transition-all"
+                className="px-5 py-2 rounded-xl text-sm text-gray-500 hover:text-gray-900 dark:hover:text-white hover:bg-gray-100 dark:hover:bg-white/5 transition-all"
               >
                 ยกเลิก
               </button>
               <button 
                 onClick={() => { confirmDialog?.onConfirm(); setConfirmDialog(null); }} 
-                className="px-5 py-2.5 rounded-xl text-xs font-black text-white bg-blue-600 hover:bg-blue-500 shadow-lg shadow-blue-500/25 transition-all uppercase tracking-wide"
+                className="px-5 py-2 rounded-xl text-sm font-bold text-white bg-blue-500 hover:bg-blue-600 shadow-lg shadow-blue-500/25 transition-all"
               >
-                ยืนยันตกลง
+                ตกลง
               </button>
             </div>
           </div>

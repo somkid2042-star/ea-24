@@ -1,5 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
-import { LuBot, LuServer, LuSend, LuChevronDown, LuX, LuGlobe, LuActivity, LuCalendar, LuShield, LuBrainCircuit, LuCpu, LuCopy, LuCheck } from 'react-icons/lu';
+import { useState, useRef, useEffect } from 'react';
+import { LuChevronDown, LuX, LuServer, LuBrainCircuit, LuCheck, LuSparkles, LuLoader, LuSettings, LuTerminal, LuBot, LuEye, LuActivity } from 'react-icons/lu';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
 import { CountdownBadge } from './CountdownBadge';
 
@@ -20,437 +20,532 @@ interface SetupChatViewProps {
     verboseLogs: {timestamp: number, agent: string, prompt: string, response: string}[];
 }
 
-const AGENT_META: Record<string, { label: string; icon: any; color: string }> = {
-    news_hunter:    { label: 'News Hunter',     icon: LuGlobe,        color: 'text-cyan-500' },
-    chart_analyst:  { label: 'Chart Analyst',    icon: LuActivity,     color: 'text-blue-500' },
-    calendar:       { label: 'Calendar',         icon: LuCalendar,     color: 'text-amber-500' },
-    calendar_macro: { label: 'Macro Calendar',   icon: LuCalendar,     color: 'text-amber-600' },
-    risk_manager:   { label: 'Risk Manager',     icon: LuShield,       color: 'text-emerald-500' },
-    decision_maker: { label: 'Decision Maker',   icon: LuBrainCircuit, color: 'text-purple-500' },
-    orchestrator:   { label: 'Orchestrator',     icon: LuBot,          color: 'text-indigo-500' },
+const stripEmojis = (msg: string) => {
+    if (!msg) return '';
+    return msg.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/[\[\]]/g, '').replace(/\s{2,}/g, ' ').trim();
 };
 
-type UnifiedEntry = {
-    id: string;
-    timestamp: number;
-    source: 'server_m1' | 'ai_prompt' | 'ai_response' | 'system_log' | 'system_recovery';
-    agent: string;
-    status?: string;
-    message?: string;
-    prompt?: string;
-    response?: string;
-    raw_calculation_data?: string;
-};
-
-const TruncatedBlock = ({ text, maxLines = 6 }: { text: string; maxLines?: number }) => {
-    const [expanded, setExpanded] = useState(false);
-    const [copied, setCopied] = useState(false);
-    const lines = (text || '').split('\n');
-    const isTruncated = lines.length > maxLines;
-
-    const handleCopy = (e: React.MouseEvent) => {
-        e.stopPropagation();
-        navigator.clipboard.writeText(text || '');
-        setCopied(true);
-        setTimeout(() => setCopied(false), 2000);
+// Parse logs to extract stage results
+const parseStageData = (logs: AiLog[]) => {
+    const stages = {
+        server: { lines: [] as string[], result: '', strategy: '', score: '', tf: '', status: 'idle' as string },
+        gemma:  { lines: [] as string[], result: '', verdict: '', reason: '', status: 'idle' as string },
+        gemini: { lines: [] as string[], result: '', decision: '', confidence: '', reason: '', status: 'idle' as string },
     };
 
-    return (
-        <div className="relative group">
-            <pre className={`text-[12px] font-mono whitespace-pre-wrap leading-relaxed break-words ${!expanded && isTruncated ? `line-clamp-[${maxLines}]` : ''}`}
-                 style={!expanded && isTruncated ? { display: '-webkit-box', WebkitLineClamp: maxLines, WebkitBoxOrient: 'vertical', overflow: 'hidden' } : {}}
-            >
-                {text}
-            </pre>
-            <div className="flex items-center gap-2 mt-2">
-                {isTruncated && (
-                    <button
-                        onClick={(e) => { e.stopPropagation(); setExpanded(!expanded); }}
-                        className="text-[10px] font-bold text-blue-500 hover:text-blue-400 flex items-center gap-1 uppercase tracking-wider"
-                    >
-                        <LuChevronDown className={`transition-transform ${expanded ? 'rotate-180' : ''}`} size={12} />
-                        {expanded ? 'ย่อ' : `แสดงทั้งหมด (${lines.length} บรรทัด)`}
-                    </button>
-                )}
-                <button 
-                    onClick={handleCopy}
-                    className="text-[10px] font-bold text-gray-400 hover:text-white flex items-center gap-1 ml-auto opacity-0 group-hover:opacity-100 transition-opacity"
-                >
-                    {copied ? <LuCheck size={10} /> : <LuCopy size={10} />}
-                    {copied ? 'คัดลอกแล้ว' : 'คัดลอก'}
-                </button>
-            </div>
-        </div>
-    );
+    logs.forEach(log => {
+        const msg = stripEmojis(log.message || '');
+        const agent = log.agent || '';
+        const status = log.status || '';
+
+        if (agent === 'pipeline_v8' || agent.includes('pipeline')) {
+            stages.server.lines.push(msg);
+            stages.server.status = status;
+            
+            // Parse strategy selection
+            const stratMatch = msg.match(/Best Signal:\s*(\w+)/i) || msg.match(/เลือก.*?:\s*(\w+)/i);
+            if (stratMatch) stages.server.strategy = stratMatch[1];
+            
+            const scoreMatch = msg.match(/Score[:\s]+(\d+\.?\d*)/i) || msg.match(/WScore[:\s]+\w+:(\d+\.?\d*)/i);
+            if (scoreMatch) stages.server.score = scoreMatch[1];
+            
+            const tfMatch = msg.match(/(M5|M15|M30|H1|H4)/);
+            if (tfMatch) stages.server.tf = tfMatch[1];
+
+            // Parse signal details
+            if (msg.includes('BUY') || msg.includes('SELL')) {
+                const dirMatch = msg.match(/(BUY|SELL)/);
+                if (dirMatch) stages.server.result = dirMatch[1];
+            }
+            if (msg.includes('ไม่มีสัญญาณ') || msg.includes('No signal') || (msg.includes('BUY:0') && msg.includes('SELL:0'))) {
+                stages.server.result = 'NO_SIGNAL';
+            }
+        }
+
+        if (agent === 'gemma_filter' || agent === 'gemma_filter_v8' || agent.includes('gemma')) {
+            stages.gemma.lines.push(msg);
+            stages.gemma.status = status;
+            
+            if (msg.toLowerCase().includes('approve') || msg.includes('เห็นด้วย') || msg.includes('ผ่าน')) {
+                stages.gemma.verdict = 'APPROVED';
+            }
+            if (msg.toLowerCase().includes('reject') || msg.includes('ไม่เห็นด้วย') || msg.includes('ไม่ผ่าน')) {
+                stages.gemma.verdict = 'REJECTED';
+            }
+            stages.gemma.reason = msg;
+        }
+
+        if (agent === 'gemini_confirm' || agent === 'gemini_confirm_v8' || agent.includes('gemini') || agent === 'decision_maker') {
+            stages.gemini.lines.push(msg);
+            stages.gemini.status = status;
+            
+            const decMatch = msg.match(/(BUY|SELL|HOLD)/);
+            if (decMatch) stages.gemini.decision = decMatch[1];
+            
+            const confMatch = msg.match(/(\d+)%/) || msg.match(/confidence[:\s]+(\d+)/i);
+            if (confMatch) stages.gemini.confidence = confMatch[1];
+            
+            stages.gemini.reason = msg;
+        }
+    });
+
+    return stages;
 };
 
+// Animated border CSS
+const glowKeyframes = `
+@keyframes borderGlow {
+    0% { border-color: rgba(34,197,94,0.2); box-shadow: 0 0 5px rgba(34,197,94,0.1); }
+    50% { border-color: rgba(34,197,94,0.8); box-shadow: 0 0 20px rgba(34,197,94,0.3); }
+    100% { border-color: rgba(34,197,94,0.2); box-shadow: 0 0 5px rgba(34,197,94,0.1); }
+}
+@keyframes flowDash {
+    0% { stroke-dashoffset: 20; }
+    100% { stroke-dashoffset: 0; }
+}
+`;
+
+
 export const SetupChatView = ({
-    job, verboseLogs, logsM1BySymbol, logsBySymbol, lastRunMap, agentStatusBySymbol, agentStatusM1Map, closedMap, finalResultBySymbol
+    job, verboseLogs, logsM1BySymbol, logsBySymbol, lastRunMap, agentStatusBySymbol, agentStatusM1Map, closedMap, finalResultBySymbol, handleEditJob
 }: SetupChatViewProps) => {
-    const [isHovering, setIsHovering] = useState(false);
     const [selectedLog, setSelectedLog] = useState<any>(null);
-    const [filter, setFilter] = useState<'all' | 'ai' | 'server'>('all');
+    const [expandedCard, setExpandedCard] = useState<string | null>(null);
+    const [activeTab, setActiveTab] = useState<'timeline' | 'verbose'>('timeline');
+    const logsEndRef = useRef<HTMLDivElement>(null);
+    const [autoScroll, setAutoScroll] = useState(true);
 
-    const logsM1 = logsM1BySymbol[job.symbol] || [];
     const logsAI = logsBySymbol[job.symbol] || [];
-
     const lastRunTime = lastRunMap?.[job.symbol] || null;
-    const isAiRunning = Object.values(agentStatusBySymbol?.[job.symbol] || {}).some(s => s === 'running');
-    const isM1Running = Object.values(agentStatusM1Map?.[job.symbol] || {}).some(s => s === 'running');
+    const isRunning = Object.values(agentStatusBySymbol?.[job.symbol] || {}).some(s => s === 'running');
     const finalResult = finalResultBySymbol?.[job.symbol];
 
-    // Build unified timeline
-    const entries: UnifiedEntry[] = [];
-
-    // Add AI verbose logs (prompt + response pairs)
-    const filteredVerbose = (verboseLogs || []).filter((log: any) => !(job.disabled_agents || []).includes(log.agent));
-    filteredVerbose.forEach((log: any, i: number) => {
-        const ts = log.timestamp || Date.now();
-        entries.push({
-            id: `prompt-${i}`,
-            timestamp: ts - 1, // prompt comes slightly before response
-            source: log.prompt?.includes('[SYSTEM RECOVERY]') ? 'system_recovery' : 'ai_prompt',
-            agent: log.agent,
-            prompt: log.prompt,
-            message: log.prompt,
-        });
-        entries.push({
-            id: `response-${i}`,
-            timestamp: ts,
-            source: 'ai_response',
-            agent: log.agent,
-            response: log.response,
-            message: log.response,
-        });
-    });
-
-    // Add M1 Server logs
-    logsM1.forEach((log: any, i: number) => {
-        entries.push({
-            id: `m1-${i}`,
-            timestamp: log.timestamp || Date.now(),
-            source: 'server_m1',
-            agent: log.agent || 'system',
-            status: log.status,
-            message: log.message || log.raw_calculation_data || '',
-            raw_calculation_data: log.raw_calculation_data,
-        });
-    });
-
-    // Add AI agent_log messages (status updates like "running", "done")
-    logsAI.forEach((log: any, i: number) => {
-        entries.push({
-            id: `ai-log-${i}`,
-            timestamp: log.timestamp || Date.now(),
-            source: 'system_log',
-            agent: log.agent || 'system',
-            status: log.status,
-            message: log.message || '',
-        });
-    });
-
-    // Sort chronologically
-    entries.sort((a, b) => a.timestamp - b.timestamp);
-
-    // Apply filter
-    const filtered = entries.filter(e => {
-        if (filter === 'ai') return e.source === 'ai_prompt' || e.source === 'ai_response' || e.source === 'system_log' || e.source === 'system_recovery';
-        if (filter === 'server') return e.source === 'server_m1';
-        return true;
-    });
-
-    const logsEndRef = useRef<HTMLDivElement>(null);
-
+    // Auto-scroll logs
     useEffect(() => {
-        if (!isHovering) {
-            logsEndRef.current?.scrollIntoView({ behavior: 'smooth' });
+        if (autoScroll && logsEndRef.current) {
+            logsEndRef.current.scrollIntoView({ behavior: 'smooth' });
         }
-    }, [filtered.length, isHovering]);
+    }, [logsAI, autoScroll]);
 
-    const agentMeta = (agent: string) => AGENT_META[agent] || { label: agent, icon: LuCpu, color: 'text-gray-500' };
+    // Parse stage data from logs
+    const stages = parseStageData(logsAI);
+    const agentStatuses = agentStatusBySymbol?.[job.symbol] || {} as any;
 
-    const renderEntry = (entry: UnifiedEntry) => {
-        const meta = agentMeta(entry.agent);
-        const Icon = meta.icon;
-        const timeStr = new Date(entry.timestamp).toLocaleTimeString([], { hour: '2-digit', minute: '2-digit', second: '2-digit' });
+    // Override with real-time agent statuses
+    if (agentStatuses.pipeline_v8) stages.server.status = agentStatuses.pipeline_v8;
+    if (agentStatuses.gemma_filter) stages.gemma.status = agentStatuses.gemma_filter;
+    if (agentStatuses.gemini_confirm) stages.gemini.status = agentStatuses.gemini_confirm;
 
-        // Prompt sent TO AI — left aligned, send-style bubble
-        if (entry.source === 'ai_prompt') {
-            return (
-                <div key={entry.id} className="flex items-start gap-3 w-full animate-in fade-in slide-in-from-left-3 duration-300">
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border bg-gradient-to-br from-blue-50 to-blue-100 dark:from-blue-900/30 dark:to-blue-800/20 border-blue-200 dark:border-blue-700/50 shadow-sm mt-0.5`}>
-                        <LuSend className="text-blue-500" size={14} />
-                    </div>
-                    <div className="flex-1 min-w-0 mr-12 md:mr-20">
-                        <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-[10px] font-bold text-blue-500 uppercase tracking-wider">PROMPT → {meta.label}</span>
-                            <span className="text-[9px] text-gray-500 font-mono">{timeStr}</span>
-                        </div>
-                        <div 
-                            className="bg-white dark:bg-[#12151f] border border-gray-100 dark:border-white/5 rounded-2xl rounded-tl-sm p-4 shadow-sm cursor-pointer hover:border-blue-300 dark:hover:border-blue-700/50 transition-all"
-                            onClick={() => setSelectedLog(entry)}
-                        >
-                            <TruncatedBlock text={entry.prompt || ''} maxLines={8} />
-                        </div>
-                    </div>
-                </div>
-            );
-        }
+    // Determine agent info for log rendering
+    const getAgentInfo = (agent: string) => {
+        if (agent === 'pipeline_v8' || agent?.includes('pipeline')) return { icon: LuServer, color: 'blue', label: 'Server Scan' };
+        if (agent === 'gemma_filter' || agent === 'gemma_filter_v8' || agent?.includes('gemma')) return { icon: LuSparkles, color: 'purple', label: 'Gemma 4' };
+        if (agent === 'gemini_confirm' || agent === 'gemini_confirm_v8' || agent?.includes('gemini') || agent === 'decision_maker') return { icon: LuBrainCircuit, color: 'amber', label: 'Gemini' };
+        return { icon: LuTerminal, color: 'gray', label: agent?.replace(/_/g, ' ') || 'System' };
+    };
 
-        // Response FROM AI — right aligned, receive-style bubble
-        if (entry.source === 'ai_response') {
-            return (
-                <div key={entry.id} className="flex items-start justify-end gap-3 w-full animate-in fade-in slide-in-from-right-3 duration-300">
-                    <div className="flex-1 min-w-0 ml-12 md:ml-20">
-                        <div className="flex items-center justify-end gap-2 mb-1.5">
-                            <span className="text-[9px] text-gray-500 font-mono">{timeStr}</span>
-                            <span className={`text-[10px] font-bold uppercase tracking-wider ${meta.color}`}>{meta.label} → ตอบกลับ</span>
-                        </div>
-                        <div 
-                            className="bg-gradient-to-br from-indigo-50/80 to-purple-50/50 dark:from-indigo-900/20 dark:to-purple-900/10 border border-indigo-100 dark:border-indigo-700/30 rounded-2xl rounded-tr-sm p-4 shadow-sm cursor-pointer hover:border-indigo-300 dark:hover:border-indigo-600/50 transition-all"
-                            onClick={() => setSelectedLog(entry)}
-                        >
-                            <TruncatedBlock text={entry.response || ''} maxLines={8} />
-                        </div>
-                    </div>
-                    <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 bg-gradient-to-br from-indigo-500 to-purple-600 text-white shadow-md mt-0.5`}>
-                        <Icon size={16} />
-                    </div>
-                </div>
-            );
-        }
+    const agentColorClasses: Record<string, { bg: string; text: string }> = {
+        blue:   { bg: 'bg-blue-500/10',   text: 'text-blue-500' },
+        purple: { bg: 'bg-purple-500/10', text: 'text-purple-500' },
+        amber:  { bg: 'bg-amber-500/10',  text: 'text-amber-500' },
+        gray:   { bg: 'bg-gray-100 dark:bg-white/5', text: 'text-gray-400' },
+    };
 
-        // System Recovery (loaded from DB) — centered info bubble
-        if (entry.source === 'system_recovery') {
-            return (
-                <div key={entry.id} className="flex items-start gap-3 w-full animate-in fade-in duration-200">
-                    <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border bg-amber-50 dark:bg-amber-900/20 border-amber-200 dark:border-amber-700/40 shadow-sm mt-0.5">
-                        <LuServer className="text-amber-500" size={14} />
-                    </div>
-                    <div className="flex-1 min-w-0 mr-12">
-                        <div className="flex items-center gap-2 mb-1.5">
-                            <span className="text-[10px] font-bold text-amber-500 uppercase tracking-wider">ข้อมูลโหลดจาก DB</span>
-                            <span className="text-[9px] text-gray-500 font-mono">{timeStr}</span>
-                        </div>
-                        <div 
-                            className="bg-amber-50/50 dark:bg-amber-900/10 border border-amber-100 dark:border-amber-800/30 rounded-2xl rounded-tl-sm p-3 shadow-sm cursor-pointer hover:border-amber-300 transition-all"
-                            onClick={() => setSelectedLog(entry)}
-                        >
-                            <p className="text-[12px] text-amber-700 dark:text-amber-400 font-medium leading-relaxed line-clamp-2">{entry.prompt || ''}</p>
-                        </div>
-                    </div>
-                </div>
-            );
-        }
+    const cardConfigs = [
+        {
+            key: 'server',
+            label: 'Server Scan',
+            desc: '10 กลยุทธ์ × 5 TF',
+            icon: LuServer,
+            color: 'blue',
+            status: stages.server.status,
+            lines: stages.server.lines,
+            summary: () => {
+                if (stages.server.result === 'NO_SIGNAL') return { text: 'ไม่พบสัญญาณ', color: 'text-gray-500' };
+                if (stages.server.result === 'BUY') return { text: `BUY ${stages.server.strategy || ''} ${stages.server.tf || ''}`.trim(), color: 'text-emerald-500' };
+                if (stages.server.result === 'SELL') return { text: `SELL ${stages.server.strategy || ''} ${stages.server.tf || ''}`.trim(), color: 'text-red-500' };
+                if (stages.server.status === 'running') return { text: 'กำลังสแกน...', color: 'text-blue-500' };
+                return { text: 'รอสแกน', color: 'text-gray-500' };
+            }
+        },
+        {
+            key: 'gemma',
+            label: 'Gemma 4',
+            desc: 'ตรวจสอบ + ประวัติ',
+            icon: LuSparkles,
+            color: 'purple',
+            status: stages.gemma.status,
+            lines: stages.gemma.lines,
+            summary: () => {
+                if (stages.gemma.verdict === 'APPROVED') return { text: 'ผ่าน -- เห็นด้วย', color: 'text-emerald-500' };
+                if (stages.gemma.verdict === 'REJECTED') return { text: 'ไม่ผ่าน -- ปฏิเสธ', color: 'text-red-500' };
+                if (stages.gemma.status === 'running') return { text: 'กำลังตรวจสอบ...', color: 'text-purple-500' };
+                return { text: 'รอข้อมูล', color: 'text-gray-500' };
+            }
+        },
+        {
+            key: 'gemini',
+            label: 'Gemini',
+            desc: 'ยืนยันขั้นสุดท้าย',
+            icon: LuBrainCircuit,
+            color: 'amber',
+            status: stages.gemini.status,
+            lines: stages.gemini.lines,
+            summary: () => {
+                if (stages.gemini.decision === 'BUY') return { text: `BUY ${stages.gemini.confidence ? stages.gemini.confidence + '%' : ''}`.trim(), color: 'text-emerald-500' };
+                if (stages.gemini.decision === 'SELL') return { text: `SELL ${stages.gemini.confidence ? stages.gemini.confidence + '%' : ''}`.trim(), color: 'text-red-500' };
+                if (stages.gemini.decision === 'HOLD') return { text: 'HOLD -- ไม่เทรด', color: 'text-amber-500' };
+                if (stages.gemini.status === 'running') return { text: 'กำลังวิเคราะห์...', color: 'text-amber-500' };
+                return { text: 'รอ Gemma ส่งต่อ', color: 'text-gray-500' };
+            }
+        },
+    ];
 
-        // Server M1 log
-        if (entry.source === 'server_m1') {
-            const isRunning = entry.status === 'running';
-            const isDone = entry.status === 'done';
-            const isError = entry.status === 'error';
-
-            return (
-                <div key={entry.id} className={`flex items-start gap-3 w-full animate-in fade-in duration-200 ${isRunning ? '' : 'justify-end'}`}>
-                    {isRunning && (
-                        <div className="w-9 h-9 rounded-xl flex items-center justify-center shrink-0 border bg-gray-50 dark:bg-white/5 border-gray-200 dark:border-white/10 shadow-sm mt-0.5">
-                            <LuCpu className="text-gray-400 animate-pulse" size={14} />
-                        </div>
-                    )}
-                    <div className={`flex-1 min-w-0 ${isRunning ? 'mr-12 md:mr-20' : 'ml-12 md:ml-20'}`}>
-                        <div className={`flex items-center gap-2 mb-1.5 ${!isRunning ? 'justify-end' : ''}`}>
-                            {isRunning && <span className="text-[10px] font-bold text-gray-400 uppercase tracking-wider">M1 → {meta.label}</span>}
-                            <span className="text-[9px] text-gray-500 font-mono">{timeStr}</span>
-                            {!isRunning && <span className={`text-[10px] font-bold uppercase tracking-wider ${isError ? 'text-red-400' : 'text-emerald-500'}`}>{meta.label} → ผลลัพธ์</span>}
-                        </div>
-                        <div 
-                            className={`rounded-2xl p-3 shadow-sm cursor-pointer transition-all border ${
-                                isRunning 
-                                    ? 'bg-white dark:bg-[#12151f] border-gray-100 dark:border-white/5 rounded-tl-sm hover:border-gray-300' 
-                                    : isDone 
-                                        ? 'bg-emerald-50/50 dark:bg-emerald-900/10 border-emerald-100 dark:border-emerald-800/30 rounded-tr-sm hover:border-emerald-300'
-                                        : 'bg-red-50/50 dark:bg-red-900/10 border-red-100 dark:border-red-800/30 rounded-tr-sm hover:border-red-300'
-                            }`}
-                            onClick={() => setSelectedLog(entry)}
-                        >
-                            <p className={`text-[12px] font-medium leading-relaxed break-words whitespace-pre-wrap ${
-                                isRunning ? 'text-gray-600 dark:text-gray-400' : isDone ? 'text-emerald-700 dark:text-emerald-400' : 'text-red-600 dark:text-red-400'
-                            }`}>
-                                {entry.message || ''}
-                            </p>
-                        </div>
-                    </div>
-                    {!isRunning && (
-                        <div className={`w-9 h-9 rounded-xl flex items-center justify-center shrink-0 shadow-sm mt-0.5 ${
-                            isError ? 'bg-red-100 dark:bg-red-900/30 text-red-500 border border-red-200 dark:border-red-700/40' 
-                                    : 'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500 border border-emerald-200 dark:border-emerald-700/40'
-                        }`}>
-                            <LuServer size={14} />
-                        </div>
-                    )}
-                </div>
-            );
-        }
-
-        // System log (agent_log status updates)
-        if (entry.source === 'system_log') {
-            const isRunning = entry.status === 'running';
-            const isError = entry.status === 'error';
-            
-            return (
-                <div key={entry.id} className="flex items-center gap-3 w-full animate-in fade-in duration-200">
-                    <div className={`w-7 h-7 rounded-lg flex items-center justify-center shrink-0 ${
-                        isRunning ? 'bg-blue-50 dark:bg-blue-900/20 text-blue-500' 
-                        : isError ? 'bg-red-50 dark:bg-red-900/20 text-red-500'
-                        : 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-500'
-                    }`}>
-                        <Icon size={12} />
-                    </div>
-                    <div className="flex-1 flex items-center gap-2 min-w-0 py-1">
-                        <span className={`text-[10px] font-bold uppercase tracking-wider ${meta.color}`}>
-                            {meta.label}
-                        </span>
-                        <span className={`text-[11px] font-medium truncate ${
-                            isRunning ? 'text-blue-600 dark:text-blue-400' : isError ? 'text-red-500' : 'text-gray-600 dark:text-gray-400'
-                        }`}>
-                            {(entry.message || '').replace(/[✅❌⚠️📊🏁💡🔴🟢🚨📅🔍🛡️]/g, '').trim()}
-                        </span>
-                        <span className="text-[9px] text-gray-400 font-mono ml-auto shrink-0">{timeStr}</span>
-                    </div>
-                    {isRunning && <div className="w-1.5 h-1.5 rounded-full bg-blue-500 animate-pulse shrink-0" />}
-                </div>
-            );
-        }
-
-        return null;
+    const colorMap: Record<string, { bg: string; border: string; text: string; iconBg: string }> = {
+        blue:   { bg: 'bg-blue-500/5',   border: 'border-blue-500/20',   text: 'text-blue-500',   iconBg: 'bg-blue-500/10' },
+        purple: { bg: 'bg-purple-500/5', border: 'border-purple-500/20', text: 'text-purple-500', iconBg: 'bg-purple-500/10' },
+        amber:  { bg: 'bg-amber-500/5',  border: 'border-amber-500/20',  text: 'text-amber-500',  iconBg: 'bg-amber-500/10' },
     };
 
     return (
         <div className="flex flex-col h-full bg-[#fafafa] dark:bg-[#090b14] relative">
-            {/* Top Header */}
-            <div className="flex items-center justify-between px-5 py-3.5 bg-white dark:bg-[#0b0e17] border-b border-gray-100 dark:border-white/5 z-10">
+            <style>{glowKeyframes}</style>
+
+            {/* Header */}
+            <div className="flex items-center justify-between px-5 py-3 bg-white dark:bg-[#0b0e17] border-b border-gray-100 dark:border-white/5 z-10 shrink-0">
                 <div className="flex items-center gap-3">
-                    <div className="px-3 h-9 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 bg-gradient-to-br from-blue-500 to-blue-600 text-white shadow-sm">
+                    <div className="px-2.5 h-7 rounded-lg flex items-center justify-center font-bold text-[12px] shrink-0 bg-gradient-to-br from-blue-500 to-indigo-600 text-white">
                         {job.symbol}
                     </div>
                     <div>
-                        <h2 className="text-[14px] font-bold text-default-900 dark:text-white leading-tight">
-                            {job.symbol}
-                        </h2>
-                        <p className="text-[11px] text-gray-500 font-medium">
-                            Analysis Interval: {job.interval} min • Real-Time Activity
+                        <div className="flex items-center gap-2">
+                            <h2 className="text-[13px] font-bold text-gray-900 dark:text-white">Pipeline v8</h2>
+                            {isRunning && <LuLoader size={11} className="animate-spin text-blue-500" />}
+                        </div>
+                        <p className="text-[10px] text-gray-500">
+                            {job.interval}m | {job.auto_trade ? 'Auto' : 'Manual'} | Lot {job.lot_size}
                         </p>
                     </div>
                 </div>
                 <div className="flex items-center gap-2">
-                    {/* Status badges */}
-                    <div className="flex items-center gap-1.5">
-                        <CountdownBadge interval={1} lastRunTime={null} isRunning={isM1Running} enabled={job.enabled !== false} marketClosed={closedMap[job.symbol]} />
-                        <CountdownBadge interval={job.interval} lastRunTime={lastRunTime} isRunning={isAiRunning} enabled={job.enabled !== false} marketClosed={closedMap[job.symbol]} />
-                    </div>
-                    {/* Final decision badge */}
-                    {finalResult?.final_decision && (
-                        <span className={`px-2.5 py-1 rounded-lg text-[10px] font-black uppercase tracking-wider border ${
-                            finalResult.final_decision === 'BUY' ? 'bg-emerald-50 dark:bg-emerald-900/20 text-emerald-600 dark:text-emerald-400 border-emerald-200 dark:border-emerald-700/40' :
-                            finalResult.final_decision === 'SELL' ? 'bg-red-50 dark:bg-red-900/20 text-red-600 dark:text-red-400 border-red-200 dark:border-red-700/40' :
-                            'bg-amber-50 dark:bg-amber-900/20 text-amber-600 dark:text-amber-400 border-amber-200 dark:border-amber-700/40'
+                    <CountdownBadge interval={job.interval} lastRunTime={lastRunTime} isRunning={isRunning} enabled={job.enabled !== false} marketClosed={closedMap[job.symbol]} />
+                    {(finalResult?.final_decision || finalResult?.decision) && (() => {
+                        const dec = finalResult.final_decision || finalResult.decision;
+                        return (
+                        <span className={`px-2.5 py-1 rounded-lg text-[11px] font-black uppercase ${
+                            dec === 'BUY' ? 'bg-emerald-500/10 text-emerald-500' :
+                            dec === 'SELL' ? 'bg-red-500/10 text-red-500' :
+                            'bg-amber-500/10 text-amber-500'
                         }`}>
-                            AI: {finalResult.final_decision} {finalResult.confidence ? `${finalResult.confidence}%` : ''}
+                            {dec} {finalResult.confidence ? `${Math.round(finalResult.confidence)}%` : ''}
                         </span>
-                    )}
+                        );
+                    })()}
+                    <button onClick={() => handleEditJob(job)} className="p-1.5 text-gray-400 hover:text-gray-600 dark:hover:text-white rounded-lg hover:bg-gray-100 dark:hover:bg-white/5 transition-colors">
+                        <LuSettings size={14} />
+                    </button>
                 </div>
             </div>
 
-            {/* Filter tabs */}
-            <div className="flex items-center gap-1 px-4 py-2 border-b border-gray-100 dark:border-white/5 bg-white/50 dark:bg-[#0b0e17]/50">
-                {[
-                    { key: 'all' as const, label: 'ทั้งหมด', count: entries.length },
-                    { key: 'ai' as const, label: 'AI Gemini', count: entries.filter(e => e.source === 'ai_prompt' || e.source === 'ai_response' || e.source === 'system_log').length },
-                    { key: 'server' as const, label: 'Server M1', count: entries.filter(e => e.source === 'server_m1').length },
-                ].map(tab => (
-                    <button 
-                        key={tab.key}
-                        onClick={() => setFilter(tab.key)}
-                        className={`px-3 py-1.5 rounded-lg text-[11px] font-semibold transition-all ${
-                            filter === tab.key 
-                                ? 'bg-blue-50 dark:bg-blue-900/30 text-blue-600 dark:text-blue-400 shadow-sm' 
-                                : 'text-gray-500 hover:text-gray-700 dark:hover:text-gray-300 hover:bg-gray-100 dark:hover:bg-white/5'
-                        }`}
-                    >
-                        {tab.label}
-                        <span className="text-[9px] ml-1.5 font-mono opacity-60">{tab.count}</span>
-                    </button>
-                ))}
-                <div className="ml-auto flex items-center gap-2">
-                    {(isAiRunning || isM1Running) && (
-                        <span className="flex items-center gap-1.5 text-[10px] font-bold text-blue-500 animate-pulse">
-                            <span className="w-1.5 h-1.5 rounded-full bg-blue-500" />
-                            LIVE
-                        </span>
-                    )}
+            {/* Pipeline Cards */}
+            <div className="shrink-0 px-5 py-5">
+                <div className="flex items-stretch gap-0 relative">
+                    {cardConfigs.map((card, idx) => {
+                        const Icon = card.icon;
+                        const colors = colorMap[card.color];
+                        const isActive = card.status === 'running';
+                        const isDone = card.status === 'done';
+                        const isError = card.status === 'error';
+                        const summary = card.summary();
+                        const isExpanded = expandedCard === card.key;
+
+                        return (
+                            <div key={card.key} className="flex items-stretch flex-1 min-w-0">
+                                {/* Card */}
+                                <div
+                                    className={`flex-1 rounded-xl border-2 p-4 transition-all duration-500 cursor-pointer hover:scale-[1.02] ${
+                                        isActive
+                                            ? 'border-emerald-500 bg-emerald-500/5 dark:bg-emerald-500/5'
+                                            : isDone
+                                            ? `${colors.bg} border-emerald-500/30`
+                                            : isError
+                                            ? 'border-red-500/30 bg-red-500/5'
+                                            : `${colors.bg} ${colors.border}`
+                                    }`}
+                                    style={isActive ? {
+                                        animation: 'borderGlow 1.5s ease-in-out infinite',
+                                    } : {}}
+                                    onClick={() => setExpandedCard(isExpanded ? null : card.key)}
+                                >
+                                    {/* Card Header */}
+                                    <div className="flex items-center gap-2.5 mb-3">
+                                        <div className={`size-9 rounded-lg flex items-center justify-center ${
+                                            isActive ? 'bg-emerald-500/20 text-emerald-500' :
+                                            isDone ? 'bg-emerald-500/10 text-emerald-500' :
+                                            isError ? 'bg-red-500/10 text-red-500' :
+                                            `${colors.iconBg} ${colors.text}`
+                                        }`}>
+                                            {isActive ? <LuLoader size={16} className="animate-spin" /> :
+                                             isDone ? <LuCheck size={16} /> :
+                                             <Icon size={16} />}
+                                        </div>
+                                        <div>
+                                            <h3 className={`text-[12px] font-bold ${
+                                                isActive ? 'text-emerald-500' :
+                                                isDone ? 'text-emerald-600 dark:text-emerald-400' :
+                                                isError ? 'text-red-500' :
+                                                'text-gray-900 dark:text-white'
+                                            }`}>
+                                                {card.label}
+                                            </h3>
+                                            <p className="text-[9px] text-gray-500">{card.desc}</p>
+                                        </div>
+                                        {isActive && (
+                                            <div className="ml-auto">
+                                                <span className="flex items-center gap-1 text-[9px] font-bold text-emerald-500 animate-pulse">
+                                                    <span className="size-1.5 rounded-full bg-emerald-500" />
+                                                    ACTIVE
+                                                </span>
+                                            </div>
+                                        )}
+                                    </div>
+
+                                    {/* Result Summary */}
+                                    <div className={`text-[13px] font-bold ${summary.color} mb-1`}>
+                                        {summary.text}
+                                    </div>
+
+                                    {/* Latest log line */}
+                                    {card.lines.length > 0 && (
+                                        <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-relaxed">
+                                            {card.lines[card.lines.length - 1]}
+                                        </p>
+                                    )}
+
+                                    {/* Expanded Detail */}
+                                    {isExpanded && card.lines.length > 0 && (
+                                        <div className="mt-3 pt-3 border-t border-gray-200 dark:border-white/10 space-y-1 animate-in fade-in slide-in-from-top-1 duration-200 max-h-[200px] overflow-y-auto custom-scrollbar">
+                                            {card.lines.map((line, i) => (
+                                                <p key={i} className="text-[10px] text-gray-600 dark:text-gray-400 leading-relaxed">
+                                                    {line}
+                                                </p>
+                                            ))}
+                                        </div>
+                                    )}
+
+                                    {card.lines.length > 1 && (
+                                        <button className="flex items-center gap-0.5 text-[9px] text-gray-400 hover:text-gray-600 dark:hover:text-gray-300 mt-2 transition-colors">
+                                            <LuChevronDown size={10} className={`transition-transform ${isExpanded ? 'rotate-180' : ''}`} />
+                                            {isExpanded ? 'ย่อ' : `${card.lines.length} รายการ`}
+                                        </button>
+                                    )}
+                                </div>
+
+                                {/* Connector Line */}
+                                {idx < cardConfigs.length - 1 && (
+                                    <div className="flex items-center px-2 shrink-0">
+                                        <svg width="32" height="40" viewBox="0 0 32 40" className="overflow-visible">
+                                            <defs>
+                                                <linearGradient id={`grad-${idx}`} x1="0" y1="0" x2="1" y2="0">
+                                                    <stop offset="0%" stopColor={isDone ? '#22c55e' : '#6b7280'} stopOpacity="0.6" />
+                                                    <stop offset="100%" stopColor={
+                                                        cardConfigs[idx + 1].status === 'running' ? '#22c55e' :
+                                                        cardConfigs[idx + 1].status === 'done' ? '#22c55e' : '#6b7280'
+                                                    } stopOpacity="0.6" />
+                                                </linearGradient>
+                                            </defs>
+                                            <line x1="0" y1="20" x2="32" y2="20"
+                                                stroke={`url(#grad-${idx})`}
+                                                strokeWidth="2"
+                                                strokeDasharray={isDone ? 'none' : '4 3'}
+                                                style={isActive || cardConfigs[idx + 1].status === 'running' 
+                                                    ? { animation: 'flowDash 0.5s linear infinite', strokeDasharray: '6 4' } 
+                                                    : {}}
+                                            />
+                                            <polygon
+                                                points="26,15 32,20 26,25"
+                                                fill={isDone || cardConfigs[idx + 1].status === 'running' ? '#22c55e' : '#6b7280'}
+                                                opacity="0.6"
+                                            />
+                                        </svg>
+                                    </div>
+                                )}
+                            </div>
+                        );
+                    })}
                 </div>
             </div>
-            
-            {/* Main Timeline */}
-            <div 
-                className="flex-1 overflow-y-auto px-4 md:px-5 py-4 space-y-4 custom-scrollbar"
-                onMouseEnter={() => setIsHovering(true)}
-                onMouseLeave={() => setIsHovering(false)}
-            >
-                {filtered.length > 0 ? (
-                    filtered.map(entry => renderEntry(entry))
-                ) : (
-                    <div className="flex flex-col items-center justify-center h-full text-center gap-3 opacity-60">
-                        <div className="w-14 h-14 rounded-2xl bg-gray-100 dark:bg-white/5 flex items-center justify-center">
-                            <LuBot size={24} className="text-gray-400" />
+
+            {/* Tab Switcher */}
+            <div className="shrink-0 px-5 flex items-center gap-1 border-b border-gray-100 dark:border-white/5">
+                <button
+                    onClick={() => setActiveTab('timeline')}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold transition-all border-b-2 -mb-px ${
+                        activeTab === 'timeline'
+                            ? 'text-blue-500 border-blue-500'
+                            : 'text-gray-400 border-transparent hover:text-gray-600 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <LuActivity size={12} />
+                    Activity Log
+                    {logsAI.length > 0 && <span className="text-[9px] opacity-60">({logsAI.length})</span>}
+                </button>
+                <button
+                    onClick={() => setActiveTab('verbose')}
+                    className={`flex items-center gap-1.5 px-3 py-2 text-[11px] font-bold transition-all border-b-2 -mb-px ${
+                        activeTab === 'verbose'
+                            ? 'text-purple-500 border-purple-500'
+                            : 'text-gray-400 border-transparent hover:text-gray-600 dark:hover:text-gray-300'
+                    }`}
+                >
+                    <LuEye size={12} />
+                    AI Prompts
+                    {verboseLogs.length > 0 && <span className="text-[9px] opacity-60">({verboseLogs.length})</span>}
+                </button>
+            </div>
+
+            {/* Log Content Area */}
+            <div className="flex-1 overflow-hidden">
+                {activeTab === 'timeline' ? (
+                    /* Timeline Log Feed */
+                    <div
+                        className="h-full overflow-y-auto px-5 py-3 [&::-webkit-scrollbar]:hidden"
+                        onScroll={(e) => {
+                            const target = e.currentTarget;
+                            setAutoScroll(target.scrollHeight - target.scrollTop - target.clientHeight < 40);
+                        }}
+                        onMouseLeave={() => setAutoScroll(true)}
+                    >
+                        <div className="space-y-2 relative">
+                            {logsAI.length > 0 ? logsAI.map((log, i) => {
+                                const info = getAgentInfo(log.agent);
+                                const Icon = info.icon;
+                                const colors = agentColorClasses[info.color];
+                                const isLogRunning = log.status === 'running';
+
+                                return (
+                                    <div key={i} className="flex gap-3 items-start animate-in fade-in slide-in-from-bottom-1 duration-200">
+                                        <div className={`size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${colors.bg} ${colors.text}`}>
+                                            {isLogRunning ? <LuLoader size={13} className="animate-spin" /> : <Icon size={13} />}
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-baseline justify-between gap-2">
+                                                <span className={`text-[11px] font-bold capitalize ${colors.text}`}>
+                                                    {info.label}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    {isLogRunning && <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />}
+                                                    <span className="text-[9px] text-gray-400 font-mono">
+                                                        {new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mt-0.5 break-words">
+                                                {stripEmojis(log.message)}
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            }) : (
+                                <div className="flex flex-col items-center justify-center py-16 text-center opacity-50">
+                                    <LuBot size={28} className="text-gray-400 mb-2" />
+                                    <p className="text-[11px] text-gray-500">รอรับข้อมูลจาก Pipeline v8...</p>
+                                    <p className="text-[9px] text-gray-400 mt-1">ระบบจะเริ่มสแกนตามรอบเวลาที่ตั้งไว้</p>
+                                </div>
+                            )}
+                            <div ref={logsEndRef} />
                         </div>
-                        <div>
-                            <p className="text-sm font-semibold text-gray-500">ยังไม่มีข้อมูลกิจกรรม</p>
-                            <p className="text-xs text-gray-400 mt-1">รอจนกว่า AI หรือ Server จะเริ่มวิเคราะห์รอบถัดไป</p>
+                    </div>
+                ) : (
+                    /* Verbose AI Prompts/Responses */
+                    <div className="h-full overflow-y-auto px-5 py-3 [&::-webkit-scrollbar]:hidden">
+                        <div className="space-y-2">
+                            {verboseLogs.length > 0 ? verboseLogs.map((vlog, i) => {
+                                const info = getAgentInfo(vlog.agent);
+                                const Icon = info.icon;
+                                const colors = agentColorClasses[info.color];
+
+                                return (
+                                    <div
+                                        key={i}
+                                        className="flex gap-3 items-start cursor-pointer group hover:bg-gray-50 dark:hover:bg-white/[0.02] rounded-lg p-2 -mx-2 transition-colors"
+                                        onClick={() => setSelectedLog(vlog)}
+                                    >
+                                        <div className={`size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${colors.bg} ${colors.text}`}>
+                                            <Icon size={13} />
+                                        </div>
+                                        <div className="flex-1 min-w-0">
+                                            <div className="flex items-baseline justify-between gap-2">
+                                                <span className={`text-[11px] font-bold capitalize ${colors.text}`}>
+                                                    {info.label}
+                                                </span>
+                                                <div className="flex items-center gap-1.5 shrink-0">
+                                                    <span className="text-[9px] text-blue-400 font-medium opacity-0 group-hover:opacity-100 transition-opacity">
+                                                        ดู Prompt/Response
+                                                    </span>
+                                                    <span className="text-[9px] text-gray-400 font-mono">
+                                                        {new Date(vlog.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}
+                                                    </span>
+                                                </div>
+                                            </div>
+                                            <p className="text-[10px] text-gray-500 dark:text-gray-500 leading-relaxed mt-0.5 truncate">
+                                                {stripEmojis(vlog.response || vlog.prompt || '').substring(0, 120)}...
+                                            </p>
+                                        </div>
+                                    </div>
+                                );
+                            }) : (
+                                <div className="flex flex-col items-center justify-center py-16 text-center opacity-50">
+                                    <LuEye size={28} className="text-gray-400 mb-2" />
+                                    <p className="text-[11px] text-gray-500">ยังไม่มีข้อมูล Prompt/Response</p>
+                                    <p className="text-[9px] text-gray-400 mt-1">ข้อมูลจะแสดงเมื่อ AI models ทำงาน</p>
+                                </div>
+                            )}
                         </div>
                     </div>
                 )}
-                <div ref={logsEndRef} />
             </div>
 
-            {/* Full View Modal */}
+            {/* Prompt Detail Modal */}
             {selectedLog && (
-                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4 md:p-8">
-                    <div className="bg-white dark:bg-[#0B101E] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-4xl max-h-[90vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
+                <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/70 backdrop-blur-sm p-4">
+                    <div className="bg-white dark:bg-[#0B101E] border border-gray-200 dark:border-white/10 rounded-2xl shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col animate-in fade-in zoom-in-95 duration-200">
                         <div className="flex items-center justify-between p-4 border-b border-gray-100 dark:border-white/5 shrink-0">
-                            <div className="flex items-center gap-3">
-                                <div className={`w-8 h-8 rounded-lg flex items-center justify-center ${
-                                    selectedLog.source === 'ai_prompt' ? 'bg-blue-100 dark:bg-blue-900/30 text-blue-500' :
-                                    selectedLog.source === 'ai_response' ? 'bg-indigo-100 dark:bg-indigo-900/30 text-indigo-500' :
-                                    'bg-emerald-100 dark:bg-emerald-900/30 text-emerald-500'
-                                }`}>
-                                    {selectedLog.source === 'ai_prompt' ? <LuSend size={14} /> : 
-                                     selectedLog.source === 'ai_response' ? <LuBot size={14} /> : 
-                                     <LuServer size={14} />}
-                                </div>
-                                <div>
-                                    <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">
-                                        {selectedLog.source === 'ai_prompt' ? 'Prompt ที่ส่งให้ AI' : 
-                                         selectedLog.source === 'ai_response' ? 'AI ตอบกลับ' : 
-                                         'ข้อมูลดิบ'}
-                                    </h3>
-                                    <p className="text-[10px] text-gray-500">
-                                        {agentMeta(selectedLog.agent).label} • {new Date(selectedLog.timestamp).toLocaleString()}
-                                    </p>
-                                </div>
+                            <div className="flex items-center gap-2">
+                                <h3 className="text-sm font-bold text-gray-800 dark:text-gray-100">AI Detail</h3>
+                                <span className="text-[10px] text-gray-400 font-mono">
+                                    {selectedLog.agent?.replace(/_/g, ' ')} | {new Date(selectedLog.timestamp).toLocaleString()}
+                                </span>
                             </div>
-                            <button 
-                                onClick={() => setSelectedLog(null)}
-                                className="w-8 h-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-500 rounded-lg transition-colors"
-                            >
+                            <button onClick={() => setSelectedLog(null)}
+                                className="size-8 flex items-center justify-center bg-gray-100 hover:bg-gray-200 dark:bg-white/5 dark:hover:bg-white/10 text-gray-500 rounded-lg transition-colors">
                                 <LuX size={16} />
                             </button>
                         </div>
-                        <div className="flex-1 overflow-y-auto p-5 custom-scrollbar bg-gray-50/50 dark:bg-[#06080F]">
-                            <pre className="text-[12px] font-mono text-gray-700 dark:text-emerald-400 whitespace-pre-wrap leading-relaxed break-words">
-                                {selectedLog.source === 'ai_prompt' ? selectedLog.prompt :
-                                 selectedLog.source === 'ai_response' ? selectedLog.response :
-                                 selectedLog.message || JSON.stringify(selectedLog, null, 2)}
-                            </pre>
+                        <div className="flex-1 overflow-y-auto custom-scrollbar">
+                            {selectedLog.prompt && (
+                                <div className="p-5 border-b border-gray-100 dark:border-white/5">
+                                    <h4 className="text-[10px] font-bold text-blue-500 uppercase tracking-wider mb-2">Prompt</h4>
+                                    <pre className="text-[11px] font-mono text-gray-600 dark:text-gray-400 whitespace-pre-wrap leading-relaxed break-words bg-gray-50 dark:bg-[#06080F] rounded-lg p-4">
+                                        {selectedLog.prompt}
+                                    </pre>
+                                </div>
+                            )}
+                            {selectedLog.response && (
+                                <div className="p-5">
+                                    <h4 className="text-[10px] font-bold text-emerald-500 uppercase tracking-wider mb-2">Response</h4>
+                                    <pre className="text-[11px] font-mono text-gray-700 dark:text-emerald-400 whitespace-pre-wrap leading-relaxed break-words bg-gray-50 dark:bg-[#06080F] rounded-lg p-4">
+                                        {selectedLog.response}
+                                    </pre>
+                                </div>
+                            )}
+                            {!selectedLog.prompt && !selectedLog.response && selectedLog.message && (
+                                <div className="p-5">
+                                    <pre className="text-[12px] font-mono text-gray-700 dark:text-emerald-400 whitespace-pre-wrap leading-relaxed break-words">
+                                        {selectedLog.message}
+                                    </pre>
+                                </div>
+                            )}
                         </div>
                     </div>
                 </div>

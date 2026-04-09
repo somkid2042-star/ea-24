@@ -1,7 +1,7 @@
-import React, { useEffect, useState, useRef, useMemo } from 'react';
-import { LuGlobe, LuActivity, LuCalendar, LuShield, LuBrainCircuit, LuLoader, LuTerminal, LuBot, LuSettings, LuZap, LuMonitorOff } from 'react-icons/lu';
+import React, { useEffect, useState, useRef } from 'react';
+import { LuBot, LuLoader, LuTerminal, LuSettings, LuZap, LuMonitorOff, LuServer, LuBrainCircuit, LuSparkles } from 'react-icons/lu';
 
-export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string };
+export type AiLog = { timestamp: number; symbol: string; agent: string; message: string; type: string; status?: string };
 export type AgentStatus = 'idle' | 'running' | 'done' | 'error';
 export type AgentStatusMap = {
   news_hunter: AgentStatus;
@@ -10,6 +10,9 @@ export type AgentStatusMap = {
   risk_manager: AgentStatus;
   decision_maker: AgentStatus;
   orchestrator: AgentStatus;
+  pipeline_v8?: AgentStatus;
+  gemma_filter?: AgentStatus;
+  gemini_confirm?: AgentStatus;
 };
 
 interface AgentPanelProps {
@@ -21,78 +24,41 @@ interface AgentPanelProps {
   logs: AiLog[];
   agentStatus: AgentStatusMap;
   autoTrade?: boolean;
-  disabledAgents?: string[];
   interval?: number;
   lastRunTime?: number | null;
   onEditJob?: () => void;
-  agentStatusM1?: AgentStatusMap;
-  logsM1?: AiLog[];
-  finalResult?: { final_decision: string; confidence?: number; [key: string]: any };
+  finalResult?: any;
 }
 
 const stripEmojis = (msg: string) => {
   if (!msg) return '';
-  return msg.replace(/[\p{Extended_Pictographic}⚠️]/gu, '').replace(/[✅❌⚠️📊🏁💡🔴🟢]/g, '').trim();
+  return msg.replace(/[\p{Extended_Pictographic}\u{FE0F}\u{200D}]/gu, '').replace(/[\[\]]/g, '').replace(/\s{2,}/g, ' ').trim();
 };
 
-const agentConfig = [
-  { key: 'news_hunter', name: 'วิเคราะห์ข่าวกรอง (News)', icon: <LuGlobe size={16} /> },
-  { key: 'chart_analyst', name: 'วิเคราะห์เทคนิค (Chart)', icon: <LuActivity size={16} /> },
-  { key: 'calendar', name: 'ติดตามปฏิทินศก. (Calendar)', icon: <LuCalendar size={16} /> },
-  { key: 'risk_manager', name: 'บริหารความเสี่ยง (Risk)', icon: <LuShield size={16} /> },
-  { key: 'decision_maker', name: 'ผู้ตัดสินใจขั้นสุดท้าย', icon: <LuBrainCircuit size={16} /> },
+// Pipeline v8 stages
+const STAGES = [
+  { key: 'pipeline_v8',    label: 'Server Scan',    icon: <LuServer size={14} />,        desc: '10 กลยุทธ์ × 5 TF' },
+  { key: 'gemma_filter',   label: 'Gemma 4',        icon: <LuSparkles size={14} />,      desc: 'ตรวจสอบ + ประวัติ' },
+  { key: 'gemini_confirm', label: 'Gemini',          icon: <LuBrainCircuit size={14} />,  desc: 'ยืนยันขั้นสุดท้าย' },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, logsM1 = [], agentStatus, agentStatusM1, finalResult }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
-  const logsM1Ref = useRef<HTMLDivElement>(null);
-  const logsAIRef = useRef<HTMLDivElement>(null);
-  const [autoScrollM1, setAutoScrollM1] = useState(true);
-  const [autoScrollAI, setAutoScrollAI] = useState(true);
+  const logsRef = useRef<HTMLDivElement>(null);
+  const [autoScroll, setAutoScroll] = useState(true);
 
-  // M1 Fast-Track Countdown Timer
-  const [secondsToM1, setSecondsToM1] = useState(60 - new Date().getSeconds());
   useEffect(() => {
-     const timer = setInterval(() => {
-        setSecondsToM1(60 - new Date().getSeconds());
-     }, 1000);
-     return () => clearInterval(timer);
-  }, []);
-
-  // Auto-scroll M1 Logs
-  useEffect(() => {
-     if (autoScrollM1 && logsM1Ref.current) {
-         logsM1Ref.current.scrollTop = logsM1Ref.current.scrollHeight;
+     if (autoScroll && logsRef.current) {
+         logsRef.current.scrollTop = logsRef.current.scrollHeight;
      }
-  }, [logsM1, autoScrollM1]);
-
-  const m1Decision = useMemo(() => {
-    if (!logsM1 || logsM1.length === 0) return null;
-    const lastOrchestrator = [...logsM1].reverse().find(l => l.agent === 'orchestrator' || l.agent === 'Orchestrator');
-    if (lastOrchestrator && lastOrchestrator.message) {
-      if (lastOrchestrator.message.includes('BUY')) return 'BUY';
-      if (lastOrchestrator.message.includes('SELL')) return 'SELL';
-      if (lastOrchestrator.message.includes('HOLD')) return 'HOLD';
-      if (lastOrchestrator.message.includes('รอสัญญาณ')) return 'HOLD';
-    }
-    return null;
-  }, [logsM1]);
-
-  // Auto-scroll AI Logs
-  useEffect(() => {
-     if (autoScrollAI && logsAIRef.current) {
-         logsAIRef.current.scrollTop = logsAIRef.current.scrollHeight;
-     }
-  }, [logs, autoScrollAI]);
+  }, [logs, autoScroll]);
   
   useEffect(() => {
     if (!interval || !jobEnabled || agentStatus.orchestrator === 'running') {
       setTimeLeft(null);
       return;
     }
-    
     const totalMs = interval * 60 * 1000;
-    
     const updateCountdown = () => {
       if (lastRunTime) {
         const target = lastRunTime + totalMs;
@@ -106,205 +72,169 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
         setTimeLeft({ m: Math.floor(rem / 60), s: rem % 60 });
       }
     };
-    
     updateCountdown();
     const id = setInterval(updateCountdown, 1000);
     return () => clearInterval(id);
   }, [lastRunTime, interval, jobEnabled, agentStatus.orchestrator]);
 
+  // Determine which stage is active
+  const getStageStatus = (key: string) => {
+    const status = (agentStatus as any)?.[key];
+    if (status === 'running') return 'running';
+    if (status === 'done') return 'done';
+    if (status === 'error') return 'error';
+    return 'idle';
+  };
+
   return (
-    <div className={`card flex flex-col transition-all duration-300 min-h-[500px] overflow-hidden ${!jobEnabled ? 'opacity-70 grayscale-[0.3]' : ''}`}>
+    <div className={`flex flex-col transition-all duration-300 overflow-hidden ${!jobEnabled ? 'opacity-60' : ''}`}>
       {isClosed && (
-        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-[1px] flex items-center justify-center p-4 text-center">
-           <div className="bg-white/90 dark:bg-zinc-950/90 w-[180px] border border-red-500/20 rounded-2xl p-4 shadow-xl">
-             <LuMonitorOff className="size-8 text-red-500 mx-auto mb-2 opacity-90" />
-             <h3 className="text-xs font-black text-default-900 dark:text-white uppercase tracking-widest">Market Closed</h3>
+        <div className="absolute inset-0 z-50 bg-black/50 backdrop-blur-[2px] flex items-center justify-center">
+           <div className="bg-white/90 dark:bg-zinc-950/90 border border-red-500/20 rounded-2xl px-6 py-4 shadow-xl text-center">
+             <LuMonitorOff className="size-7 text-red-500 mx-auto mb-2" />
+             <h3 className="text-xs font-black text-gray-900 dark:text-white uppercase tracking-widest">Market Closed</h3>
            </div>
         </div>
       )}
 
-      {/* Header Section */}
-      <div className="border-b border-default-200 dark:border-white/5 p-4 flex items-center justify-between bg-transparent z-40 relative">
+      {/* Header */}
+      <div className="border-b border-gray-100 dark:border-white/5 px-5 py-3.5 flex items-center justify-between">
         <div className="flex items-center gap-3">
-          <div className="size-10 rounded-full bg-[#EFF6FF] text-[#3B82F6] flex items-center justify-center shrink-0">
-            {jobEnabled ? <LuZap className="size-[22px] fill-[#3B82F6]/20" /> : <LuMonitorOff className="size-[22px]" />}
+          <div className="size-9 rounded-xl bg-gradient-to-br from-blue-500 to-indigo-600 text-white flex items-center justify-center shadow-lg shadow-blue-500/20">
+            {jobEnabled ? <LuZap className="size-4" /> : <LuMonitorOff className="size-4" />}
           </div>
-          <div className="flex items-center gap-2">
-            <h2 className="text-base font-bold text-gray-800 dark:text-gray-100 font-mono tracking-tight">
-              {symbol}
-            </h2>
-            {jobEnabled && agentStatus.orchestrator === 'running' && (
-              <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-50 dark:bg-blue-500/10 text-[10px] font-bold text-blue-600 dark:text-blue-400 uppercase">
-                <span className="size-1.5 rounded-full bg-blue-500 animate-pulse"></span>
-                กำลังทำงาน
-              </span>
-            )}
-            {!jobEnabled && (
-              <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-500 dark:text-gray-400 uppercase border border-gray-200 dark:border-gray-700">ระงับการใช้งาน</span>
-            )}
-            {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
-               <span className="inline-flex items-center rounded-full bg-blue-50/80 dark:bg-blue-900/30 px-2 py-0.5 text-[11px] font-mono font-bold text-blue-600 dark:text-blue-400">
-                 {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
-               </span>
-            )}
+          <div>
+            <div className="flex items-center gap-2">
+              <h2 className="text-sm font-bold text-gray-900 dark:text-white font-mono">{symbol}</h2>
+              {jobEnabled && agentStatus.orchestrator === 'running' && (
+                <span className="flex items-center gap-1.5 px-2 py-0.5 rounded-full bg-blue-500/10 text-[10px] font-bold text-blue-500 uppercase">
+                  <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />
+                  วิเคราะห์
+                </span>
+              )}
+              {!jobEnabled && (
+                <span className="px-2 py-0.5 rounded-full bg-gray-100 dark:bg-gray-800 text-[10px] font-bold text-gray-500 uppercase">ปิดอยู่</span>
+              )}
+              {jobEnabled && timeLeft && agentStatus.orchestrator !== 'running' && (
+                 <span className="font-mono text-[11px] font-bold text-blue-500 bg-blue-500/10 px-2 py-0.5 rounded-full tabular-nums">
+                   {String(timeLeft.m).padStart(2, '0')}:{String(timeLeft.s).padStart(2, '0')}
+                 </span>
+              )}
+            </div>
+            <p className="text-[10px] text-gray-500 mt-0.5">Pipeline v8 • every {interval}m</p>
           </div>
         </div>
 
         <div className="flex items-center gap-2">
           {onEditJob && (
-             <button
-               onClick={() => onEditJob()}
-               className="p-1 text-gray-400 hover:text-gray-700 dark:hover:text-gray-200 transition-colors mr-1"
-               title="Settings"
-             >
-               <LuSettings className="size-5" />
+             <button onClick={() => onEditJob()} className="p-1.5 text-gray-400 hover:text-gray-700 dark:hover:text-white transition-colors rounded-lg hover:bg-gray-100 dark:hover:bg-white/5" title="Settings">
+               <LuSettings className="size-4" />
              </button>
           )}
           {onToggleJob && (
              <button
                onClick={() => onToggleJob()}
-               className={`relative inline-flex h-[26px] w-[46px] items-center rounded-full transition-colors ${jobEnabled ? 'bg-blue-500 shadow-[0_0_12px_rgba(59,130,246,0.3)]' : 'bg-gray-200 dark:bg-gray-700 border border-gray-300 dark:border-gray-600'}`}
+               className={`relative inline-flex h-6 w-11 items-center rounded-full transition-colors ${jobEnabled ? 'bg-blue-500' : 'bg-gray-300 dark:bg-gray-700'}`}
              >
-               <span className={`size-5 rounded-full bg-white transition-transform ${jobEnabled ? 'translate-x-[22px]' : 'translate-x-[2px]'}`} />
+               <span className={`size-4 rounded-full bg-white shadow transition-transform ${jobEnabled ? 'translate-x-[24px]' : 'translate-x-[3px]'}`} />
              </button>
           )}
         </div>
       </div>
       
-      {/* Operation Logs Stack */}
-      <div className="px-6 pb-6 pt-2 space-y-4">
-        
-        {/* Server / M1 Logs Timeline */}
-        <div className="p-4 rounded-xl border border-default-200 dark:border-white/5 bg-default-50 dark:bg-white/5 flex flex-col flex-1 h-[250px] relative">
-           {/* Left Edge Status Tab */}
-           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
-               {agentStatusM1?.orchestrator === 'running' ? (
-                   <span className="bg-indigo-50 dark:bg-indigo-500/10 text-indigo-500 border border-indigo-200 dark:border-indigo-500/20 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm flex items-center gap-1.5 whitespace-nowrap">
-                       <span className="size-1.5 rounded-full bg-indigo-500 animate-pulse"></span>
-                       กำลังคำนวณ...
-                   </span>
-               ) : m1Decision ? (
-                   <span className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-[0.1em] shadow-sm flex items-center gap-1.5 whitespace-nowrap ${
-                      m1Decision === 'BUY' ? 'bg-green-50 dark:bg-green-500/10 text-green-600 border border-green-200 dark:border-green-500/20' : 
-                      m1Decision === 'SELL' ? 'bg-red-50 dark:bg-red-500/10 text-red-600 border border-red-200 dark:border-red-500/20' : 
-                      'bg-gray-100 dark:bg-white/10 text-gray-500 border border-gray-200 dark:border-white/20'
-                   }`}>
-                      ผลคำนวณ: {m1Decision}
-                   </span>
-               ) : (
-                   <span className="bg-white dark:bg-black/20 text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
-                       รอรับสัญญาณ
-                   </span>
+      {/* Pipeline v8 — 3 Stages */}
+      <div className="px-5 py-4 border-b border-gray-100 dark:border-white/5">
+        <div className="flex items-center gap-1">
+          {STAGES.map((stage, i) => {
+            const status = getStageStatus(stage.key);
+            return (
+              <React.Fragment key={stage.key}>
+                <div className={`flex-1 rounded-xl p-3 text-center transition-all duration-500 ${
+                  status === 'running' ? 'bg-blue-500/10 border border-blue-500/30 ring-1 ring-blue-500/20' :
+                  status === 'done' ? 'bg-emerald-500/10 border border-emerald-500/20' :
+                  status === 'error' ? 'bg-red-500/10 border border-red-500/20' :
+                  'bg-gray-50 dark:bg-white/5 border border-transparent'
+                }`}>
+                  <div className={`flex items-center justify-center gap-1.5 mb-1 ${
+                    status === 'running' ? 'text-blue-500' :
+                    status === 'done' ? 'text-emerald-500' :
+                    status === 'error' ? 'text-red-500' :
+                    'text-gray-400'
+                  }`}>
+                    {status === 'running' ? <LuLoader className="size-3.5 animate-spin" /> : stage.icon}
+                    <span className="text-[11px] font-bold">{stage.label}</span>
+                  </div>
+                  <p className="text-[9px] text-gray-500">{stage.desc}</p>
+                </div>
+                {i < STAGES.length - 1 && (
+                  <div className={`text-xs w-4 text-center ${status === 'done' ? 'text-emerald-400' : 'text-gray-300 dark:text-gray-600'}`}>→</div>
+                )}
+              </React.Fragment>
+            );
+          })}
+        </div>
+      </div>
+
+      {/* Logs Timeline */}
+      <div className="flex-1 overflow-hidden">
+        <div 
+            ref={logsRef}
+            onScroll={(e) => {
+                const target = e.currentTarget;
+                setAutoScroll(target.scrollHeight - target.scrollTop - target.clientHeight < 40);
+            }}
+            onMouseLeave={() => setAutoScroll(true)}
+            className="h-full overflow-y-auto px-5 py-3 [&::-webkit-scrollbar]:hidden"
+        >
+           <div className="space-y-2.5 relative">
+               {logs.length > 0 ? logs.map((log, i) => {
+                   const isGemma = log.agent === 'gemma_filter';
+                   const isGemini = log.agent === 'gemini_confirm';
+                   const isPipeline = log.agent === 'pipeline_v8';
+                   const isDone = log.status === 'done';
+                   const isRunning = log.status === 'running';
+
+                   return (
+                     <div key={i} className="flex gap-3 items-start animate-in fade-in slide-in-from-bottom-1 duration-200">
+                       <div className={`size-7 rounded-lg flex items-center justify-center shrink-0 mt-0.5 ${
+                         isPipeline ? 'bg-blue-500/10 text-blue-500' :
+                         isGemma ? 'bg-purple-500/10 text-purple-500' :
+                         isGemini ? 'bg-amber-500/10 text-amber-500' :
+                         'bg-gray-100 dark:bg-white/5 text-gray-400'
+                       }`}>
+                         {isPipeline ? <LuServer size={13} /> :
+                          isGemma ? <LuSparkles size={13} /> :
+                          isGemini ? <LuBrainCircuit size={13} /> :
+                          <LuTerminal size={13} />}
+                       </div>
+                       <div className="flex-1 min-w-0">
+                         <div className="flex items-baseline justify-between gap-2">
+                           <span className={`text-[11px] font-bold capitalize ${
+                             isPipeline ? 'text-blue-500' :
+                             isGemma ? 'text-purple-500' :
+                             isGemini ? 'text-amber-500' : 'text-gray-500'
+                           }`}>
+                             {log.agent?.replace(/_/g, ' ')}
+                           </span>
+                           <div className="flex items-center gap-1.5 shrink-0">
+                             {isRunning && <span className="size-1.5 rounded-full bg-blue-500 animate-pulse" />}
+                             <span className="text-[9px] text-gray-400 font-mono">{new Date(log.timestamp).toLocaleTimeString([], {hour:'2-digit', minute:'2-digit', second:'2-digit'})}</span>
+                           </div>
+                         </div>
+                         <p className="text-[11px] text-gray-600 dark:text-gray-400 leading-relaxed mt-0.5 break-words">
+                           {stripEmojis(log.message)}
+                         </p>
+                       </div>
+                     </div>
+                   );
+               }) : (
+                   <div className="flex flex-col items-center justify-center py-10 text-center opacity-50">
+                     <LuBot size={28} className="text-gray-400 mb-2" />
+                     <p className="text-[11px] text-gray-500">รอรับข้อมูลจาก Pipeline v8...</p>
+                   </div>
                )}
            </div>
-
-           <div className="flex items-center justify-between mb-4 shrink-0 pl-1">
-             <div className="flex items-center gap-2">
-                 <LuLoader className={`size-3.5 text-indigo-500 ${agentStatusM1?.orchestrator === 'running' ? 'animate-spin' : ''}`} />
-                 <span className="text-[11px] font-black text-indigo-500 tracking-widest uppercase leading-none mt-0.5 flex items-center gap-2">
-                    M1 FAST-TRACK
-                    <span className="text-[9px] font-mono bg-indigo-50 dark:bg-indigo-500/10 px-1.5 py-0.5 rounded-sm border border-indigo-200 dark:border-indigo-500/20 tabular-nums">
-                       00:{secondsToM1 === 60 ? '00' : secondsToM1.toString().padStart(2, '0')}
-                    </span>
-                 </span>
-             </div>
-           </div>
-           
-           <div 
-               ref={logsM1Ref}
-               onScroll={(e) => {
-                   const target = e.currentTarget;
-                   const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
-                   setAutoScrollM1(isAtBottom);
-               }}
-               onMouseLeave={() => setAutoScrollM1(true)}
-               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
-           >
-              <div className="space-y-4 pb-4 relative min-h-full">
-                  <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
-                  {logsM1.length > 0 ? logsM1.map((log, i) => (
-                      <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-black/20 border-indigo-200 dark:border-indigo-500/30 text-indigo-500 mt-0.5 shadow-sm`}>
-                             {agentConfig.find(a => a.key === log.agent)?.icon || <LuTerminal size={10} />}
-                          </div>
-                          <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
-                             <div className="flex justify-between items-baseline gap-2">
-                                <span className="text-[12px] font-bold leading-none mb-1 text-indigo-600 dark:text-indigo-400 capitalize truncate">{log.agent.replace('_', ' ')}</span>
-                                <span className="text-[9px] text-default-400 shrink-0">{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
-                             </div>
-                             <span className="text-[11px] text-default-600 leading-relaxed dark:text-gray-400 line-clamp-2">
-                                 {stripEmojis(log.message)}
-                             </span>
-                          </div>
-                      </div>
-                  )) : (
-                      <div className="text-[11px] text-default-400 italic pl-10 pb-4">สแตนด์บาย M1...</div>
-                  )}
-              </div>
-           </div>
         </div>
-
-        {/* AI Logs Timeline */}
-        <div className="p-4 rounded-xl border border-default-200 dark:border-white/5 bg-default-50 dark:bg-white/5 flex flex-col flex-1 h-[250px] relative">
-           {/* Left Edge Status Tab */}
-           <div className="absolute left-0 top-1/2 -translate-y-1/2 -translate-x-[calc(50%+1px)] -rotate-180 z-20" style={{ writingMode: 'vertical-rl' }}>
-               {finalResult?.final_decision ? (
-                   <span className={`px-3 py-1.5 rounded-full text-[9px] font-bold tracking-[0.2em] uppercase shadow-sm border whitespace-nowrap ${
-                     finalResult.final_decision === 'HOLD' ? 'bg-orange-50 text-orange-600 border-orange-200 dark:bg-orange-500/10 dark:text-orange-400 dark:border-orange-500/20' :
-                     finalResult.final_decision === 'BUY' ? 'bg-emerald-50 text-emerald-600 border-emerald-200 dark:bg-emerald-500/10 dark:text-emerald-400 dark:border-emerald-500/20' :
-                     finalResult.final_decision === 'SELL' ? 'bg-rose-50 text-rose-600 border-rose-200 dark:bg-rose-500/10 dark:text-rose-400 dark:border-rose-500/20' :
-                     'bg-gray-50 text-gray-600 border-gray-200'
-                   }`}>
-                     {finalResult.final_decision}
-                   </span>
-               ) : (
-                   <span className="bg-white dark:bg-[#0A0D14] text-gray-400 border border-default-200 dark:border-white/10 px-3 py-1.5 rounded-full text-[9px] font-bold uppercase tracking-[0.2em] shadow-sm whitespace-nowrap">
-                       Awaiting Processing
-                   </span>
-               )}
-           </div>
-
-           <div className="flex items-center justify-between mb-4 shrink-0 pl-1">
-             <div className="flex items-center gap-2">
-                 <LuBot className={`size-4 text-[#3B82F6] ${agentStatus?.orchestrator === 'running' ? 'animate-pulse' : ''}`} />
-                 <span className="text-[11px] font-black text-[#3B82F6] tracking-widest uppercase leading-none mt-0.5">AI Agents Logs (Interval)</span>
-             </div>
-           </div>
-           
-           <div 
-               ref={logsAIRef}
-               onScroll={(e) => {
-                   const target = e.currentTarget;
-                   const isAtBottom = target.scrollHeight - target.scrollTop - target.clientHeight < 40;
-                   setAutoScrollAI(isAtBottom);
-               }}
-               onMouseLeave={() => setAutoScrollAI(true)}
-               className="flex-1 overflow-y-auto [&::-webkit-scrollbar]:hidden pl-[10px]"
-           >
-              <div className="space-y-4 pb-4 relative min-h-full">
-                  <div className="absolute left-[11px] top-[14px] bottom-4 w-px bg-default-200 dark:bg-white/10 z-0" />
-                  {logs.length > 0 ? logs.map((log, i) => (
-                      <div key={i} className="flex gap-4 relative z-10 w-full animate-in fade-in slide-in-from-bottom-2 duration-300">
-                          <div className={`size-[22px] rounded-full flex items-center justify-center shrink-0 border bg-white dark:bg-black/20 border-blue-200 dark:border-blue-500/30 text-[#3B82F6] mt-0.5 shadow-sm`}>
-                             {agentConfig.find(a => a.key === log.agent)?.icon || <LuBot size={10} />}
-                          </div>
-                          <div className="flex flex-col pb-1 w-full min-w-0 pr-2">
-                             <div className="flex justify-between items-baseline gap-2">
-                                <span className="text-[12px] font-bold leading-none mb-1 text-blue-600 dark:text-blue-400 capitalize truncate">{log.agent.replace('_', ' ')}</span>
-                                <span className="text-[9px] text-default-400 shrink-0">{new Date(log.timestamp).toLocaleTimeString([], {hour: '2-digit', minute:'2-digit', second:'2-digit'})}</span>
-                             </div>
-                             <span className="text-[11px] text-default-600 leading-relaxed dark:text-gray-400 line-clamp-2">
-                                 {stripEmojis(log.message)}
-                             </span>
-                          </div>
-                      </div>
-                  )) : (
-                      <div className="text-[11px] text-default-400 italic pl-10 pb-4">รอรับคำสั่ง AI รอบถัดไป...</div>
-                  )}
-              </div>
-           </div>
-        </div>
-
       </div>
     </div>
   );
