@@ -535,14 +535,14 @@ async fn run_server() {
                                     job_config: job.clone(),
                                 };
                                 
-                                let results = position_manager::manage_positions(&manage_ctx, &tx_ai).await;
+                                let results = position_manager::manage_positions(&manage_ctx, &tx_ai, &db_ai).await;
                                 
-                                // Execute actions
+                                // Execute actions (v3)
                                 for r in &results {
                                     match r.action.as_str() {
                                         "HEDGE" => {
                                             if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
-                                                info!("🛡️ [Position Manager] HEDGING {} #{} → {} {:.2} lot", sym, r.ticket, dir, lot);
+                                                info!("🛡️ [PM v3] HEDGING {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
                                                 let cmd = serde_json::json!({
                                                     "action": "open_trade",
                                                     "symbol": sym,
@@ -553,9 +553,21 @@ async fn run_server() {
                                                 let _ = tx_ai.send(cmd);
                                             }
                                         }
+                                        "DCA" => {
+                                            if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
+                                                info!("📊 [PM v3] DCA {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
+                                                let cmd = serde_json::json!({
+                                                    "action": "open_trade",
+                                                    "symbol": sym,
+                                                    "direction": dir,
+                                                    "lot_size": lot,
+                                                    "comment": format!("EA24-DCA-#{}", r.ticket)
+                                                }).to_string();
+                                                let _ = tx_ai.send(cmd);
+                                            }
+                                        }
                                         "UNHEDGE" => {
-                                            // Close the losing side of a hedge pair
-                                            info!("🔓 [Position Manager] UNHEDGE — closing #{} on {}", r.ticket, sym);
+                                            info!("🔓 [PM v3] UNHEDGE — closing #{} on {} (RS:{})", r.ticket, sym, r.recovery_score.unwrap_or(0));
                                             let cmd = serde_json::json!({
                                                 "action": "close_trade",
                                                 "ticket": r.ticket
@@ -563,11 +575,13 @@ async fn run_server() {
                                             let _ = tx_ai.send(cmd);
                                         }
                                         "PARTIAL_CLOSE" => {
-                                            info!("✂️ [Position Manager] Partial close 50% {} #{}", sym, r.ticket);
+                                            // Detect 30% vs 50% from reasoning
+                                            let pct = if r.reasoning.contains("30%") { 30.0 } else { 50.0 };
+                                            info!("✂️ [PM v3] Partial close {:.0}% {} #{}", pct, sym, r.ticket);
                                             let cmd = serde_json::json!({
                                                 "action": "partial_close",
                                                 "ticket": r.ticket,
-                                                "percent": 50.0
+                                                "percent": pct
                                             }).to_string();
                                             let _ = tx_ai.send(cmd);
                                         }
@@ -575,12 +589,29 @@ async fn run_server() {
                                             let pos = sym_positions.iter().find(|p| p["ticket"].as_i64() == Some(r.ticket));
                                             if let Some(p) = pos {
                                                 let open_price = p["open_price"].as_f64().unwrap_or(p["price_open"].as_f64().unwrap_or(0.0));
+                                                let pnl = p["pnl"].as_f64().unwrap_or(p["profit"].as_f64().unwrap_or(0.0));
+                                                let direction = p["type"].as_i64().unwrap_or(0); // 0=BUY, 1=SELL
+                                                
                                                 if open_price > 0.0 {
-                                                    info!("🔒 [Position Manager] Move SL to BE {:.5} for {} #{}", open_price, sym, r.ticket);
+                                                    // Smart SL: trail at 30% of profit when profit >= $15
+                                                    let new_sl = if pnl >= 15.0 {
+                                                        let current = p["current_price"].as_f64().unwrap_or(p["price_current"].as_f64().unwrap_or(0.0));
+                                                        let profit_distance = (current - open_price).abs();
+                                                        let trail_amount = profit_distance * 0.3;
+                                                        if direction == 0 { // BUY
+                                                            open_price + trail_amount
+                                                        } else { // SELL
+                                                            open_price - trail_amount
+                                                        }
+                                                    } else {
+                                                        open_price // breakeven
+                                                    };
+                                                    
+                                                    info!("🔒 [PM v3] Move SL → {:.5} for {} #{} (profit: ${:.2})", new_sl, sym, r.ticket, pnl);
                                                     let cmd = serde_json::json!({
                                                         "action": "modify_sl",
                                                         "ticket": r.ticket,
-                                                        "new_sl": open_price
+                                                        "new_sl": new_sl
                                                     }).to_string();
                                                     let _ = tx_ai.send(cmd);
                                                 }

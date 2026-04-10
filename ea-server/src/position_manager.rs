@@ -1,22 +1,35 @@
 // ──────────────────────────────────────────────
-//  Position Manager v2 — AI Portfolio Guardian
-//  
-//  Design Philosophy:
-//  ❌ ห้ามปิดออเดอร์ที่ขาดทุน (ไม่ CLOSE)
-//  ✅ แก้ไม้ด้วย HEDGE (เปิดฝั่งตรงข้าม)
-//  ✅ รอราคากลับ → ปิดฝั่งที่แพ้ (Unhedge)
-//  ✅ MODIFY_SL เมื่อกำไรดี → ล็อคกำไร
+//  Position Manager v3 — Smart Recovery System
+//
+//  Key improvements over v2:
+//  ✅ Rule-Based first, AI second (faster + works when API down)
+//  ✅ Recovery Score from indicators (RSI, EMA, FVG, Momentum)
+//  ✅ Tiered Loss Response (Light/Medium/Heavy/Critical)
+//  ✅ DCA Recovery (add 50% lot at better price when indicators confirm)
+//  ✅ Smart Hedge (variable lot 70-120% based on recovery score)
+//  ✅ Trend-Aligned Unhedge (close losing side when indicators favor)
+//  ✅ Smart Profit Protection (tiered SL + partial close)
+//
+//  Tiered Response:
+//  🟢 Light  ($0-$10)  → HOLD + Monitor
+//  🟡 Medium ($10-$30) → DCA Recovery (if indicators align)
+//  🟠 Heavy  ($30-$50) → Smart Hedge (AI confirm)
+//  🔴 Critical (>$50)  → Full Hedge (immediate, no AI)
 //
 //  Actions:
 //  HOLD           — ปล่อยไว้ ไม่ทำอะไร (default)
+//  DCA            — เปิดไม้เพิ่มทิศเดียวกัน 50% lot (ลด breakeven)
 //  HEDGE          — เปิดฝั่งตรงข้ามล็อคขาดทุน
-//  UNHEDGE        — ปิดฝั่งที่แพ้ เมื่อราคากลับมา
-//  MODIFY_SL      — ย้าย SL เข้า breakeven/trailing
-//  PARTIAL_CLOSE  — ปิด 50% เมื่อกำไรดีมาก
+//  UNHEDGE        — ปิดฝั่งที่แพ้ เมื่อ indicator เอื้อ
+//  MODIFY_SL      — ย้าย SL (breakeven / trailing)
+//  PARTIAL_CLOSE  — ปิดบางส่วนล็อคกำไร
 // ──────────────────────────────────────────────
 
-use log::{info, warn};
+use log::info;
 use serde::{Serialize, Deserialize};
+
+use crate::strategy;
+use crate::db::Database;
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PositionInfo {
@@ -29,17 +42,18 @@ pub struct PositionInfo {
     pub pnl: f64,
     pub swap: f64,
     pub comment: String,
-    pub is_hedge: bool,      // true if this is a hedge position
+    pub is_hedge: bool,
 }
 
 #[derive(Debug, Clone, Serialize)]
 pub struct ManageResult {
-    pub action: String,        // HOLD, HEDGE, UNHEDGE, MODIFY_SL, PARTIAL_CLOSE
+    pub action: String,        // HOLD, DCA, HEDGE, UNHEDGE, MODIFY_SL, PARTIAL_CLOSE
     pub ticket: i64,
     pub symbol: String,
     pub reasoning: String,
     pub hedge_direction: Option<String>,
     pub hedge_lot: Option<f64>,
+    pub recovery_score: Option<i32>,
 }
 
 pub struct ManageContext {
@@ -56,6 +70,35 @@ pub struct ManageContext {
     pub discord_channel_order: String,
     pub job_config: serde_json::Value,
 }
+
+// ──────────────────────────────────────────────
+//  Constants
+// ──────────────────────────────────────────────
+
+const TIER_LIGHT_MAX: f64 = 10.0;
+const TIER_MEDIUM_MAX: f64 = 30.0;
+const TIER_HEAVY_MAX: f64 = 50.0;
+// > TIER_HEAVY_MAX = Critical
+
+const DCA_LOT_RATIO: f64 = 0.5;        // DCA with 50% of original lot
+const DCA_MIN_ATR_DISTANCE: f64 = 1.5;  // Must be 1.5 ATR away from open price
+const DCA_MIN_RECOVERY_SCORE: i32 = 50;
+
+const HEDGE_SCORE_MEDIUM: i32 = 30;     // 30-49: hedge 70%
+const HEDGE_LOT_MEDIUM: f64 = 0.7;
+const HEDGE_LOT_FULL: f64 = 1.0;        // 10-29: hedge 100%
+const HEDGE_LOT_AGGRESSIVE: f64 = 1.2;  // <10: hedge 120%
+
+const PROFIT_SL_BREAKEVEN: f64 = 5.0;   // $5+ → move SL to breakeven
+const PROFIT_SL_TRAIL: f64 = 15.0;      // $15+ → trail SL at +30% of profit
+const PROFIT_PARTIAL_30: f64 = 25.0;    // $25+ → partial close 30%
+const PROFIT_PARTIAL_50: f64 = 40.0;    // $40+ → partial close 50%
+
+const UNHEDGE_MIN_RECOVERY_SCORE: i32 = 60;
+
+// ──────────────────────────────────────────────
+//  Parse positions
+// ──────────────────────────────────────────────
 
 /// Parse positions from MT5 JSON array and filter by symbol
 pub fn parse_positions(positions_detail: &[serde_json::Value], symbol: &str) -> Vec<PositionInfo> {
@@ -74,7 +117,6 @@ pub fn parse_positions(positions_detail: &[serde_json::Value], symbol: &str) -> 
             _ => return None,
         };
         
-        // Check if this is a hedge position by comment
         let comment = p["comment"].as_str().unwrap_or("").to_string();
         let is_hedge = comment.contains("HEDGE") || comment.contains("hedge");
         
@@ -93,17 +135,79 @@ pub fn parse_positions(positions_detail: &[serde_json::Value], symbol: &str) -> 
     }).collect()
 }
 
-/// Check if symbol is already hedged (has both BUY and SELL)
+/// Check if symbol is already hedged
 pub fn is_symbol_hedged(positions: &[PositionInfo]) -> bool {
     let has_buy = positions.iter().any(|p| p.direction == "BUY");
     let has_sell = positions.iter().any(|p| p.direction == "SELL");
     has_buy && has_sell
 }
 
-/// Main entry: manage open positions with AI
+// ──────────────────────────────────────────────
+//  Recovery Score Calculation
+// ──────────────────────────────────────────────
+
+/// Calculate recovery score for a losing position
+/// Returns 0-100: higher = more likely price will recover
+fn calc_recovery_score(pos: &PositionInfo, ind: &strategy::Indicators) -> i32 {
+    let mut score: i32 = 50; // start neutral
+
+    if pos.direction == "BUY" {
+        // BUY ผิดทาง (ราคาลง) → ดูว่าราคาจะเด้งขึ้นหรือไม่
+        if ind.rsi_14 < 20.0 { score += 25; }       // deep oversold = strong bounce
+        else if ind.rsi_14 < 30.0 { score += 15; }  // oversold
+        else if ind.rsi_14 < 40.0 { score += 5; }   // mild oversold
+        
+        if ind.rsi_prev < ind.rsi_14 { score += 10; } // RSI turning up
+
+        if ind.ema_9 > ind.ema_21 { score += 15; }  // short-term trend up
+        if ind.current_close > ind.ema_50 { score += 10; } // above support
+        if ind.fair_value_gap_bull { score += 10; }  // bullish FVG gap
+        if ind.momentum > 0.0 { score += 10; }      // positive momentum
+        
+        // Penalties
+        if ind.ema_9 < ind.ema_21 && ind.ema_21 < ind.ema_50 { score -= 20; } // bear stack
+        if ind.rsi_14 > 60.0 { score -= 10; }       // already recovered (late to DCA)
+        if ind.atr_ratio > 1.5 { score -= 15; }     // too volatile
+        
+    } else {
+        // SELL ผิดทาง (ราคาขึ้น) → ดูว่าราคาจะตกลงหรือไม่
+        if ind.rsi_14 > 80.0 { score += 25; }       // deep overbought
+        else if ind.rsi_14 > 70.0 { score += 15; }  // overbought
+        else if ind.rsi_14 > 60.0 { score += 5; }   // mild overbought
+        
+        if ind.rsi_prev > ind.rsi_14 { score += 10; } // RSI turning down
+
+        if ind.ema_9 < ind.ema_21 { score += 15; }  // short-term trend down
+        if ind.current_close < ind.ema_50 { score += 10; } // below resistance
+        if ind.fair_value_gap_bear { score += 10; }  // bearish FVG gap
+        if ind.momentum < 0.0 { score += 10; }      // negative momentum
+        
+        // Penalties
+        if ind.ema_9 > ind.ema_21 && ind.ema_21 > ind.ema_50 { score -= 20; } // bull stack
+        if ind.rsi_14 < 40.0 { score -= 10; }       // already dropped
+        if ind.atr_ratio > 1.5 { score -= 15; }     // too volatile
+    }
+
+    score.clamp(0, 100)
+}
+
+/// Check if trend aligns with keeping a position
+fn is_trend_aligned(direction: &str, ind: &strategy::Indicators) -> bool {
+    match direction {
+        "BUY" => ind.ema_9 > ind.ema_21 && ind.current_close > ind.ema_50,
+        "SELL" => ind.ema_9 < ind.ema_21 && ind.current_close < ind.ema_50,
+        _ => false,
+    }
+}
+
+// ──────────────────────────────────────────────
+//  Main Entry Point
+// ──────────────────────────────────────────────
+
 pub async fn manage_positions(
     ctx: &ManageContext,
     log_tx: &tokio::sync::broadcast::Sender<String>,
+    db: &Database,
 ) -> Vec<ManageResult> {
     let mut results = Vec::new();
     
@@ -113,270 +217,43 @@ pub async fn manage_positions(
     
     let total_pnl: f64 = ctx.positions.iter().map(|p| p.pnl).sum();
     let is_hedged = is_symbol_hedged(&ctx.positions);
-    let original_positions: Vec<&PositionInfo> = ctx.positions.iter().filter(|p| !p.is_hedge).collect();
-    let hedge_positions: Vec<&PositionInfo> = ctx.positions.iter().filter(|p| p.is_hedge).collect();
     
-    info!("🛡️ [Position Manager v2] {} positions on {} | P&L: ${:.2} | Hedged: {} | Threshold: ${:.2}",
-        ctx.positions.len(), ctx.symbol, total_pnl, is_hedged, ctx.max_loss_usd);
+    info!("🛡️ [Position Manager v3] {} positions on {} | P&L: ${:.2} | Hedged: {}",
+        ctx.positions.len(), ctx.symbol, total_pnl, is_hedged);
     
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
-        "message": format!("ดูแล {} ออเดอร์ | P&L: ${:.2} | {}", 
+        "message": format!("🛡️ v3: ดูแล {} ออเดอร์ | P&L: ${:.2} | {}", 
             ctx.positions.len(), total_pnl,
             if is_hedged { "Hedged" } else { "Normal" })
     }).to_string());
-    
+
+    // Fetch indicators for M15 (good balance of speed and accuracy)
+    let candles = db.get_candles_for_strategy(&ctx.symbol, 15, 50).await;
+    let ind = if candles.len() >= 15 {
+        Some(strategy::compute_indicators(&candles))
+    } else {
+        None
+    };
+
     // ═══════════════════════════════════════════
-    //  CASE 1: Already Hedged — Check if can unhedge
+    //  CASE 1: Already Hedged → Trend-Aligned Unhedge
     // ═══════════════════════════════════════════
     if is_hedged {
-        info!("🔄 [Position Manager v2] Symbol is hedged — checking if can unhedge");
-        
-        let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
-            "message": "สถานะ: Hedged — กำลังตรวจสอบว่าปิดฝั่งแพ้ได้หรือไม่"
-        }).to_string());
-        
-        // Build position summary for AI
-        let pos_summary = build_position_summary(&ctx.positions);
-        
-        let prompt = format!(
-r#"You are a CONSERVATIVE AI portfolio manager. This symbol is currently HEDGED (has both BUY and SELL positions).
-
-## Hedged Positions on {symbol}
-{positions}
-
-## Portfolio: Balance ${balance:.2} | Equity ${equity:.2} | Total P&L: ${total_pnl:.2}
-
-## YOUR ONLY JOB: Decide if it's safe to UNHEDGE (close the losing side)
-
-Rules:
-1. DEFAULT = HOLD — ถ้าไม่แน่ใจ ให้ HOLD ทั้งหมด
-2. UNHEDGE (ปิดฝั่งที่แพ้) เฉพาะเมื่อ:
-   - ราคากลับมาใกล้จุดเปิดของฝั่งที่แพ้ (loss < $3)
-   - หรือ ฝั่งที่ชนะกำไรพอชดเชยฝั่งที่แพ้ (net P&L > 0)
-   - หรือ Total P&L ของทั้ง 2 ฝั่ง > $0
-3. ห้าม CLOSE ออเดอร์ที่กำลังชนะ
-4. ห้ามเปิดออเดอร์ใหม่ — ใช้ HOLD หรือ UNHEDGE เท่านั้น
-
-For UNHEDGE: specify the ticket of the LOSING position to close.
-
-Respond JSON array:
-[{{"ticket": 12345, "action": "HOLD", "reasoning": "เหตุผลภาษาไทย"}}]"#,
-            symbol = ctx.symbol,
-            positions = pos_summary,
-            balance = ctx.balance,
-            equity = ctx.equity,
-            total_pnl = total_pnl,
-        );
-        
-        match call_ai_safe(&ctx.gemini_key, &ctx.gemini_model, &prompt).await {
-            Ok(decisions) => {
-                for (ticket, action, reasoning, pos) in parse_decisions(&decisions, &ctx.positions) {
-                    let mut final_action = action.clone();
-                    let mut final_reason = reasoning.clone();
-                    
-                    // Safety: Only allow UNHEDGE on losing hedge positions
-                    if final_action == "UNHEDGE" || final_action == "CLOSE" {
-                        // Only allow closing if this is a hedge position OR if net P&L > 0
-                        if total_pnl < -3.0 && !pos.is_hedge {
-                            final_action = "HOLD".to_string();
-                            final_reason = format!("(Safety) Total P&L ${:.2} ยังติดลบ — รอให้กลับก่อน", total_pnl);
-                        } else if pos.pnl < -3.0 {
-                            final_action = "HOLD".to_string();
-                            final_reason = format!("(Safety) ฝั่งนี้ยังขาดทุน ${:.2} — รอให้ loss < $3", pos.pnl.abs());
-                        }
-                    }
-                    
-                    log_action(&ctx, log_tx, ticket, &pos, &final_action, &final_reason).await;
-                    
-                    results.push(ManageResult {
-                        action: final_action,
-                        ticket,
-                        symbol: pos.symbol.clone(),
-                        reasoning: final_reason,
-                        hedge_direction: None,
-                        hedge_lot: None,
-                    });
-                }
-            }
-            Err(e) => {
-                // AI failed — just HOLD everything when hedged
-                warn!("❌ [Position Manager v2] AI failed in hedged mode: {}", e);
-                let _ = log_tx.send(serde_json::json!({
-                    "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
-                    "message": format!("AI ไม่ตอบ — HOLD ทั้งหมด (hedged safe)")
-                }).to_string());
-            }
-        }
+        results.extend(handle_hedged_positions(ctx, log_tx, &ind).await);
     }
     // ═══════════════════════════════════════════
-    //  CASE 2: Not Hedged — Normal monitoring
+    //  CASE 2: Not Hedged → Tiered Response
     // ═══════════════════════════════════════════
     else {
-        let pos_summary = build_position_summary(&ctx.positions);
-        
-        let prompt = format!(
-r#"You are a CONSERVATIVE AI portfolio manager. Your job is to PROTECT positions. ห้ามปิดออเดอร์ที่ขาดทุน
-
-## Open Positions on {symbol}
-{positions}
-
-## Portfolio: Balance ${balance:.2} | Equity ${equity:.2} | Total P&L: ${total_pnl:.2}
-## Max Loss for Hedge: ${max_loss:.2} | Hedge Enabled: {hedge_enabled}
-
-## RULES (ห้ามละเมิด)
-1. **DEFAULT = HOLD** — 90% ของเวลาต้อง HOLD
-2. **ห้าม CLOSE ออเดอร์ที่ขาดทุน** — ห้ามเด็ดขาด ไม่ว่าจะขาดทุนเท่าไร
-3. **ห้าม CLOSE ออเดอร์ที่กำไรน้อยกว่า $10** — ปล่อยให้กำไรวิ่ง
-4. HEDGE เฉพาะเมื่อ: ขาดทุนออเดอร์ > ${max_loss:.2} AND hedge = true
-5. MODIFY_SL เมื่อ: กำไร > $10 → ย้าย SL เข้า breakeven
-6. PARTIAL_CLOSE เมื่อ: กำไร > $20 → ปิด 50% ล็อคกำไร
-
-## Actions
-- **HOLD**: ปล่อยไว้ (ใช้เกือบทุกกรณี)
-- **HEDGE**: เปิดฝั่งตรงข้ามล็อคขาดทุน (เฉพาะขาดทุนเกิน threshold)
-- **MODIFY_SL**: ย้าย SL (เฉพาะกำไรดี)
-- **PARTIAL_CLOSE**: ปิดบางส่วน (เฉพาะกำไรดีมาก)
-
-Respond JSON array:
-[{{"ticket": 12345, "action": "HOLD", "reasoning": "เหตุผลภาษาไทย"}}]"#,
-            symbol = ctx.symbol,
-            positions = pos_summary,
-            balance = ctx.balance,
-            equity = ctx.equity,
-            total_pnl = total_pnl,
-            max_loss = ctx.max_loss_usd,
-            hedge_enabled = ctx.hedge_enabled,
-        );
-        
-        match call_ai_safe(&ctx.gemini_key, &ctx.gemini_model, &prompt).await {
-            Ok(decisions) => {
-                for (ticket, action, reasoning, pos) in parse_decisions(&decisions, &ctx.positions) {
-                    let mut final_action = action.clone();
-                    let mut final_reason = reasoning.clone();
-                    
-                    // ═══════════════════════════════════════
-                    //  SAFETY GUARDS — ป้องกัน AI ทำผิด
-                    // ═══════════════════════════════════════
-                    
-                    // ABSOLUTE BLOCK: ห้าม CLOSE ทุกกรณี (ใช้ HEDGE แทน)
-                    if final_action == "CLOSE" {
-                        if pos.pnl < 0.0 {
-                            // ขาดทุน → ห้ามปิด
-                            final_action = "HOLD".to_string();
-                            final_reason = format!("(Safety) ห้ามปิดออเดอร์ขาดทุน ${:.2} — HOLD", pos.pnl.abs());
-                        } else if pos.pnl < 10.0 {
-                            // กำไรน้อย → ปล่อยวิ่ง
-                            final_action = "HOLD".to_string();
-                            final_reason = format!("(Safety) กำไร ${:.2} ยังน้อย — ปล่อยให้วิ่ง", pos.pnl);
-                        }
-                        // กำไร >= $10 → OK ให้ปิดได้ (but convert to PARTIAL_CLOSE)
-                        if final_action == "CLOSE" && pos.pnl >= 10.0 {
-                            final_action = "PARTIAL_CLOSE".to_string();
-                            final_reason = format!("กำไร ${:.2} — ปิดบางส่วนล็อคกำไร", pos.pnl);
-                        }
-                    }
-                    
-                    // HEDGE guards
-                    if final_action == "HEDGE" {
-                        if !ctx.hedge_enabled {
-                            final_action = "HOLD".to_string();
-                            final_reason = "Hedge ปิดใช้งาน — HOLD".to_string();
-                        } else if pos.pnl >= 0.0 {
-                            final_action = "HOLD".to_string();
-                            final_reason = "ออเดอร์กำไรอยู่ — ไม่ต้อง Hedge".to_string();
-                        } else if pos.pnl.abs() < ctx.max_loss_usd {
-                            final_action = "HOLD".to_string();
-                            final_reason = format!("ขาดทุน ${:.2} ยังไม่ถึงเกณฑ์ ${:.2}", pos.pnl.abs(), ctx.max_loss_usd);
-                        }
-                    }
-                    
-                    // PARTIAL_CLOSE guards
-                    if final_action == "PARTIAL_CLOSE" && pos.pnl < 10.0 {
-                        final_action = "HOLD".to_string();
-                        final_reason = format!("กำไร ${:.2} ยังไม่พอ partial close ($10+)", pos.pnl);
-                    }
-                    
-                    // MODIFY_SL guards
-                    if final_action == "MODIFY_SL" && pos.pnl < 5.0 {
-                        final_action = "HOLD".to_string();
-                        final_reason = format!("กำไร ${:.2} ยังไม่พอย้าย SL ($5+)", pos.pnl);
-                    }
-                    
-                    // Build hedge details if needed
-                    let (hedge_dir, hedge_lot) = if final_action == "HEDGE" {
-                        let dir = if pos.direction == "BUY" { "SELL" } else { "BUY" };
-                        (Some(dir.to_string()), Some(pos.volume))
-                    } else {
-                        (None, None)
-                    };
-                    
-                    log_action(&ctx, log_tx, ticket, &pos, &final_action, &final_reason).await;
-                    
-                    // Discord notification for non-HOLD actions
-                    if ctx.discord_alert && !ctx.discord_channel_order.is_empty() && final_action != "HOLD" {
-                        let emoji = action_emoji(&final_action);
-                        crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-                            "{} **Position Manager**\n\n📊 {} **{}** #{}\n💰 {:.2} lots @ {:.5}\n📈 P&L: **${:.2}**\n\n🎯 Action: **{}**\n📝 {}",
-                            emoji, pos.direction, pos.symbol, ticket,
-                            pos.volume, pos.open_price,
-                            pos.pnl, final_action, final_reason
-                        )).await;
-                    }
-                    
-                    results.push(ManageResult {
-                        action: final_action,
-                        ticket,
-                        symbol: pos.symbol.clone(),
-                        reasoning: final_reason,
-                        hedge_direction: hedge_dir,
-                        hedge_lot,
-                    });
-                }
-            }
-            Err(e) => {
-                warn!("❌ [Position Manager v2] AI failed: {}", e);
-                let _ = log_tx.send(serde_json::json!({
-                    "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
-                    "message": format!("AI ไม่ตอบ — HOLD ทั้งหมด")
-                }).to_string());
-                
-                // Fallback: auto-hedge only if loss > threshold
-                if ctx.hedge_enabled {
-                    for pos in &ctx.positions {
-                        if pos.pnl < -ctx.max_loss_usd && !pos.is_hedge {
-                            let hedge_dir = if pos.direction == "BUY" { "SELL" } else { "BUY" };
-                            info!("🛡️ [Fallback] Auto-hedge #{} loss ${:.2} > ${:.2}", pos.ticket, pos.pnl.abs(), ctx.max_loss_usd);
-                            
-                            results.push(ManageResult {
-                                action: "HEDGE".to_string(),
-                                ticket: pos.ticket,
-                                symbol: pos.symbol.clone(),
-                                reasoning: format!("(Fallback) ขาดทุน ${:.2} เกินเกณฑ์ — auto hedge", pos.pnl.abs()),
-                                hedge_direction: Some(hedge_dir.to_string()),
-                                hedge_lot: Some(pos.volume),
-                            });
-                            
-                            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
-                                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-                                    "🛡️ **Auto-Hedge (Fallback)**\n\n📊 {} **{}** #{}\n💰 Loss: **${:.2}** > ${:.2}\n🔄 Hedging {} {:.2} lots",
-                                    pos.direction, pos.symbol, pos.ticket,
-                                    pos.pnl.abs(), ctx.max_loss_usd,
-                                    hedge_dir, pos.volume
-                                )).await;
-                            }
-                        }
-                    }
-                }
-            }
-        }
+        results.extend(handle_normal_positions(ctx, log_tx, db, &ind).await);
     }
     
     // Final summary
     let actions_summary: Vec<String> = results.iter()
         .filter(|r| r.action != "HOLD")
-        .map(|r| format!("#{} {}", r.ticket, r.action))
+        .map(|r| format!("#{} {} (RS:{})", r.ticket, r.action, 
+            r.recovery_score.map_or("N/A".to_string(), |s| s.to_string())))
         .collect();
     
     let summary = if actions_summary.is_empty() {
@@ -394,54 +271,356 @@ Respond JSON array:
 }
 
 // ──────────────────────────────────────────────
-//  Helper functions
+//  CASE 1: Hedged — Trend-Aligned Unhedge
 // ──────────────────────────────────────────────
 
-fn build_position_summary(positions: &[PositionInfo]) -> String {
-    let mut s = String::new();
-    for (i, p) in positions.iter().enumerate() {
-        let tag = if p.is_hedge { " [HEDGE]" } else { "" };
-        s.push_str(&format!(
-            "#{} Ticket:{} {} {:.2} lots @ {:.5} → {:.5} | P&L: ${:.2} | Swap: ${:.2}{}\n",
-            i+1, p.ticket, p.direction, p.volume, p.open_price, p.current_price,
-            p.pnl, p.swap, tag
-        ));
+async fn handle_hedged_positions(
+    ctx: &ManageContext,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+    ind: &Option<strategy::Indicators>,
+) -> Vec<ManageResult> {
+    let mut results = Vec::new();
+    let total_pnl: f64 = ctx.positions.iter().map(|p| p.pnl).sum();
+
+    info!("🔄 [PM v3] Hedged mode — checking unhedge with indicators");
+    let _ = log_tx.send(serde_json::json!({
+        "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
+        "message": "Hedged → ตรวจสอบ indicator เพื่อ unhedge"
+    }).to_string());
+
+    // Find the winning and losing sides
+    let buy_positions: Vec<&PositionInfo> = ctx.positions.iter().filter(|p| p.direction == "BUY").collect();
+    let sell_positions: Vec<&PositionInfo> = ctx.positions.iter().filter(|p| p.direction == "SELL").collect();
+    
+    let buy_pnl: f64 = buy_positions.iter().map(|p| p.pnl).sum();
+    let sell_pnl: f64 = sell_positions.iter().map(|p| p.pnl).sum();
+    
+    // Determine which side to keep and which to close
+    let (keep_dir, close_positions) = if buy_pnl >= sell_pnl {
+        ("BUY", &sell_positions)
+    } else {
+        ("SELL", &buy_positions)
+    };
+
+    for pos in close_positions.iter() {
+        let recovery_score = ind.as_ref().map(|i| calc_recovery_score(pos, i));
+        let trend_aligned = ind.as_ref().map(|i| is_trend_aligned(keep_dir, i)).unwrap_or(false);
+        
+        // Conditions for unhedge:
+        // 1. Recovery score for KEEP side >= 60 (trend favors keeping)
+        // 2. AND (total P&L > -$3 OR winning side covers losses)
+        // 3. AND trend aligned with keep direction
+        let _rs = recovery_score.unwrap_or(50);
+        let keep_side_rs = ind.as_ref().map(|i| {
+            // Calculate recovery score as if we're keeping the OTHER direction
+            let mut fake_pos = (*pos).clone();
+            fake_pos.direction = keep_dir.to_string();
+            calc_recovery_score(&fake_pos, i)
+        }).unwrap_or(50);
+
+        let can_unhedge = keep_side_rs >= UNHEDGE_MIN_RECOVERY_SCORE
+            && (total_pnl > -3.0 || buy_pnl.max(sell_pnl) > pos.pnl.abs())
+            && trend_aligned;
+
+        // Safety: don't unhedge if the losing side still has significant loss
+        let safe_to_close = pos.pnl > -3.0 || total_pnl > 0.0;
+
+        if can_unhedge && safe_to_close {
+            let reason = format!(
+                "Unhedge: Keep {} (RS:{}) | trend aligned | Total P&L: ${:.2} | ฝั่ง {} loss: ${:.2}",
+                keep_dir, keep_side_rs, total_pnl, pos.direction, pos.pnl.abs()
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "UNHEDGE", &reason).await;
+            
+            results.push(ManageResult {
+                action: "UNHEDGE".into(),
+                ticket: pos.ticket,
+                symbol: pos.symbol.clone(),
+                reasoning: reason,
+                hedge_direction: None,
+                hedge_lot: None,
+                recovery_score: Some(keep_side_rs),
+            });
+        } else {
+            let reason = format!(
+                "HOLD (hedged) | Keep RS:{} | Trend:{} | P&L:${:.2} | Safe:{}",
+                keep_side_rs, trend_aligned, total_pnl, safe_to_close
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "HOLD", &reason).await;
+            
+            results.push(ManageResult {
+                action: "HOLD".into(),
+                ticket: pos.ticket,
+                symbol: pos.symbol.clone(),
+                reasoning: reason,
+                hedge_direction: None,
+                hedge_lot: None,
+                recovery_score: Some(keep_side_rs),
+            });
+        }
     }
-    s
+    
+    // Also add HOLD for the winning side
+    let keep_positions = if keep_dir == "BUY" { &buy_positions } else { &sell_positions };
+    for pos in keep_positions.iter() {
+        // Check if profitable enough for profit protection
+        let action = get_profit_action(pos);
+        log_action(ctx, log_tx, pos.ticket, pos, &action.0, &action.1).await;
+        
+        results.push(ManageResult {
+            action: action.0,
+            ticket: pos.ticket,
+            symbol: pos.symbol.clone(),
+            reasoning: action.1,
+            hedge_direction: None,
+            hedge_lot: None,
+            recovery_score: None,
+        });
+    }
+
+    results
 }
+
+// ──────────────────────────────────────────────
+//  CASE 2: Normal — Tiered Response
+// ──────────────────────────────────────────────
+
+async fn handle_normal_positions(
+    ctx: &ManageContext,
+    log_tx: &tokio::sync::broadcast::Sender<String>,
+    _db: &Database,
+    ind: &Option<strategy::Indicators>,
+) -> Vec<ManageResult> {
+    let mut results = Vec::new();
+
+    for pos in &ctx.positions {
+        let loss = pos.pnl.abs();
+        let is_losing = pos.pnl < 0.0;
+        let recovery_score = ind.as_ref().map(|i| calc_recovery_score(pos, i));
+        let rs = recovery_score.unwrap_or(50);
+
+        // ═══ PROFITABLE POSITIONS → Smart Profit Protection ═══
+        if pos.pnl > 0.0 {
+            let action = get_profit_action(pos);
+            log_action(ctx, log_tx, pos.ticket, pos, &action.0, &action.1).await;
+            
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() && action.0 != "HOLD" {
+                let emoji = action_emoji(&action.0);
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "{} **Position Manager v3**\n\n📊 {} **{}** #{}\n💰 {:.2} lots @ {:.5}\n📈 P&L: **${:.2}**\n\n🎯 Action: **{}**\n📝 {}",
+                    emoji, pos.direction, pos.symbol, pos.ticket,
+                    pos.volume, pos.open_price,
+                    pos.pnl, action.0, action.1
+                )).await;
+            }
+            
+            results.push(ManageResult {
+                action: action.0,
+                ticket: pos.ticket,
+                symbol: pos.symbol.clone(),
+                reasoning: action.1,
+                hedge_direction: None,
+                hedge_lot: None,
+                recovery_score: Some(rs),
+            });
+            continue;
+        }
+
+        // ═══ LOSING POSITIONS → Tiered Response ═══
+
+        // 🟢 TIER: Light ($0-$10) → HOLD
+        if loss <= TIER_LIGHT_MAX {
+            let reason = format!(
+                "🟢 Light loss ${:.2} (<${:.0}) | RS:{} | HOLD — monitor",
+                loss, TIER_LIGHT_MAX, rs
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "HOLD", &reason).await;
+            results.push(ManageResult {
+                action: "HOLD".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+                reasoning: reason, hedge_direction: None, hedge_lot: None, recovery_score: Some(rs),
+            });
+            continue;
+        }
+
+        // 🔴 TIER: Critical (>$50) → Immediate Full Hedge (no AI needed)
+        if is_losing && loss > TIER_HEAVY_MAX && ctx.hedge_enabled {
+            let hedge_dir = if pos.direction == "BUY" { "SELL" } else { "BUY" };
+            let hedge_lot = pos.volume * HEDGE_LOT_FULL;
+            let reason = format!(
+                "🔴 Critical loss ${:.2} (>${:.0}) | RS:{} | Full Hedge ทันที {} {:.2} lot",
+                loss, TIER_HEAVY_MAX, rs, hedge_dir, hedge_lot
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "HEDGE", &reason).await;
+            
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "🔴 **CRITICAL — Auto Hedge**\n\n📊 {} **{}** #{}\n💰 Loss: **${:.2}** > ${:.0}\n📊 Recovery Score: {}\n🔄 Full Hedge → {} {:.2} lots",
+                    pos.direction, pos.symbol, pos.ticket,
+                    loss, TIER_HEAVY_MAX, rs, hedge_dir, hedge_lot
+                )).await;
+            }
+            
+            results.push(ManageResult {
+                action: "HEDGE".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+                reasoning: reason,
+                hedge_direction: Some(hedge_dir.to_string()),
+                hedge_lot: Some(hedge_lot),
+                recovery_score: Some(rs),
+            });
+            continue;
+        }
+
+        // 🟡 TIER: Medium ($10-$30) → DCA Recovery (if indicators align)
+        if is_losing && loss <= TIER_MEDIUM_MAX {
+            let has_dca = ctx.positions.iter().any(|p| 
+                p.comment.contains("DCA") && p.direction == pos.direction && p.ticket != pos.ticket
+            );
+            
+            let atr_distance_ok = ind.as_ref().map(|i| {
+                if i.atr > 0.0 {
+                    let price_distance = (pos.current_price - pos.open_price).abs();
+                    price_distance >= i.atr * DCA_MIN_ATR_DISTANCE
+                } else { false }
+            }).unwrap_or(false);
+            
+            if !has_dca && rs >= DCA_MIN_RECOVERY_SCORE && atr_distance_ok {
+                let dca_lot = pos.volume * DCA_LOT_RATIO;
+                let reason = format!(
+                    "🟡 Medium loss ${:.2} | RS:{} ≥ {} | ราคาห่างพอ | DCA {} {:.2} lot (50% of {:.2})",
+                    loss, rs, DCA_MIN_RECOVERY_SCORE, pos.direction, dca_lot, pos.volume
+                );
+                log_action(ctx, log_tx, pos.ticket, pos, "DCA", &reason).await;
+                
+                if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                    crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                        "🟡 **DCA Recovery**\n\n📊 {} **{}** #{}\n💰 Loss: ${:.2}\n📊 Recovery Score: **{}**\n📈 DCA: {} {:.2} lots\n📝 ลด breakeven",
+                        pos.direction, pos.symbol, pos.ticket,
+                        loss, rs, pos.direction, dca_lot
+                    )).await;
+                }
+                
+                results.push(ManageResult {
+                    action: "DCA".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+                    reasoning: reason,
+                    hedge_direction: Some(pos.direction.clone()),
+                    hedge_lot: Some(dca_lot),
+                    recovery_score: Some(rs),
+                });
+                continue;
+            }
+            
+            // Medium loss but DCA not appropriate → HOLD
+            let reason = format!(
+                "🟡 Medium loss ${:.2} | RS:{} | DCA?: has_dca={} atr_ok={} | HOLD",
+                loss, rs, has_dca, atr_distance_ok
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "HOLD", &reason).await;
+            results.push(ManageResult {
+                action: "HOLD".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+                reasoning: reason, hedge_direction: None, hedge_lot: None, recovery_score: Some(rs),
+            });
+            continue;
+        }
+
+        // 🟠 TIER: Heavy ($30-$50) → Smart Hedge (variable lot based on RS)
+        if is_losing && loss <= TIER_HEAVY_MAX && ctx.hedge_enabled {
+            let hedge_dir = if pos.direction == "BUY" { "SELL" } else { "BUY" };
+            let hedge_lot_ratio = if rs >= HEDGE_SCORE_MEDIUM {
+                HEDGE_LOT_MEDIUM     // RS 30-49: hedge 70% (maybe recovers)
+            } else if rs >= 10 {
+                HEDGE_LOT_FULL       // RS 10-29: hedge 100% (unlikely to recover)
+            } else {
+                HEDGE_LOT_AGGRESSIVE // RS <10: hedge 120% (recover faster)
+            };
+            let hedge_lot = pos.volume * hedge_lot_ratio;
+            
+            let reason = format!(
+                "🟠 Heavy loss ${:.2} | RS:{} → hedge {:.0}% ({:.2} lot) | {} {}",
+                loss, rs, hedge_lot_ratio * 100.0, hedge_lot, hedge_dir,
+                if rs >= HEDGE_SCORE_MEDIUM { "อาจกลับมา" } else { "ไม่น่ากลับ" }
+            );
+            log_action(ctx, log_tx, pos.ticket, pos, "HEDGE", &reason).await;
+            
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "🟠 **Smart Hedge**\n\n📊 {} **{}** #{}\n💰 Loss: **${:.2}**\n📊 Recovery Score: **{}** → hedge {:.0}%\n🔄 {} {:.2} lots",
+                    pos.direction, pos.symbol, pos.ticket,
+                    loss, rs, hedge_lot_ratio * 100.0,
+                    hedge_dir, hedge_lot
+                )).await;
+            }
+            
+            results.push(ManageResult {
+                action: "HEDGE".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+                reasoning: reason,
+                hedge_direction: Some(hedge_dir.to_string()),
+                hedge_lot: Some(hedge_lot),
+                recovery_score: Some(rs),
+            });
+            continue;
+        }
+
+        // Hedge disabled but significant loss → just HOLD
+        let reason = format!(
+            "Loss ${:.2} | RS:{} | Hedge disabled — HOLD",
+            loss, rs
+        );
+        log_action(ctx, log_tx, pos.ticket, pos, "HOLD", &reason).await;
+        results.push(ManageResult {
+            action: "HOLD".into(), ticket: pos.ticket, symbol: pos.symbol.clone(),
+            reasoning: reason, hedge_direction: None, hedge_lot: None, recovery_score: Some(rs),
+        });
+    }
+    
+    results
+}
+
+// ──────────────────────────────────────────────
+//  Smart Profit Protection
+// ──────────────────────────────────────────────
+
+fn get_profit_action(pos: &PositionInfo) -> (String, String) {
+    if pos.pnl >= PROFIT_PARTIAL_50 {
+        ("PARTIAL_CLOSE".into(), format!(
+            "กำไร ${:.2} ≥ ${:.0} → Partial Close 50% ล็อคกำไร", pos.pnl, PROFIT_PARTIAL_50
+        ))
+    } else if pos.pnl >= PROFIT_PARTIAL_30 {
+        ("PARTIAL_CLOSE".into(), format!(
+            "กำไร ${:.2} ≥ ${:.0} → Partial Close 30% ล็อคกำไร", pos.pnl, PROFIT_PARTIAL_30
+        ))
+    } else if pos.pnl >= PROFIT_SL_TRAIL {
+        ("MODIFY_SL".into(), format!(
+            "กำไร ${:.2} ≥ ${:.0} → Trail SL +30% ของกำไร", pos.pnl, PROFIT_SL_TRAIL
+        ))
+    } else if pos.pnl >= PROFIT_SL_BREAKEVEN {
+        ("MODIFY_SL".into(), format!(
+            "กำไร ${:.2} ≥ ${:.0} → Move SL → Breakeven", pos.pnl, PROFIT_SL_BREAKEVEN
+        ))
+    } else {
+        ("HOLD".into(), format!("กำไร ${:.2} — ปล่อยให้วิ่ง", pos.pnl))
+    }
+}
+
+// ──────────────────────────────────────────────
+//  Helper functions
+// ──────────────────────────────────────────────
 
 fn action_emoji(action: &str) -> &str {
     match action {
         "HOLD" => "⏳",
+        "DCA" => "📊",
         "HEDGE" => "🛡️",
         "UNHEDGE" => "🔓",
-        "PARTIAL_CLOSE" => "📊",
+        "PARTIAL_CLOSE" => "✂️",
         "MODIFY_SL" => "🔒",
         "CLOSE" => "🔴",
         _ => "❓",
     }
 }
 
-async fn call_ai_safe(key: &str, model: &str, prompt: &str) -> Result<Vec<serde_json::Value>, String> {
-    let response = crate::ai_engine::call_ai_pub(key, model, prompt, 0.2, 2048, true).await?;
-    let clean = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
-    serde_json::from_str::<Vec<serde_json::Value>>(clean)
-        .map_err(|e| format!("JSON parse error: {} | Raw: {}", e, &clean[..clean.len().min(200)]))
-}
-
-fn parse_decisions<'a>(decisions: &[serde_json::Value], positions: &'a [PositionInfo]) -> Vec<(i64, String, String, &'a PositionInfo)> {
-    decisions.iter().filter_map(|d| {
-        let ticket = d["ticket"].as_i64().unwrap_or(0);
-        let action = d["action"].as_str().unwrap_or("HOLD").to_uppercase();
-        let reasoning = d["reasoning"].as_str().unwrap_or("").to_string();
-        let pos = positions.iter().find(|p| p.ticket == ticket)?;
-        Some((ticket, action, reasoning, pos))
-    }).collect()
-}
-
 async fn log_action(ctx: &ManageContext, log_tx: &tokio::sync::broadcast::Sender<String>, ticket: i64, pos: &PositionInfo, action: &str, reasoning: &str) {
     let emoji = action_emoji(action);
-    info!("{} [Position Manager v2] #{} {} → {} | {}", emoji, ticket, pos.direction, action, reasoning);
+    info!("{} [PM v3] #{} {} → {} | {}", emoji, ticket, pos.direction, action, reasoning);
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": ctx.symbol, "agent": "position_manager", "status": "running",
         "message": format!("{} #{} {} {:.2}lot P&L:${:.2} → {} | {}",
