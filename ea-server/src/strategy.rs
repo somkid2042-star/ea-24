@@ -1452,6 +1452,7 @@ pub async fn run_strategy_engine(
     info!("🧠 Strategy Engine started — 10 strategies + Auto mode, evaluating every {}s", ENGINE_INTERVAL_SECS);
     info!("📋 Available: {:?}", ALL_STRATEGIES);
 
+    let news_engine = crate::news::NewsEngine::new();
     let mut cooldown = CooldownTracker::new();
     let mut last_account: Option<serde_json::Value> = None;
     let mut rx = tx.subscribe();
@@ -1517,14 +1518,29 @@ pub async fn run_strategy_engine(
 
         let balance = account["balance"].as_f64().unwrap_or(0.0);
         let equity = account["equity"].as_f64().unwrap_or(0.0);
+        
+        let positions_array = account["positions"].as_array();
+        let open_count = positions_array.map(|p| p.len()).unwrap_or(0);
+        
         if balance > 0.0 {
             let dd = ((balance - equity) / balance) * 100.0;
             if dd > MAX_DRAWDOWN_PCT {
-                warn!("🛑 [Engine] Drawdown {:.2}% > max {:.1}% — skipping", dd, MAX_DRAWDOWN_PCT);
+                warn!("🛑 [Engine] Drawdown {:.2}% > max {:.1}% — Portfolio Shield Activated!", dd, MAX_DRAWDOWN_PCT);
+                
+                // --- EQUITY SHIELD (HEDGE ALL) ---
+                if open_count > 0 {
+                    let cmd = serde_json::json!({
+                        "action": "crisis_hedge_all",
+                        "comment": format!("EQUITY_SHIELD_DD_{:.1}%", dd)
+                    });
+                    let _ = tx.send(cmd.to_string());
+                    info!("🛡️ [Equity Shield] Sent Hedge All command to lock portfolio DD at {:.2}%", dd);
+                }
+                
                 let status = serde_json::json!({
                     "type": "engine_status",
                     "status": "drawdown_limit",
-                    "message": format!("🛑 Drawdown {:.2}% > max {:.1}% — paused", dd, MAX_DRAWDOWN_PCT),
+                    "message": format!("🛑 ล็อคพอร์ตฉุกเฉิน! Drawdown {:.2}% > {:.1}% (HEDGED)", dd, MAX_DRAWDOWN_PCT),
                     "setups": serde_json::Value::Array(vec![]),
                 });
                 let _ = tx.send(status.to_string());
@@ -1532,8 +1548,6 @@ pub async fn run_strategy_engine(
             }
         }
 
-        let positions = account["positions"].as_array();
-        let open_count = positions.map(|p| p.len()).unwrap_or(0);
         if open_count >= MAX_POSITIONS {
             let status = serde_json::json!({
                 "type": "engine_status",
@@ -1573,6 +1587,7 @@ pub async fn run_strategy_engine(
             let strategy = setup["strategy"].as_str().unwrap_or("");
             let lot = setup["lotSize"].as_f64().unwrap_or(0.01);
             let timeframe = setup["timeframe"].as_str().unwrap_or("M5");
+            let risk_percent = setup["riskPercent"].as_f64().unwrap_or(0.0);
             let tp_enabled = setup["tpEnabled"].as_bool().unwrap_or(false);
             let tp_mode = setup["tpMode"].as_str().unwrap_or("pips");
             let tp_value = setup["tpValue"].as_f64().unwrap_or(50.0);
@@ -1607,7 +1622,7 @@ pub async fn run_strategy_engine(
             if risk_enabled {
                 // Check max positions
                 let max_pos: usize = get_cfg("max_positions", "5").parse().unwrap_or(5);
-                let current_pos_count = positions.map(|a| a.len()).unwrap_or(0);
+                let current_pos_count = positions_array.map(|a| a.len()).unwrap_or(0);
                 if current_pos_count >= max_pos {
                     setup_statuses.push(serde_json::json!({
                         "setup_id": setup_id,
@@ -1619,7 +1634,7 @@ pub async fn run_strategy_engine(
 
                 // Check max total lot
                 let max_lot: f64 = get_cfg("max_total_lot", "1.0").parse().unwrap_or(1.0);
-                let current_lot: f64 = positions.map(|a| {
+                let current_lot: f64 = positions_array.map(|a| {
                     a.iter().filter_map(|p| p["volume"].as_f64()).sum()
                 }).unwrap_or(0.0);
                 if current_lot + lot > max_lot {
@@ -1633,7 +1648,7 @@ pub async fn run_strategy_engine(
 
                 // Check daily drawdown
                 let max_dd: f64 = get_cfg("max_daily_drawdown", "100").parse().unwrap_or(100.0);
-                let current_pnl: f64 = positions.map(|a| {
+                let current_pnl: f64 = positions_array.map(|a| {
                     a.iter().filter_map(|p| p["pnl"].as_f64()).sum()
                 }).unwrap_or(0.0);
                 if current_pnl < 0.0 && current_pnl.abs() >= max_dd {
@@ -1653,8 +1668,22 @@ pub async fn run_strategy_engine(
                     continue;
                 }
             }
+            
+            // === News Filter Check ===
+            let news_enabled = get_cfg("news_filter_enabled", "true") == "true";
+            if news_enabled {
+                if let Some((event_name, diff_mins)) = news_engine.has_upcoming_news(symbol, 30).await {
+                    let text_diff = if diff_mins < 0 { format!("ผ่านไปแล้ว {} นาที", diff_mins.abs()) } else { format!("อีก {} นาที", diff_mins) };
+                    setup_statuses.push(serde_json::json!({
+                        "setup_id": setup_id,
+                        "status": "news_skip",
+                        "message": format!("📰 หลบข่าว: {} ({})", event_name, text_diff),
+                    }));
+                    continue;
+                }
+            }
 
-            let has_existing = positions.map(|ps| {
+            let has_existing = positions_array.map(|ps| {
                 ps.iter().any(|p| {
                     p["symbol"].as_str() == Some(symbol)
                         && p["comment"].as_str().map(|c| c.contains(&strategy.replace(' ', ""))).unwrap_or(false)
@@ -1747,6 +1776,28 @@ pub async fn run_strategy_engine(
                 )
             };
 
+            // Calculate Dynamic Lot if Risk Percent is set
+            let mut final_lot = lot;
+            if risk_percent > 0.0 && sl_price > 0.0 {
+                let sl_points = ((price - sl_price).abs() * 10f64.powi(digits as i32)).round();
+                if sl_points > 0.0 {
+                    let risk_amount = balance * (risk_percent / 100.0);
+                    // Approx value: 1 Standard Lot = $1 per point (for XXXUSD pairs). 
+                    // This is generalized. A more accurate calculation needs MT5 tick value, 
+                    // but for widely traded pairs like EURUSD or XAUUSD:
+                    // Typical: Pip value = $10. Point value = $1.
+                    let point_value = 1.0; 
+                    let calculated_lot = risk_amount / (sl_points * point_value);
+                    
+                    // Cap lot limits for safety (0.01 to max_total_lot)
+                    let limits_max: f64 = get_cfg("max_total_lot", "1.0").parse().unwrap_or(1.0);
+                    final_lot = calculated_lot.clamp(0.01, limits_max);
+                    // Round to 2 decimals
+                    final_lot = (final_lot * 100.0).round() / 100.0;
+                    info!("🧮 [Dynamic Lot] Balance: ${:.2}, Risk {}% = ${:.2}, SL {} pts -> Lot: {:.2}", balance, risk_percent, risk_amount, sl_points, final_lot);
+                }
+            }
+
             // === AI Confirmation Step ===
             let ai_enabled = get_cfg("ai_strategy_confirmation", "false") == "true";
             if ai_enabled {
@@ -1790,11 +1841,11 @@ pub async fn run_strategy_engine(
             let comment = format!("EA24-{}", strategy.replace(' ', ""));
             let cmd = serde_json::json!({
                 "action": "open_trade", "symbol": symbol, "direction": direction,
-                "lot_size": lot, "sl": sl_price, "tp": tp_price, "comment": comment,
+                "lot_size": final_lot, "sl": sl_price, "tp": tp_price, "comment": comment,
             });
 
             info!("📊 [Engine] SIGNAL: {} {} {} lot={} TP={:.5} SL={:.5} CONF={:.0}%", 
-                direction, symbol, strategy, lot, tp_price, sl_price, result.confidence);
+                direction, symbol, strategy, final_lot, tp_price, sl_price, result.confidence);
             info!("   Reason: {}", result.reason);
             info!("   Indicators: {}", result.indicator_summary);
 
@@ -1803,7 +1854,7 @@ pub async fn run_strategy_engine(
             let chat_id = db.get_config("telegram_chat_id").await.unwrap_or_default();
             let notify_open = db.get_config("notify_on_open").await.unwrap_or("true".to_string()) == "true";
             if !bot_token.is_empty() && !chat_id.is_empty() && notify_open {
-                let msg = crate::notify::format_trade_open(symbol, direction, lot, price, strategy);
+                let msg = crate::notify::format_trade_open(symbol, direction, final_lot, price, strategy);
                 tokio::spawn(async move { crate::notify::send_telegram_notify(&bot_token, &chat_id, &msg).await; });
             }
 

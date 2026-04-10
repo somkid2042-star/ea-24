@@ -240,14 +240,14 @@ const TradeSetup = () => {
           </div>
 
           {/* Symbol / Strategy / TF / Lot */}
-          <div className="grid lg:grid-cols-4 grid-cols-1 gap-5 mb-4">
+          <div className="grid lg:grid-cols-5 grid-cols-1 gap-5 mb-4">
             <div className="col-span-1 flex flex-col gap-1">
               <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Symbol <span className="text-[9px] text-blue-500 lowercase font-normal">(market watch)</span></label>
               {marketWatch.length > 0 ? (
                 <select value={f.symbol} onChange={e => setF({ symbol: e.target.value })} className={selectCls}>
                   {marketWatch.map(m => <option key={m.symbol} value={m.symbol}>{m.symbol} ({m.spread.toFixed(1)} sp)</option>)}
                 </select>
-              ) : <p className="rounded-md border border-yellow-300/50 bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1.5 text-[10px] text-yellow-600 dark:text-yellow-400 flex items-center gap-1"><LuClock className="size-3" /> Waiting for Market Watch...</p>}
+              ) : <p className="rounded-md border border-yellow-300/50 bg-yellow-50 dark:bg-yellow-500/10 px-2 py-1.5 text-[10px] text-yellow-600 dark:text-yellow-400 flex items-center gap-1"><LuClock className="size-3" /> Waiting for Market...</p>}
             </div>
             <div className="col-span-1 flex flex-col gap-1">
               <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Strategy</label>
@@ -270,8 +270,16 @@ const TradeSetup = () => {
               </select>
             </div>
             <div className="col-span-1 flex flex-col gap-1">
-              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Lot Size</label>
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider">Default Lot</label>
               <input type="number" step="0.01" min="0.01" value={f.lotSize} onChange={e => setF({ lotSize: Number(e.target.value) })} className={inputCls} />
+            </div>
+            <div className="col-span-1 flex flex-col gap-1">
+              <label className="inline-block mb-1 text-[11px] font-bold text-gray-500 dark:text-gray-400 uppercase tracking-wider text-green-600 dark:text-green-400">Risk % (Auto Lot)</label>
+              <div className="relative">
+                <input type="number" step="0.1" min="0" max="100" value={f.riskPercent} onChange={e => setF({ riskPercent: Number(e.target.value) })} className={`${inputCls} border-green-200 dark:border-green-500/30 bg-green-50/50 dark:bg-green-500/5 focus:border-green-500 focus:ring-green-500/20`} />
+                <span className="absolute right-3 top-1/2 -translate-y-1/2 text-[10px] text-green-600/50">%</span>
+              </div>
+              <p className="text-[9px] text-default-400 mt-1">If &gt; 0, calculates lot based on SL. SL MUST be enabled.</p>
             </div>
           </div>
 
@@ -378,7 +386,7 @@ const TradeSetup = () => {
       )}
 
       {/* Setup Cards */}
-      <div className="grid gap-4 md:grid-cols-2">
+      <div className="grid gap-4 md:grid-cols-5">
         {setups.map(s => {
           const setupStatus = getSetupEngineStatus(s.id);
 

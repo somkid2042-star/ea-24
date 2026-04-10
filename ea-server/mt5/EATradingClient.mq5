@@ -341,6 +341,14 @@ void ProcessCommand(const string msg)
       CloseAllPositions();
       return;
      }
+     
+   // CRISIS HEDGE ALL - open opposite positions
+   if(StringFind(msg, "\"crisis_hedge_all\"") >= 0)
+     {
+      Print("CRISIS! Hedging all open positions.");
+      HedgeAllPositions();
+      return;
+     }
    
    // Stop/Start trading
    if(StringFind(msg, "\"stop_trading\"") >= 0)
@@ -739,6 +747,49 @@ void CloseAllPositions()
      {
       ulong ticket = PositionGetTicket(i);
       if(ticket > 0) trade.PositionClose(ticket);
+     }
+  }
+
+//+------------------------------------------------------------------+
+//| Hedge all positions (Global Equity Shield)                       |
+//+------------------------------------------------------------------+
+void HedgeAllPositions()
+  {
+   // Array to keep track of what we need to hedge
+   // (Since opening a new trade might alter the positions list)
+   int numPos = PositionsTotal();
+   struct HedgeTask { string sym; double vol; long type; };
+   HedgeTask tasks[];
+   ArrayResize(tasks, numPos);
+   
+   for(int i = 0; i < numPos; i++)
+     {
+      if(PositionSelectByTicket(PositionGetTicket(i)))
+        {
+         tasks[i].sym = PositionGetString(POSITION_SYMBOL);
+         tasks[i].vol = PositionGetDouble(POSITION_VOLUME);
+         tasks[i].type = PositionGetInteger(POSITION_TYPE);
+        }
+     }
+     
+   for(int i = 0; i < ArraySize(tasks); i++)
+     {
+      if(StringLen(tasks[i].sym) > 0)
+        {
+         double ask = SymbolInfoDouble(tasks[i].sym, SYMBOL_ASK);
+         double bid = SymbolInfoDouble(tasks[i].sym, SYMBOL_BID);
+         // No SL, TP, just hedge the exact volume
+         if(tasks[i].type == POSITION_TYPE_BUY)
+           {
+            trade.Sell(tasks[i].vol, tasks[i].sym, bid, 0, 0, "Hedge-Crisis");
+            Print("HEDGED: Sell ", tasks[i].vol, " ", tasks[i].sym);
+           }
+         else if(tasks[i].type == POSITION_TYPE_SELL)
+           {
+            trade.Buy(tasks[i].vol, tasks[i].sym, ask, 0, 0, "Hedge-Crisis");
+            Print("HEDGED: Buy ", tasks[i].vol, " ", tasks[i].sym);
+           }
+        }
      }
   }
 

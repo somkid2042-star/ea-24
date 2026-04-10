@@ -1,6 +1,6 @@
 [package]
 name = "ea-server"
-version = "8.3.4"
+version = "8.4.0"
 edition = "2021"
 
 [dependencies]
@@ -22,6 +22,7 @@ reqwest = { version = "0.12", features = ["json", "rustls-tls"], default-feature
 
 # Random number generation (สำหรับ Mock Tick Data)
 rand = "0.8"
+
 
 # Logging
 env_logger = "0.11"

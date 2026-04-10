@@ -9,6 +9,8 @@ mod discord_bot;
 mod ai_engine;
 mod pipeline_v8;
 mod position_manager;
+mod news;
+mod order_guard;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -275,6 +277,11 @@ async fn run_server() {
         positions_detail: vec![],
     }));
 
+    // ═══════════════════════════════════════════════
+    //  Order Guard — Central Anti-Duplicate System
+    // ═══════════════════════════════════════════════
+    let order_guard = Arc::new(order_guard::OrderGuard::new());
+
     let mut initial_news = None;
     let mut initial_calendar = None;
     let mut initial_last_updated = 0;
@@ -325,6 +332,7 @@ async fn run_server() {
     let active_eas_mt5 = active_eas.clone();
     let ea_state_mt5 = ea_state.clone();
     let db_mt5 = database.clone();
+    let guard_mt5 = order_guard.clone();
     tokio::spawn(async move {
         while let Ok((stream, peer_addr)) = mt5_listener.accept().await {
             let rx = tx_mt5.subscribe();
@@ -336,6 +344,7 @@ async fn run_server() {
                 active_eas_mt5.clone(),
                 ea_state_mt5.clone(),
                 db_mt5.clone(),
+                guard_mt5.clone(),
             ));
         }
     });
@@ -345,6 +354,7 @@ async fn run_server() {
     let tx_ai = tx.clone();
     let ea_state_ai = ea_state.clone();
     let global_ai_data_ai = global_ai_data.clone();
+    let guard_ai = order_guard.clone();
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         let mut last_runs: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
@@ -542,28 +552,46 @@ async fn run_server() {
                                     match r.action.as_str() {
                                         "HEDGE" => {
                                             if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
-                                                info!("🛡️ [PM v3] HEDGING {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
-                                                let cmd = serde_json::json!({
-                                                    "action": "open_trade",
-                                                    "symbol": sym,
-                                                    "direction": dir,
-                                                    "lot_size": lot,
-                                                    "comment": format!("EA24-HEDGE-#{}", r.ticket)
-                                                }).to_string();
-                                                let _ = tx_ai.send(cmd);
+                                                // Order Guard check for HEDGE
+                                                match guard_ai.can_open_order(&sym, dir, &order_guard::OrderSource::PositionManager).await {
+                                                    Ok(()) => {
+                                                        info!("🛡️ [PM v3] HEDGING {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
+                                                        guard_ai.mark_order_sent(&sym, dir, &order_guard::OrderSource::PositionManager).await;
+                                                        let cmd = serde_json::json!({
+                                                            "action": "open_trade",
+                                                            "symbol": sym,
+                                                            "direction": dir,
+                                                            "lot_size": lot,
+                                                            "comment": format!("EA24-HEDGE-#{}", r.ticket)
+                                                        }).to_string();
+                                                        let _ = tx_ai.send(cmd);
+                                                    }
+                                                    Err(reason) => {
+                                                        info!("🔒 [PM v3] HEDGE blocked: {}", reason);
+                                                    }
+                                                }
                                             }
                                         }
                                         "DCA" => {
                                             if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
-                                                info!("📊 [PM v3] DCA {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
-                                                let cmd = serde_json::json!({
-                                                    "action": "open_trade",
-                                                    "symbol": sym,
-                                                    "direction": dir,
-                                                    "lot_size": lot,
-                                                    "comment": format!("EA24-DCA-#{}", r.ticket)
-                                                }).to_string();
-                                                let _ = tx_ai.send(cmd);
+                                                // Order Guard check for DCA
+                                                match guard_ai.can_open_order(&sym, dir, &order_guard::OrderSource::PositionManager).await {
+                                                    Ok(()) => {
+                                                        info!("📊 [PM v3] DCA {} #{} → {} {:.2} lot (RS:{})", sym, r.ticket, dir, lot, r.recovery_score.unwrap_or(0));
+                                                        guard_ai.mark_order_sent(&sym, dir, &order_guard::OrderSource::PositionManager).await;
+                                                        let cmd = serde_json::json!({
+                                                            "action": "open_trade",
+                                                            "symbol": sym,
+                                                            "direction": dir,
+                                                            "lot_size": lot,
+                                                            "comment": format!("EA24-DCA-#{}", r.ticket)
+                                                        }).to_string();
+                                                        let _ = tx_ai.send(cmd);
+                                                    }
+                                                    Err(reason) => {
+                                                        info!("🔒 [PM v3] DCA blocked: {}", reason);
+                                                    }
+                                                }
                                             }
                                         }
                                         "UNHEDGE" => {
@@ -694,8 +722,19 @@ async fn run_server() {
                         
                         if result.decision == "BUY" || result.decision == "SELL" {
                             if auto_trade {
+                                // ═══ Order Guard — ป้องกันออเดอร์ซ้ำซ้อน ═══
+                                match guard_ai.can_open_order(&sym, &result.decision, &order_guard::OrderSource::Pipeline).await {
+                                    Err(reason) => {
+                                        info!("🔒 [Pipeline v9] Order BLOCKED: {}", reason);
+                                        let _ = tx_ai.send(serde_json::json!({
+                                            "type": "agent_log", "symbol": sym, "agent": "order_guard", "status": "blocked",
+                                            "message": format!("🔒 {}", reason)
+                                        }).to_string());
+                                    }
+                                    Ok(()) => {
                                 info!("🤖 [Pipeline v8] Executing {} on {} (conf: {:.0}%, lot: {:.2})", 
                                     result.decision, sym, result.confidence, result.lot_size);
+                                guard_ai.mark_order_sent(&sym, &result.decision, &order_guard::OrderSource::Pipeline).await;
                                 let tp_sl_mode = job["tp_sl_mode"].as_str().unwrap_or("none");
                                 let tp_val = job["tp_value"].as_f64().unwrap_or(0.0);
                                 let sl_val = job["sl_value"].as_f64().unwrap_or(0.0);
@@ -720,7 +759,8 @@ async fn run_server() {
                                     &result.reasoning, result.lot_size, 0.0,
                                     0, &gemini_model, &format!("pipeline_v8:{}", result.strategy_name),
                                 ).await;
-                                
+                                    } // end Ok(())
+                                } // end match guard_ai
                             } else {
                                 info!("🤖 [Pipeline v8] Proposing {} on {} (conf: {:.0}%), awaiting confirmation", 
                                     result.decision, sym, result.confidence);
@@ -1114,6 +1154,7 @@ async fn run_server() {
             database.clone(),
             server_start,
             global_ai_data.clone(),
+            order_guard.clone(),
         ));
     }
 }
@@ -1130,6 +1171,7 @@ async fn handle_mt5_connection(
     active_eas: Arc<AtomicUsize>,
     ea_state: Arc<RwLock<EaState>>,
     db: Arc<db::Database>,
+    order_guard: Arc<order_guard::OrderGuard>,
 ) {
     info!("🔗 [MT5] New connection from: {}", peer_addr);
     active_eas.fetch_add(1, Ordering::SeqCst);
@@ -1351,12 +1393,30 @@ async fn handle_mt5_connection(
                                             }).to_string();
                                             let _ = tx.send(status_msg);
                                         }
+                                    } else if msg_type == Some("trade_result") {
+                                        // ═══ Order Guard: Process MT5 trade result ═══
+                                        let success = val["success"].as_bool().unwrap_or(false);
+                                        let tr_sym = val["symbol"].as_str().unwrap_or("");
+                                        let tr_ticket = val["ticket"].as_i64().unwrap_or(0);
+                                        if !tr_sym.is_empty() {
+                                            if success {
+                                                order_guard.mark_order_confirmed(tr_sym, tr_ticket).await;
+                                                info!("✅ [OrderGuard] MT5 confirmed: {} #{}", tr_sym, tr_ticket);
+                                            } else {
+                                                order_guard.mark_order_failed(tr_sym).await;
+                                                let err = val["error"].as_str().unwrap_or("unknown");
+                                                info!("❌ [OrderGuard] MT5 rejected: {} — {}", tr_sym, err);
+                                            }
+                                        }
                                     } else if msg_type == Some("account_data") {
                                         // Server-side trailing stop
                                         if let Some(positions) = val.get("positions").and_then(|p| p.as_array()) {
                                             let balance = val["balance"].as_f64().unwrap_or(0.0);
                                             let equity = val["equity"].as_f64().unwrap_or(balance);
                                             let mut risk_usd = 0.0;
+                                            
+                                            // Sync Order Guard positions
+                                            order_guard.sync_positions(positions).await;
                                             
                                             // Update EaState
                                             {
@@ -1509,6 +1569,7 @@ async fn handle_ws_connection(
     db: Arc<db::Database>,
     server_start: std::time::Instant,
     global_ai_data: Arc<RwLock<GlobalAiData>>,
+    order_guard: Arc<order_guard::OrderGuard>,
 ) {
     info!("🔗 [UI] New connection from: {}", peer_addr);
 
@@ -1612,17 +1673,34 @@ async fn handle_ws_connection(
                                         let sl_val = client_msg.sl.unwrap_or(0.0);
                                         let tp_val = client_msg.tp.unwrap_or(0.0);
                                         let cmt = client_msg.comment.as_deref().unwrap_or("EA-Web");
-                                        info!("📈 [UI] OPEN TRADE: {} {} {} SL={} TP={}", sym, dir, lot, sl_val, tp_val);
-                                        let cmd = serde_json::json!({
-                                            "action": "open_trade",
-                                            "symbol": sym,
-                                            "direction": dir,
-                                            "lot_size": lot,
-                                            "sl": sl_val,
-                                            "tp": tp_val,
-                                            "comment": cmt,
-                                        }).to_string();
-                                        let _ = tx.send(cmd);
+                                        
+                                        // Order Guard check for UI manual trade
+                                        match order_guard.can_open_order(sym, dir, &order_guard::OrderSource::ManualUI).await {
+                                            Err(reason) => {
+                                                info!("🔒 [UI] Trade BLOCKED: {}", reason);
+                                                let resp = serde_json::json!({
+                                                    "type": "alert",
+                                                    "level": "warning",
+                                                    "title": "Order Blocked",
+                                                    "message": format!("🔒 {}", reason),
+                                                });
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            }
+                                            Ok(()) => {
+                                                info!("📈 [UI] OPEN TRADE: {} {} {} SL={} TP={}", sym, dir, lot, sl_val, tp_val);
+                                                order_guard.mark_order_sent(sym, dir, &order_guard::OrderSource::ManualUI).await;
+                                                let cmd = serde_json::json!({
+                                                    "action": "open_trade",
+                                                    "symbol": sym,
+                                                    "direction": dir,
+                                                    "lot_size": lot,
+                                                    "sl": sl_val,
+                                                    "tp": tp_val,
+                                                    "comment": cmt,
+                                                }).to_string();
+                                                let _ = tx.send(cmd);
+                                            }
+                                        }
                                     }
                                     "close_trade" => {
                                         if let Some(ticket) = client_msg.ticket {
