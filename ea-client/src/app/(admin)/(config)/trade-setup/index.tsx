@@ -1,8 +1,8 @@
 import React, { useState, useEffect, useRef, useCallback } from 'react';
 import { LuPlay, LuPause, LuPlus, LuTrash2, LuMonitor, LuPencil, LuX, LuActivity, LuChevronDown, LuRadar, LuLoader, LuShieldAlert, LuClock, LuPin, LuZap, LuCircleX, LuTarget, LuRuler, LuTriangleAlert, LuSave } from 'react-icons/lu';
 
-const allStrategies = ['Auto', 'Scalper Pro', 'Trend Rider', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper', 'Engulfing Driver', 'Bollinger Squeeze', 'Pullback Sniper', 'Reversal Catcher', 'Golden Cross', 'Fractal Breakout'];
-const specialStrategies = ['Grid Master'];
+const allStrategies = ['Auto', 'Trend Rider', 'Breakout Hunter', 'Mean Revert', 'SMC', 'ICT', 'Fibonacci', 'Momentum Surge', 'Session Sniper', 'Engulfing Driver', 'Bollinger Squeeze', 'Pullback Sniper', 'Reversal Catcher', 'Golden Cross', 'Fractal Breakout'];
+const specialStrategies = ['Scalper Pro', 'Grid Master'];
 const timeframes = ['M1', 'M5', 'M15', 'M30', 'H1', 'H4', 'D1'];
 const profitModes = [
   { value: 'rr', label: 'R:R' },
@@ -46,7 +46,7 @@ type SetupForm = {
 import { getWsUrl } from '@/utils/config';
 
 const defaultForm: SetupForm = {
-  symbol: '', strategy: 'Scalper Pro', timeframe: 'M5', lotSize: 0.01, riskPercent: 2, mt5Instance: '',
+  symbol: '', strategy: 'Auto', timeframe: 'M5', lotSize: 0.01, riskPercent: 2, mt5Instance: '',
   tpEnabled: false, tpMode: 'pips', tpValue: 50,
   slEnabled: false, slMode: 'pips', slValue: 30,
   trailingStopEnabled: false, trailingStopPoints: 50,

@@ -158,8 +158,10 @@ fn generate_indicator_summary(ind: &Indicators) -> String {
 pub const ALL_STRATEGIES: &[&str] = &[
     "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
     "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
-    "Reversal Catcher", "Fractal Breakout", "Scalper Pro", "Grid Master"
+    "Reversal Catcher", "Fractal Breakout"
 ];
+// Note: "Scalper Pro" and "Grid Master" are specialized strategies.
+// They are NOT in ALL_STRATEGIES — they only run when explicitly selected in a Trade Setup.
 
 /// Per-symbol cooldown tracker
 struct CooldownTracker {

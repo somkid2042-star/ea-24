@@ -393,7 +393,7 @@ checksum = "1aaf95b3e5c8f23aa320147307562d361db0ae0d51242340f558153b4eb2439b"
 
 [[package]]
 name = "ea-server"
-version = "8.3.2"
+version = "8.3.3"
 dependencies = [
  "base64 0.22.1",
  "chrono",
