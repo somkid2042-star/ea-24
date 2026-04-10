@@ -172,120 +172,153 @@ pub async fn run_pipeline_v8(
 
     let history = fetch_history(sym, &best.strategy_name, db).await;
 
+    // Check disabled stages from job config
+    let disabled_stages: Vec<String> = ctx.job_config["disabled_stages"]
+        .as_array()
+        .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+        .unwrap_or_default();
+    let gemma_disabled = disabled_stages.iter().any(|s| s == "gemma");
+    let gemini_disabled = disabled_stages.iter().any(|s| s == "gemini");
+
     // ═══════════════════════════════════════════════
     //  Stage 2: Gemma 4 Cloud Validate
     // ═══════════════════════════════════════════════
 
-    let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "running",
-        "message": format!("🏠 Gemma 4: ตรวจสอบ {} {} (Score {:.0}%) — กลยุทธ์ {}...",
-            best.direction, sym, best.score, best.strategy_name)
-    }).to_string());
-
-    let gemma = gemma_validate_v8(&ctx.gemini_key, sym, &best, &history, log_tx).await;
-
-    if !gemma.0 {
-        let reason = &gemma.1;
+    let (_gemma_approved, gemma_reason) = if gemma_disabled {
+        // Skip Gemma — auto-approve and notify UI
+        info!("⏭️ [Pipeline v8] Gemma DISABLED — skipping to next stage");
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
-            "message": format!("❌ Gemma REJECT: {}", reason)
+            "message": "⏭️ Gemma 4 ปิดใช้งาน — ข้ามไปขั้นตอนถัดไป"
+        }).to_string());
+        (true, "SKIP (disabled)".to_string())
+    } else {
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "running",
+            "message": format!("🏠 Gemma 4: ตรวจสอบ {} {} (Score {:.0}%) — กลยุทธ์ {}...",
+                best.direction, sym, best.score, best.strategy_name)
         }).to_string());
 
-        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
-            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-                "🏠 **Gemma Reject**\n📊 {} **{}**\n🎯 Score: {:.0}%\n📈 กลยุทธ์: {} ({})\n📜 ประวัติ: WR {:.0}% ({} trades)\n❌ {}",
-                best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
-                history.symbol_win_rate, history.symbol_total_trades, reason
-            )).await;
+        let gemma = gemma_validate_v8(&ctx.gemini_key, sym, &best, &history, log_tx).await;
+
+        if !gemma.0 {
+            let reason = &gemma.1;
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
+                "message": format!("❌ Gemma REJECT: {}", reason)
+            }).to_string());
+
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "🏠 **Gemma Reject**\n📊 {} **{}**\n🎯 Score: {:.0}%\n📈 กลยุทธ์: {} ({})\n📜 ประวัติ: WR {:.0}% ({} trades)\n❌ {}",
+                    best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
+                    history.symbol_win_rate, history.symbol_total_trades, reason
+                )).await;
+            }
+
+            return PipelineV8Result {
+                decision: "HOLD".into(), confidence: best.score, lot_size: 0.0,
+                strategy_name: best.strategy_name, timeframe: best.best_timeframe,
+                reasoning: format!("Gemma rejected: {}", reason),
+                server_scan: scan,
+                gemma_verdict: format!("REJECT: {}", reason),
+                gemini_verdict: "SKIP".into(),
+            };
         }
 
-        return PipelineV8Result {
-            decision: "HOLD".into(), confidence: best.score, lot_size: 0.0,
-            strategy_name: best.strategy_name, timeframe: best.best_timeframe,
-            reasoning: format!("Gemma rejected: {}", reason),
-            server_scan: scan,
-            gemma_verdict: format!("REJECT: {}", reason),
-            gemini_verdict: "SKIP".into(),
-        };
-    }
-
-    let gemma_reason = gemma.1.clone();
-    let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
-        "message": format!("✅ Gemma APPROVE: {}", gemma_reason)
-    }).to_string());
+        let reason = gemma.1.clone();
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
+            "message": format!("✅ Gemma APPROVE: {}", reason)
+        }).to_string());
+        (true, reason)
+    };
 
     // ═══════════════════════════════════════════════
     //  Stage 3: Gemini Final Confirm
     // ═══════════════════════════════════════════════
 
-    let _ = log_tx.send(serde_json::json!({
-        "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "running",
-        "message": format!("☁️ Gemini: ยืนยัน {} {} — Gemma เห็นด้วย: {}...",
-            best.direction, sym, gemma_reason)
-    }).to_string());
-
-    // Build candle data for Gemini (multi-TF)
-    let mut tf_candle_summaries = Vec::new();
-    for &(tf_name, tf_min, count) in TIMEFRAMES {
-        let candles = db.get_candles_for_strategy(sym, tf_min, count).await;
-        if candles.len() >= 5 {
-            let recent = &candles[candles.len().saturating_sub(15)..];
-            let ohlc: Vec<String> = recent.iter().map(|c| {
-                format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
-            }).collect();
-            let ind = strategy::compute_indicators(&candles);
-            tf_candle_summaries.push(format!(
-                "=== {} ({} candles) ===\nRSI:{:.1} EMA9:{:.5} EMA21:{:.5} EMA50:{:.5}\nBB: {:.5}/{:.5}/{:.5}\n{}\n",
-                tf_name, candles.len(), ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
-                ind.bb_upper, ind.bb_middle, ind.bb_lower,
-                ohlc.join("\n")
-            ));
-        }
-    }
-
-    let gemini = gemini_confirm_v8(
-        &ctx.gemini_key, &ctx.gemini_model, sym,
-        &best, &gemma_reason, &history,
-        &tf_candle_summaries.join("\n"),
-        &ctx.global_news, &ctx.global_calendar,
-        ctx.balance, ctx.equity, ctx.open_positions,
-        log_tx,
-    ).await;
-
-    if !gemini.0 {
-        let reason = &gemini.1;
+    let (_gemini_approved, gemini_reason, gemini_confidence) = if gemini_disabled {
+        // Skip Gemini — auto-approve with server score
+        info!("⏭️ [Pipeline v8] Gemini DISABLED — using server scan result directly");
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
-            "message": format!("❌ Gemini REJECT: {}", reason)
+            "message": "⏭️ Gemini ปิดใช้งาน — ใช้ผลจาก Server Scan โดยตรง"
+        }).to_string());
+        (true, "SKIP (disabled)".to_string(), best.score)
+    } else {
+        let gemma_label = if gemma_disabled { "Gemma ปิดใช้งาน — ไม่มีการตรวจสอบ" } else { &gemma_reason };
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "running",
+            "message": format!("☁️ Gemini: ยืนยัน {} {} — {}...",
+                best.direction, sym, if gemma_disabled { "ข้าม Gemma" } else { "Gemma เห็นด้วย" })
         }).to_string());
 
-        if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
-            crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-                "☁️ **Gemini Reject**\n📊 {} **{}**\n🎯 Score: {:.0}%\n📈 {} ({})\n🏠 Gemma: {}\n❌ Gemini: {}",
-                best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
-                gemma_reason, reason
-            )).await;
+        // Build candle data for Gemini (multi-TF)
+        let mut tf_candle_summaries = Vec::new();
+        for &(tf_name, tf_min, count) in TIMEFRAMES {
+            let candles = db.get_candles_for_strategy(sym, tf_min, count).await;
+            if candles.len() >= 5 {
+                let recent = &candles[candles.len().saturating_sub(15)..];
+                let ohlc: Vec<String> = recent.iter().map(|c| {
+                    format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
+                }).collect();
+                let ind = strategy::compute_indicators(&candles);
+                tf_candle_summaries.push(format!(
+                    "=== {} ({} candles) ===\nRSI:{:.1} EMA9:{:.5} EMA21:{:.5} EMA50:{:.5}\nBB: {:.5}/{:.5}/{:.5}\n{}\n",
+                    tf_name, candles.len(), ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
+                    ind.bb_upper, ind.bb_middle, ind.bb_lower,
+                    ohlc.join("\n")
+                ));
+            }
         }
 
-        return PipelineV8Result {
-            decision: "HOLD".into(), confidence: best.score, lot_size: 0.0,
-            strategy_name: best.strategy_name, timeframe: best.best_timeframe,
-            reasoning: format!("Gemini rejected: {}", reason),
-            server_scan: scan,
-            gemma_verdict: format!("APPROVE: {}", gemma_reason),
-            gemini_verdict: format!("REJECT: {}", reason),
-        };
-    }
+        let gemini = gemini_confirm_v8(
+            &ctx.gemini_key, &ctx.gemini_model, sym,
+            &best, gemma_label, &history,
+            &tf_candle_summaries.join("\n"),
+            &ctx.global_news, &ctx.global_calendar,
+            ctx.balance, ctx.equity, ctx.open_positions,
+            log_tx,
+        ).await;
 
-    let gemini_reason = gemini.1.clone();
-    let gemini_confidence = gemini.2;
+        if !gemini.0 {
+            let reason = &gemini.1;
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+                "message": format!("❌ Gemini REJECT: {}", reason)
+            }).to_string());
+
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "☁️ **Gemini Reject**\n📊 {} **{}**\n🎯 Score: {:.0}%\n📈 {} ({})\n🏠 Gemma: {}\n❌ Gemini: {}",
+                    best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
+                    gemma_reason, reason
+                )).await;
+            }
+
+            return PipelineV8Result {
+                decision: "HOLD".into(), confidence: best.score, lot_size: 0.0,
+                strategy_name: best.strategy_name, timeframe: best.best_timeframe,
+                reasoning: format!("Gemini rejected: {}", reason),
+                server_scan: scan,
+                gemma_verdict: if gemma_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {}", gemma_reason) },
+                gemini_verdict: format!("REJECT: {}", reason),
+            };
+        }
+
+        (true, gemini.1.clone(), gemini.2)
+    };
 
     // ═══════════════════════════════════════════════
     //  Final: Calculate Lot + Return
     // ═══════════════════════════════════════════════
 
-    let final_confidence = (best.score * 0.4 + gemini_confidence * 0.6).clamp(0.0, 100.0);
+    let final_confidence = if gemini_disabled {
+        best.score // Use server score directly when Gemini is disabled
+    } else {
+        (best.score * 0.4 + gemini_confidence * 0.6).clamp(0.0, 100.0)
+    };
 
     let fallback_lot = ctx.job_config["lot_size"].as_f64().unwrap_or(0.01);
     let lot_size = if ctx.job_config["lot_scale"].as_bool().unwrap_or(false) {
@@ -296,11 +329,14 @@ pub async fn run_pipeline_v8(
         fallback_lot
     };
 
+    let gemma_label = if gemma_disabled { "SKIP (disabled)" } else { &gemma_reason };
+    let gemini_label = if gemini_disabled { "SKIP (disabled)".to_string() } else { format!("{} ({:.0}%)", gemini_reason, gemini_confidence) };
+
     let reasoning = format!(
-        "🔥 Pipeline v8\n📈 กลยุทธ์: {} ({}) — Score {:.0}%\nTF Confluence: {}/{}\n🏠 Gemma: {}\n☁️ Gemini: {} ({:.0}%)\n💰 Final: {:.0}% → Lot: {:.2}",
+        "🔥 Pipeline v8\n📈 กลยุทธ์: {} ({}) — Score {:.0}%\nTF Confluence: {}/{}\n🏠 Gemma: {}\n☁️ Gemini: {}\n💰 Final: {:.0}% → Lot: {:.2}",
         best.strategy_name, best.best_timeframe, best.score,
         best.tf_confluence.agree_count, best.tf_confluence.total_tfs,
-        gemma_reason, gemini_reason, gemini_confidence,
+        gemma_label, gemini_label,
         final_confidence, lot_size
     );
 
@@ -312,11 +348,11 @@ pub async fn run_pipeline_v8(
 
     if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
         crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-            "🔥 **Pipeline v8 — Signal Ready**\n\n📊 **{} {}**\n🎯 Confidence: **{:.0}%**\n💰 Lot: {:.2}\n\n📈 กลยุทธ์: {} ({})\nScore: {:.0}% | TF: {}/{}\n\n🏠 Gemma: {}\n☁️ Gemini: {} ({:.0}%)\n\n📝 เหตุผลที่เลือก: {}",
+            "🔥 **Pipeline v8 — Signal Ready**\n\n📊 **{} {}**\n🎯 Confidence: **{:.0}%**\n💰 Lot: {:.2}\n\n📈 กลยุทธ์: {} ({})\nScore: {:.0}% | TF: {}/{}\n\n🏠 Gemma: {}\n☁️ Gemini: {}\n\n📝 เหตุผลที่เลือก: {}",
             best.direction, sym, final_confidence, lot_size,
             best.strategy_name, best.best_timeframe, best.score,
             best.tf_confluence.agree_count, best.tf_confluence.total_tfs,
-            gemma_reason, gemini_reason, gemini_confidence,
+            gemma_label, gemini_label,
             best.selection_reasoning
         )).await;
     }
@@ -331,8 +367,8 @@ pub async fn run_pipeline_v8(
         timeframe: best.best_timeframe.clone(),
         reasoning,
         server_scan: scan,
-        gemma_verdict: format!("APPROVE: {}", gemma_reason),
-        gemini_verdict: format!("APPROVE: {} ({:.0}%)", gemini_reason, gemini_confidence),
+        gemma_verdict: if gemma_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {}", gemma_reason) },
+        gemini_verdict: if gemini_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {} ({:.0}%)", gemini_reason, gemini_confidence) },
     }
 }
 
