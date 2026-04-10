@@ -158,7 +158,7 @@ fn generate_indicator_summary(ind: &Indicators) -> String {
 pub const ALL_STRATEGIES: &[&str] = &[
     "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
     "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
-    "Reversal Catcher", "Fractal Breakout"
+    "Reversal Catcher", "Fractal Breakout", "Scalper Pro"
 ];
 
 /// Per-symbol cooldown tracker
@@ -461,29 +461,257 @@ pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> StrategyResult {
 }
 
 // ─── 1. Scalper Pro (ปรับ: RSI เข้มขึ้น + ATR filter + trend align) ───
+// ─── 1. Scalper V2 — Smart Multi-Mode Scalping ───
+// 5 modes: BB Squeeze Entry, Liquidity Sweep, EMA Ribbon Bounce, Momentum Spike, Range Break
+// Features: Session filter, ATR gate, 3-confirm minimum, tight SL/TP (0.8/1.2 ATR)
 fn eval_scalper(ind: &Indicators) -> StrategyResult {
     let has_atr = ind.atr > 0.0;
+    if !has_atr { return StrategyResult::none(); }
+
+    // ════════════════════════════════════════
+    //  SESSION FILTER — scalp only during liquid sessions
+    // ════════════════════════════════════════
+    let utc_hour = chrono::Utc::now().hour();
+    let in_london = utc_hour >= 7 && utc_hour < 11;
+    let in_ny = utc_hour >= 13 && utc_hour < 17;
+    let in_overlap = utc_hour >= 13 && utc_hour < 16; // best session
+    let session_ok = in_london || in_ny;
     
-    if ind.rsi_14 < 30.0 && ind.ema_9 > ind.ema_21 && ind.current_close > ind.ema_9 && has_atr {
-        let mut conf = 60.0;
-        if ind.current_close > ind.ema_50 { conf += 10.0; } // trend alignment
-        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI turning up
-        if ind.candle_body_ratio > 0.5 { conf += 5.0; } // strong candle
-        return StrategyResult::buy(
-            format!("Scalper BUY: RSI={:.1}<30, EMA9>EMA21, ATR={:.5}", ind.rsi_14, ind.atr),
-            conf, ind,
-        );
+    if !session_ok {
+        return StrategyResult::none(); // Don't scalp outside liquid sessions
     }
-    if ind.rsi_14 > 70.0 && ind.ema_9 < ind.ema_21 && ind.current_close < ind.ema_9 && has_atr {
-        let mut conf = 60.0;
-        if ind.current_close < ind.ema_50 { conf += 10.0; }
-        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
-        if ind.candle_body_ratio > 0.5 { conf += 5.0; }
-        return StrategyResult::sell(
-            format!("Scalper SELL: RSI={:.1}>70, EMA9<EMA21, ATR={:.5}", ind.rsi_14, ind.atr),
-            conf, ind,
-        );
+
+    // ════════════════════════════════════════
+    //  ATR GATE — skip if too quiet or too wild
+    // ════════════════════════════════════════
+    if ind.atr_ratio < 0.3 || ind.atr_ratio > 2.5 {
+        return StrategyResult::none(); // market not suitable for scalping
     }
+
+    // ════════════════════════════════════════
+    //  CONFIRMATION SYSTEM (count confirmations)
+    // ════════════════════════════════════════
+    let ema_bull = ind.ema_9 > ind.ema_21;
+    let ema_bear = ind.ema_9 < ind.ema_21;
+    let rsi_ok_buy = ind.rsi_14 > 20.0 && ind.rsi_14 < 65.0; // not extreme
+    let rsi_ok_sell = ind.rsi_14 > 35.0 && ind.rsi_14 < 80.0;
+    let mom_bull = ind.momentum > 0.0;
+    let mom_bear = ind.momentum < 0.0;
+    let body_ok = ind.candle_body_ratio > 0.3; // not a doji
+    let higher_tf_bull = ind.current_close > ind.ema_50;
+    let higher_tf_bear = ind.current_close < ind.ema_50;
+
+    let buy_confirms = [ema_bull, rsi_ok_buy, mom_bull, body_ok, higher_tf_bull]
+        .iter().filter(|&&c| c).count();
+    let sell_confirms = [ema_bear, rsi_ok_sell, mom_bear, body_ok, higher_tf_bear]
+        .iter().filter(|&&c| c).count();
+
+    // Session bonus
+    let session_bonus: f64 = if in_overlap { 8.0 } else { 0.0 };
+
+    // Tight SL/TP builder for scalping
+    let build_scalp_result = |signal: Signal, reason: String, conf: f64| -> StrategyResult {
+        StrategyResult {
+            signal,
+            reason,
+            confidence: conf,
+            indicator_summary: generate_indicator_summary(ind),
+            suggested_sl_atr: ind.atr * 0.8,  // tight SL
+            suggested_tp_atr: ind.atr * 1.2,  // tight TP (R:R = 1:1.5)
+        }
+    };
+
+    // ════════════════════════════════════════
+    //  MODE 1: BB Squeeze Entry (range → breakout)
+    // ════════════════════════════════════════
+    // BB is narrow (squeeze) and price breaks out of band with displacement
+    {
+        let bb_width = if ind.bb_middle > 0.0 {
+            (ind.bb_upper - ind.bb_lower) / ind.bb_middle
+        } else { 1.0 };
+        let is_squeeze = bb_width < 0.015; // Bollinger Bandwidth < 1.5% = squeeze
+
+        // BUY: Squeeze break up
+        if is_squeeze && ind.current_close > ind.bb_upper && ind.prev_close <= ind.bb_upper
+            && ind.candle_body_ratio > 0.5 && buy_confirms >= 3 {
+            let mut conf = 65.0 + session_bonus;
+            if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI accelerating
+            if ind.atr_ratio > 0.8 { conf += 5.0; } // expanding volatility
+            return build_scalp_result(Signal::Buy,
+                format!("Scalp BB-Squeeze BUY: BW={:.3}%, Break BB↑, Disp={:.0}%, Cf={}/5",
+                    bb_width * 100.0, ind.candle_body_ratio * 100.0, buy_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+        // SELL: Squeeze break down
+        if is_squeeze && ind.current_close < ind.bb_lower && ind.prev_close >= ind.bb_lower
+            && ind.candle_body_ratio > 0.5 && sell_confirms >= 3 {
+            let mut conf = 65.0 + session_bonus;
+            if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+            if ind.atr_ratio > 0.8 { conf += 5.0; }
+            return build_scalp_result(Signal::Sell,
+                format!("Scalp BB-Squeeze SELL: BW={:.3}%, Break BB↓, Disp={:.0}%, Cf={}/5",
+                    bb_width * 100.0, ind.candle_body_ratio * 100.0, sell_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+    }
+
+    // ════════════════════════════════════════
+    //  MODE 2: Liquidity Sweep (fake breakout → reverse)
+    // ════════════════════════════════════════
+    // Price sweeps swing high/low but closes back inside = liquidity grab
+    {
+        let wick_ratio = if (ind.current_high - ind.current_low) > 0.0 {
+            1.0 - ind.candle_body_ratio // wick proportion
+        } else { 0.0 };
+        let long_wick = wick_ratio > 0.5; // wick > 50% of range = rejection
+
+        // BUY: Swept swing low + long lower wick + closed above swing low
+        if ind.current_low < ind.swing_low && ind.current_close > ind.swing_low
+            && long_wick && ind.current_close > ind.current_open // bullish close
+            && buy_confirms >= 3 {
+            let mut conf = 70.0 + session_bonus;
+            if ind.fair_value_gap_bull { conf += 5.0; }
+            if ind.rsi_14 < 40.0 { conf += 5.0; } // swept into oversold
+            return build_scalp_result(Signal::Buy,
+                format!("Scalp Sweep BUY: Swept<{:.5}, Wick={:.0}%, FVG={}, Cf={}/5",
+                    ind.swing_low, wick_ratio * 100.0, ind.fair_value_gap_bull, buy_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+        // SELL: Swept swing high + long upper wick + closed below swing high
+        if ind.current_high > ind.swing_high && ind.current_close < ind.swing_high
+            && long_wick && ind.current_close < ind.current_open // bearish close
+            && sell_confirms >= 3 {
+            let mut conf = 70.0 + session_bonus;
+            if ind.fair_value_gap_bear { conf += 5.0; }
+            if ind.rsi_14 > 60.0 { conf += 5.0; }
+            return build_scalp_result(Signal::Sell,
+                format!("Scalp Sweep SELL: Swept>{:.5}, Wick={:.0}%, FVG={}, Cf={}/5",
+                    ind.swing_high, wick_ratio * 100.0, ind.fair_value_gap_bear, sell_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+    }
+
+    // ════════════════════════════════════════
+    //  MODE 3: EMA Ribbon Bounce (trending market scalp)
+    // ════════════════════════════════════════
+    // Price touches EMA9 zone in a trend and bounces
+    {
+        let ema_spread = ((ind.ema_9 - ind.ema_21) / ind.ema_21).abs();
+        let trending = ema_spread > 0.001; // EMAs separated = clear trend
+        let near_ema9_pct = ((ind.current_close - ind.ema_9) / ind.ema_9).abs();
+        let touched_ema9 = near_ema9_pct < 0.001 || 
+            (ind.current_low <= ind.ema_9 * 1.001 && ind.current_high >= ind.ema_9 * 0.999);
+
+        // BUY: Uptrend + price bounces off EMA9
+        if trending && ema_bull && touched_ema9
+            && ind.current_close > ind.ema_9  // bounced above
+            && ind.current_close > ind.current_open // bullish candle
+            && buy_confirms >= 3 {
+            let mut conf = 60.0 + session_bonus;
+            if ind.ema_50 > ind.ema_200 { conf += 5.0; } // higher TF aligned
+            if ind.rsi_14 > 45.0 && ind.rsi_14 < 65.0 { conf += 5.0; } // mid RSI = healthy trend
+            if ind.momentum > 0.1 { conf += 5.0; }
+            return build_scalp_result(Signal::Buy,
+                format!("Scalp EMA-Bounce BUY: Touch EMA9={:.5}, Bounce, Spread={:.3}%, Cf={}/5",
+                    ind.ema_9, ema_spread * 100.0, buy_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+        // SELL: Downtrend + price bounces off EMA9
+        if trending && ema_bear && touched_ema9
+            && ind.current_close < ind.ema_9
+            && ind.current_close < ind.current_open
+            && sell_confirms >= 3 {
+            let mut conf = 60.0 + session_bonus;
+            if ind.ema_50 < ind.ema_200 { conf += 5.0; }
+            if ind.rsi_14 > 35.0 && ind.rsi_14 < 55.0 { conf += 5.0; }
+            if ind.momentum < -0.1 { conf += 5.0; }
+            return build_scalp_result(Signal::Sell,
+                format!("Scalp EMA-Bounce SELL: Touch EMA9={:.5}, Bounce, Spread={:.3}%, Cf={}/5",
+                    ind.ema_9, ema_spread * 100.0, sell_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+    }
+
+    // ════════════════════════════════════════
+    //  MODE 4: Momentum Spike (strong displacement)
+    // ════════════════════════════════════════
+    // Large candle body + RSI acceleration = momentum entry
+    {
+        let strong_body = ind.candle_body_ratio > 0.7; // body > 70% of range
+        let rsi_accelerating_up = ind.rsi_14 - ind.rsi_prev > 8.0; // big RSI jump
+        let rsi_accelerating_down = ind.rsi_prev - ind.rsi_14 > 8.0;
+
+        // BUY: Strong bullish momentum
+        if strong_body && rsi_accelerating_up
+            && ind.current_close > ind.current_open
+            && ind.current_close > ind.ema_9
+            && buy_confirms >= 3 {
+            let mut conf = 65.0 + session_bonus;
+            if ind.atr_ratio > 1.0 { conf += 5.0; } // expanding volatility
+            if higher_tf_bull { conf += 5.0; }
+            return build_scalp_result(Signal::Buy,
+                format!("Scalp Momentum BUY: Body={:.0}%, RSI Δ+{:.1}, ATR_ratio={:.2}, Cf={}/5",
+                    ind.candle_body_ratio * 100.0, ind.rsi_14 - ind.rsi_prev, ind.atr_ratio, buy_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+        // SELL: Strong bearish momentum
+        if strong_body && rsi_accelerating_down
+            && ind.current_close < ind.current_open
+            && ind.current_close < ind.ema_9
+            && sell_confirms >= 3 {
+            let mut conf = 65.0 + session_bonus;
+            if ind.atr_ratio > 1.0 { conf += 5.0; }
+            if higher_tf_bear { conf += 5.0; }
+            return build_scalp_result(Signal::Sell,
+                format!("Scalp Momentum SELL: Body={:.0}%, RSI Δ-{:.1}, ATR_ratio={:.2}, Cf={}/5",
+                    ind.candle_body_ratio * 100.0, ind.rsi_prev - ind.rsi_14, ind.atr_ratio, sell_confirms),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+    }
+
+    // ════════════════════════════════════════
+    //  MODE 5: Range Break (Asian range → London breakout)
+    // ════════════════════════════════════════
+    // Price breaks Asian high/low during London session
+    {
+        let has_asian = ind.asian_high > 0.0 && ind.asian_low > 0.0 && ind.asian_high > ind.asian_low;
+
+        if has_asian && in_london {
+            // BUY: Break above Asian high
+            if ind.current_close > ind.asian_high && ind.prev_close <= ind.asian_high
+                && ind.candle_body_ratio > 0.4 && buy_confirms >= 3 {
+                let mut conf = 68.0 + session_bonus;
+                if ind.ema_9 > ind.ema_21 { conf += 5.0; }
+                if ind.momentum > 0.0 { conf += 5.0; }
+                return build_scalp_result(Signal::Buy,
+                    format!("Scalp Range-Break BUY: >Asian High {:.5}, Body={:.0}%, Cf={}/5",
+                        ind.asian_high, ind.candle_body_ratio * 100.0, buy_confirms),
+                    conf.clamp(0.0, 100.0),
+                );
+            }
+            // SELL: Break below Asian low
+            if ind.current_close < ind.asian_low && ind.prev_close >= ind.asian_low
+                && ind.candle_body_ratio > 0.4 && sell_confirms >= 3 {
+                let mut conf = 68.0 + session_bonus;
+                if ind.ema_9 < ind.ema_21 { conf += 5.0; }
+                if ind.momentum < 0.0 { conf += 5.0; }
+                return build_scalp_result(Signal::Sell,
+                    format!("Scalp Range-Break SELL: <Asian Low {:.5}, Body={:.0}%, Cf={}/5",
+                        ind.asian_low, ind.candle_body_ratio * 100.0, sell_confirms),
+                    conf.clamp(0.0, 100.0),
+                );
+            }
+        }
+    }
+
     StrategyResult::none()
 }
 
