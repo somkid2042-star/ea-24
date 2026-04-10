@@ -9,7 +9,7 @@ use log::{info, warn};
 use serde::{Deserialize, Serialize};
 
 const GEMINI_API_BASE: &str = "https://generativelanguage.googleapis.com/v1beta/models";
-const DEFAULT_MODEL: &str = "gemini-2.5-flash";
+const DEFAULT_MODEL: &str = "gemini-2.0-flash";
 const TAVILY_API_URL: &str = "https://api.tavily.com/search";
 const FOREX_CALENDAR_URL: &str = "https://nfs.faireconomy.media/ff_calendar_thisweek.json";
 
@@ -395,37 +395,48 @@ fn strip_thinking_blocks(text: &str) -> String {
     result.trim().to_string()
 }
 
-/// Try primary model first, if it fails, fallback to Gemma 4 Cloud API.
+/// Try primary model first, if it fails, try fallback chain.
+/// Fallback order: primary → gemini-2.0-flash → gemini-1.5-flash → gemma-4-31b-it
 async fn call_ai(gemini_key: &str, model: &str, prompt: &str, temp: f64, max_tokens: i32, json_mode: bool) -> Result<String, String> {
     if gemini_key.is_empty() {
         return Err("API Key is empty — ไม่มี Gemini API Key".to_string());
     }
 
-    // Try primary model first
-    match call_gemini(gemini_key, model, prompt, temp, max_tokens, json_mode).await {
-        Ok(text) => Ok(text),
-        Err(primary_err) => {
-            // Primary model failed — try Gemma 4 Cloud as fallback
-            let fallback_model = "gemma-4-31b-it";
-            let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
+    let model_name = if model.is_empty() { DEFAULT_MODEL } else { model };
 
-            // If already using a Gemma model, don't retry with same family
-            if model_name.contains("gemma") {
-                return Err(format!("AI ล้มเหลว ({}): {}", model_name, primary_err));
+    // Build fallback chain (skip duplicates)
+    let mut fallback_models: Vec<&str> = vec![model_name];
+    for m in &["gemini-2.0-flash", "gemini-1.5-flash", "gemma-4-31b-it"] {
+        if !fallback_models.contains(m) {
+            fallback_models.push(m);
+        }
+    }
+
+    let mut all_errors = Vec::new();
+
+    for (i, try_model) in fallback_models.iter().enumerate() {
+        match call_gemini(gemini_key, try_model, prompt, temp, max_tokens, json_mode).await {
+            Ok(text) => {
+                let clean = if try_model.contains("gemma") {
+                    strip_thinking_blocks(&text)
+                } else {
+                    text
+                };
+                if i > 0 {
+                    info!("✅ [AI] Fallback model {} succeeded (original: {})", try_model, model_name);
+                }
+                return Ok(clean);
             }
-
-            warn!("⚠️ [AI] {} failed: {} — Falling back to Gemma 4 Cloud...", model_name, primary_err);
-            match call_gemini(gemini_key, fallback_model, prompt, temp, max_tokens, json_mode).await {
-                Ok(text) => {
-                    info!("✅ [AI] Gemma 4 Cloud fallback succeeded!");
-                    Ok(text)
+            Err(e) => {
+                if i < fallback_models.len() - 1 {
+                    warn!("⚠️ [AI] {} failed: {} — trying fallback {}...", try_model, e, fallback_models[i+1]);
                 }
-                Err(gemma_err) => {
-                    Err(format!("AI ล้มเหลวทั้งสองระบบ | {}: {} | Gemma4: {}", model_name, primary_err, gemma_err))
-                }
+                all_errors.push(format!("{}: {}", try_model, e));
             }
         }
     }
+
+    Err(format!("AI ล้มเหลวทุกโมเดล | {}", all_errors.join(" | ")))
 }
 
 /// Public wrapper for call_ai — used by pipeline_v8
