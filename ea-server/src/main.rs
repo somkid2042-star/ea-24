@@ -348,6 +348,8 @@ async fn run_server() {
     tokio::spawn(async move {
         tokio::time::sleep(tokio::time::Duration::from_secs(10)).await;
         let mut last_runs: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
+        // Fast-Scan: stores when fast-scan expires per symbol
+        let mut fast_scan_until: std::collections::HashMap<String, std::time::Instant> = std::collections::HashMap::new();
 
         loop {
             let auto_analyze = db_ai.get_config("ai_auto_analyze").await.unwrap_or_else(|| "false".to_string()) == "true";
@@ -390,8 +392,14 @@ async fn run_server() {
                     }).to_string();
                     let _ = tx_ai.send(risk_cmd);
 
+                    // Fast-Scan Mode (v9): reduce interval to 1 min when ATR spike detected
+                    let is_fast_scan = fast_scan_until.get(&sym)
+                        .map(|until| std::time::Instant::now() < *until)
+                        .unwrap_or(false);
+                    let effective_interval = if is_fast_scan { 1u64 } else { interval_min };
+                    
                     let should_run = last_runs.get(&sym)
-                        .map(|last| last.elapsed().as_secs() >= interval_min * 60)
+                        .map(|last| last.elapsed().as_secs() >= effective_interval * 60)
                         .unwrap_or(true); // First run is always true!
 
                     if should_run {
@@ -710,9 +718,20 @@ async fn run_server() {
                         }
                         
                         // Send done event
+                        // Fast-Scan Mode (v9): activate when ATR spike detected
+                        if result.server_scan.atr_ratio > 1.5 {
+                            let until = std::time::Instant::now() + std::time::Duration::from_secs(600); // 10 min
+                            fast_scan_until.insert(sym.clone(), until);
+                            info!("⚡ [Fast-Scan] Activated for {} (ATR ratio: {:.2}) — interval → 1 min for 10 min", sym, result.server_scan.atr_ratio);
+                            let _ = tx_ai.send(serde_json::json!({
+                                "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "info",
+                                "message": format!("⚡ Fast-Scan activated! ATR ratio {:.2} — scan ทุก 1 นาที (10 นาที)", result.server_scan.atr_ratio)
+                            }).to_string());
+                        }
+
                         let _ = tx_ai.send(serde_json::json!({
                             "type": "agents_done", "symbol": sym,
-                            "message": format!("Pipeline v8 completed: {} ({:.0}%)", result.decision, result.confidence)
+                            "message": format!("Pipeline v9 completed: {} ({:.0}%)", result.decision, result.confidence)
                         }).to_string());
                     } // end else (Pipeline v8)
                     } // end if should_run

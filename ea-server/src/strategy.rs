@@ -428,6 +428,16 @@ pub fn compute_indicators(candles: &[Candle]) -> Indicators {
 // ──────────────────────────────────────────────
 
 pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> StrategyResult {
+    // ═══ Spread Filter (v9): Skip signals in ultra-quiet markets ═══
+    // If candle body < 10% of ATR, market is too quiet for reliable signals
+    // (exempts Auto mode which aggregates and handles differently)
+    if strategy != "Auto" && ind.atr > 0.0 {
+        let body = (ind.current_close - ind.current_open).abs();
+        if body < ind.atr * 0.1 {
+            return StrategyResult::none();
+        }
+    }
+
     match strategy {
         "Scalper Pro"      => eval_scalper(ind),
         "Trend Rider"      => eval_trend_rider(ind),

@@ -62,7 +62,7 @@ export const useLayoutContext = () => {
 
 const LayoutProvider = ({ children }: { children: ReactNode }) => {
   const [settings, setSettings] = useLocalStorage<LayoutStateType>(
-    '__TAILWICK_NEXT_CONFIG__',
+    '__EA24_CONFIG__',
     INIT_STATE
   );
 

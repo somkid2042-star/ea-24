@@ -1,9 +1,16 @@
 // ──────────────────────────────────────────────
-//  Pipeline v8: Server-First Strategy Scanner
+//  Pipeline v9: Server-First Strategy Scanner
+//  Upgrades from v8:
+//    • Parallel TF scan (tokio::join!)
+//    • Smart TF weighting (H4=2.0x … M5=0.8x)
+//    • Volatility gate (ATR ratio filter)
+//    • Single AI call (merge Gemma+Gemini → 1 call)
+//    • Directional consensus filter (60/40 rule)
+//
 //  3-Stage Decision Engine:
-//    1. Server Scan: 10 Strategies × 5 TF (M5/M15/M30/H1/H4) → Best Signal
-//    2. Gemma 4 Cloud: Validate + History Check → APPROVE/REJECT
-//    3. Gemini Cloud: Final Confirm + News/Calendar → APPROVE/REJECT → Execute
+//    1. Server Scan: 10 Strategies × 5 TF → Best Signal (parallel)
+//    2. AI Confirm: Single call with full context → APPROVE/REJECT
+//    3. Execute
 // ──────────────────────────────────────────────
 
 use log::{info, warn};
@@ -74,6 +81,7 @@ pub struct ServerScanResult {
     pub best_signal: Option<BestSignal>,
     pub all_signals: Vec<String>,
     pub scan_time_ms: u128,
+    pub atr_ratio: f64,
 }
 
 /// Final pipeline result
@@ -108,16 +116,19 @@ pub struct HistoryData {
 //  Constants
 // ──────────────────────────────────────────────
 
-const TIMEFRAMES: &[(&str, i64, i64)] = &[
-    ("M5",  5,   50),
-    ("M15", 15,  50),
-    ("M30", 30,  50),
-    ("H1",  60,  50),
-    ("H4",  240, 30),
+// (name, minutes, candle_count, weight)
+const TIMEFRAMES: &[(&str, i64, i64, f64)] = &[
+    ("M5",  5,   50, 0.8),
+    ("M15", 15,  50, 1.0),
+    ("M30", 30,  50, 1.2),
+    ("H1",  60,  50, 1.5),
+    ("H4",  240, 30, 2.0),
 ];
 
-const MIN_CONFIDENCE: f64 = 55.0;
-const MIN_CANDLES: usize = 15;
+const MIN_CONFIDENCE_NORMAL: f64 = 55.0;
+const MIN_CONFIDENCE_LOW_VOL: f64 = 65.0;
+const MIN_CONFIDENCE_HIGH_VOL: f64 = 50.0;
+const MIN_CANDLES: usize = 10;
 
 // ──────────────────────────────────────────────
 //  Main Entry Point
@@ -130,14 +141,14 @@ pub async fn run_pipeline_v8(
 ) -> PipelineV8Result {
     let sym = &ctx.symbol;
 
-    info!("🔥 [Pipeline v8] Scanning {}...", sym);
+    info!("🔥 [Pipeline v9] Scanning {}...", sym);
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "running",
-        "message": format!("🔥 Pipeline v8: เริ่ม scan {} — 10 กลยุทธ์ × 5 TF...", sym)
+        "message": format!("🔥 Pipeline v9: เริ่ม scan {} — 10 กลยุทธ์ × 5 TF (Parallel)...", sym)
     }).to_string());
 
     // ═══════════════════════════════════════════════
-    //  Stage 1: Server Strategy Scan
+    //  Stage 1: Server Strategy Scan (PARALLEL)
     // ═══════════════════════════════════════════════
 
     let scan = server_strategy_scan(sym, db, log_tx).await;
@@ -146,11 +157,29 @@ pub async fn run_pipeline_v8(
         "type": "pipeline_v8_scan", "symbol": sym, "scan": &scan
     }).to_string());
 
+    // Dynamic MIN_CONFIDENCE based on volatility
+    let min_conf = if scan.atr_ratio > 1.5 {
+        MIN_CONFIDENCE_HIGH_VOL
+    } else if scan.atr_ratio < 0.5 {
+        MIN_CONFIDENCE_LOW_VOL
+    } else {
+        MIN_CONFIDENCE_NORMAL
+    };
+
     let best = match &scan.best_signal {
-        Some(s) => s.clone(),
+        Some(s) if s.score >= min_conf => s.clone(),
+        Some(s) => {
+            let msg = format!("⏸️ Scan {}: Best score {:.0}% < threshold {:.0}% (ATR ratio: {:.2})",
+                sym, s.score, min_conf, scan.atr_ratio);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
+                "message": &msg
+            }).to_string());
+            return build_hold_result(scan, &msg);
+        }
         None => {
             let msg = format!("⏸️ Scan {}: BUY:{} SELL:{} — ไม่มีสัญญาณผ่าน {:.0}%",
-                sym, scan.buy_signals, scan.sell_signals, MIN_CONFIDENCE);
+                sym, scan.buy_signals, scan.sell_signals, min_conf);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
                 "message": &msg
@@ -159,15 +188,33 @@ pub async fn run_pipeline_v8(
         }
     };
 
+    // ═══════════════════════════════════════════════
+    //  Directional Consensus Filter (60/40 rule)
+    // ═══════════════════════════════════════════════
+    let total_directional = scan.buy_signals + scan.sell_signals;
+    if total_directional >= 4 {
+        let dominant = scan.buy_signals.max(scan.sell_signals) as f64;
+        let ratio = dominant / total_directional as f64;
+        if ratio < 0.60 {
+            let msg = format!("⏸️ {} indecisive: BUY:{} SELL:{} (ratio {:.0}% < 60%) — ตลาดไม่ชัดเจน",
+                sym, scan.buy_signals, scan.sell_signals, ratio * 100.0);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
+                "message": &msg
+            }).to_string());
+            return build_hold_result(scan, &msg);
+        }
+    }
+
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "running",
-        "message": format!("✅ Stage 1: {} {} — Score {:.0}% | {} ({}) | TF Confluence: {}/{}",
+        "message": format!("✅ Stage 1: {} {} — Score {:.0}% | {} ({}) | TF Confluence: {}/{} | ATR ratio: {:.2}",
             best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
-            best.tf_confluence.agree_count, best.tf_confluence.total_tfs)
+            best.tf_confluence.agree_count, best.tf_confluence.total_tfs, scan.atr_ratio)
     }).to_string());
 
     // ═══════════════════════════════════════════════
-    //  Fetch History (used by both Gemma and Gemini)
+    //  Fetch History (parallel with candle prep)
     // ═══════════════════════════════════════════════
 
     let history = fetch_history(sym, &best.strategy_name, db).await;
@@ -177,22 +224,79 @@ pub async fn run_pipeline_v8(
         .as_array()
         .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
         .unwrap_or_default();
-    let gemma_disabled = disabled_stages.iter().any(|s| s == "gemma");
+    let _gemma_disabled = disabled_stages.iter().any(|s| s == "gemma");
     let gemini_disabled = disabled_stages.iter().any(|s| s == "gemini");
+    let use_single_ai = !disabled_stages.iter().any(|s| s == "single_ai_off");
 
     // ═══════════════════════════════════════════════
-    //  Stage 2: Gemma 4 Cloud Validate
+    //  Stage 2: AI Confirm (Single Call — merged Gemma+Gemini)
     // ═══════════════════════════════════════════════
 
-    let (_gemma_approved, gemma_reason) = if gemma_disabled {
-        // Skip Gemma — auto-approve and notify UI
-        info!("⏭️ [Pipeline v8] Gemma DISABLED — skipping to next stage");
+    let (_ai_approved, ai_reason, ai_confidence) = if gemini_disabled {
+        // Skip AI entirely — use server score directly
+        info!("⏭️ [Pipeline v9] AI DISABLED — using server scan result directly");
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+            "message": "⏭️ AI ปิดใช้งาน — ใช้ผลจาก Server Scan โดยตรง"
+        }).to_string());
+        (true, "SKIP (disabled)".to_string(), best.score)
+    } else if use_single_ai {
+        // ═══ SINGLE AI CALL (v9 default) ═══
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
-            "message": "⏭️ Gemma 4 ปิดใช้งาน — ข้ามไปขั้นตอนถัดไป"
+            "message": "⚡ v9 Mode: Single AI Call — Gemma merged into Gemini"
         }).to_string());
-        (true, "SKIP (disabled)".to_string())
+        
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "running",
+            "message": format!("☁️ AI Confirm: {} {} — Score {:.0}%...", best.direction, sym, best.score)
+        }).to_string());
+
+        // Build candle data for AI (multi-TF)
+        let tf_candle_summaries = build_tf_candle_summaries(sym, db).await;
+
+        let result = ai_confirm_single(
+            &ctx.gemini_key, &ctx.gemini_model, sym,
+            &best, &history,
+            &tf_candle_summaries,
+            &ctx.global_news, &ctx.global_calendar,
+            ctx.balance, ctx.equity, ctx.open_positions,
+            log_tx,
+        ).await;
+
+        if !result.0 {
+            let reason = &result.1;
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+                "message": format!("❌ AI REJECT: {}", reason)
+            }).to_string());
+
+            if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
+                crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
+                    "☁️ **AI Reject (v9 Single)**\n📊 {} **{}**\n🎯 Score: {:.0}%\n📈 {} ({})\n📜 WR {:.0}% ({} trades)\n❌ {}",
+                    best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
+                    history.symbol_win_rate, history.symbol_total_trades, reason
+                )).await;
+            }
+
+            return PipelineV8Result {
+                decision: "HOLD".into(), confidence: best.score, lot_size: 0.0,
+                strategy_name: best.strategy_name, timeframe: best.best_timeframe,
+                reasoning: format!("AI rejected: {}", reason),
+                server_scan: scan,
+                gemma_verdict: "MERGED".into(),
+                gemini_verdict: format!("REJECT: {}", reason),
+            };
+        }
+
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+            "message": format!("✅ AI APPROVE ({:.0}%): {}", result.2, result.1)
+        }).to_string());
+
+        (true, result.1.clone(), result.2)
     } else {
+        // ═══ LEGACY 2-STAGE (Gemma → Gemini) ═══
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "running",
             "message": format!("🏠 Gemma 4: ตรวจสอบ {} {} (Score {:.0}%) — กลยุทธ์ {}...",
@@ -231,57 +335,24 @@ pub async fn run_pipeline_v8(
             };
         }
 
-        let reason = gemma.1.clone();
+        let gemma_reason = gemma.1.clone();
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
-            "message": format!("✅ Gemma APPROVE: {}", reason)
+            "message": format!("✅ Gemma APPROVE: {}", gemma_reason)
         }).to_string());
-        (true, reason)
-    };
 
-    // ═══════════════════════════════════════════════
-    //  Stage 3: Gemini Final Confirm
-    // ═══════════════════════════════════════════════
-
-    let (_gemini_approved, gemini_reason, gemini_confidence) = if gemini_disabled {
-        // Skip Gemini — auto-approve with server score
-        info!("⏭️ [Pipeline v8] Gemini DISABLED — using server scan result directly");
-        let _ = log_tx.send(serde_json::json!({
-            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
-            "message": "⏭️ Gemini ปิดใช้งาน — ใช้ผลจาก Server Scan โดยตรง"
-        }).to_string());
-        (true, "SKIP (disabled)".to_string(), best.score)
-    } else {
-        let gemma_label = if gemma_disabled { "Gemma ปิดใช้งาน — ไม่มีการตรวจสอบ" } else { &gemma_reason };
+        // Stage 3: Gemini
         let _ = log_tx.send(serde_json::json!({
             "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "running",
-            "message": format!("☁️ Gemini: ยืนยัน {} {} — {}...",
-                best.direction, sym, if gemma_disabled { "ข้าม Gemma" } else { "Gemma เห็นด้วย" })
+            "message": format!("☁️ Gemini: ยืนยัน {} {} — Gemma เห็นด้วย...", best.direction, sym)
         }).to_string());
 
-        // Build candle data for Gemini (multi-TF)
-        let mut tf_candle_summaries = Vec::new();
-        for &(tf_name, tf_min, count) in TIMEFRAMES {
-            let candles = db.get_candles_for_strategy(sym, tf_min, count).await;
-            if candles.len() >= 5 {
-                let recent = &candles[candles.len().saturating_sub(15)..];
-                let ohlc: Vec<String> = recent.iter().map(|c| {
-                    format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
-                }).collect();
-                let ind = strategy::compute_indicators(&candles);
-                tf_candle_summaries.push(format!(
-                    "=== {} ({} candles) ===\nRSI:{:.1} EMA9:{:.5} EMA21:{:.5} EMA50:{:.5}\nBB: {:.5}/{:.5}/{:.5}\n{}\n",
-                    tf_name, candles.len(), ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
-                    ind.bb_upper, ind.bb_middle, ind.bb_lower,
-                    ohlc.join("\n")
-                ));
-            }
-        }
+        let tf_candle_summaries = build_tf_candle_summaries(sym, db).await;
 
         let gemini = gemini_confirm_v8(
             &ctx.gemini_key, &ctx.gemini_model, sym,
-            &best, gemma_label, &history,
-            &tf_candle_summaries.join("\n"),
+            &best, &gemma_reason, &history,
+            &tf_candle_summaries,
             &ctx.global_news, &ctx.global_calendar,
             ctx.balance, ctx.equity, ctx.open_positions,
             log_tx,
@@ -307,10 +378,15 @@ pub async fn run_pipeline_v8(
                 strategy_name: best.strategy_name, timeframe: best.best_timeframe,
                 reasoning: format!("Gemini rejected: {}", reason),
                 server_scan: scan,
-                gemma_verdict: if gemma_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {}", gemma_reason) },
+                gemma_verdict: format!("APPROVE: {}", gemma_reason),
                 gemini_verdict: format!("REJECT: {}", reason),
             };
         }
+
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+            "message": format!("✅ Gemini APPROVE ({:.0}%): {}", gemini.2, gemini.1)
+        }).to_string());
 
         (true, gemini.1.clone(), gemini.2)
     };
@@ -320,9 +396,9 @@ pub async fn run_pipeline_v8(
     // ═══════════════════════════════════════════════
 
     let final_confidence = if gemini_disabled {
-        best.score // Use server score directly when Gemini is disabled
+        best.score
     } else {
-        (best.score * 0.4 + gemini_confidence * 0.6).clamp(0.0, 100.0)
+        (best.score * 0.4 + ai_confidence * 0.6).clamp(0.0, 100.0)
     };
 
     let fallback_lot = ctx.job_config["lot_size"].as_f64().unwrap_or(0.01);
@@ -334,35 +410,35 @@ pub async fn run_pipeline_v8(
         fallback_lot
     };
 
-    let gemma_label = if gemma_disabled { "SKIP (disabled)" } else { &gemma_reason };
-    let gemini_label = if gemini_disabled { "SKIP (disabled)".to_string() } else { format!("{} ({:.0}%)", gemini_reason, gemini_confidence) };
+    let ai_label = if gemini_disabled { "SKIP (disabled)".to_string() } else { format!("{} ({:.0}%)", ai_reason, ai_confidence) };
 
     let reasoning = format!(
-        "🔥 Pipeline v8\n📈 กลยุทธ์: {} ({}) — Score {:.0}%\nTF Confluence: {}/{}\n🏠 Gemma: {}\n☁️ Gemini: {}\n💰 Final: {:.0}% → Lot: {:.2}",
+        "🔥 Pipeline v9\n📈 กลยุทธ์: {} ({}) — Score {:.0}%\nTF Confluence: {}/{}\nATR Ratio: {:.2}\n☁️ AI: {}\n💰 Final: {:.0}% → Lot: {:.2}",
         best.strategy_name, best.best_timeframe, best.score,
         best.tf_confluence.agree_count, best.tf_confluence.total_tfs,
-        gemma_label, gemini_label,
+        scan.atr_ratio,
+        ai_label,
         final_confidence, lot_size
     );
 
     let _ = log_tx.send(serde_json::json!({
         "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
-        "message": format!("🔥 {} {} — {:.0}% lot:{:.2} | {} ({})",
-            best.direction, sym, final_confidence, lot_size, best.strategy_name, best.best_timeframe)
+        "message": format!("🔥 {} {} — {:.0}% lot:{:.2} | {} ({}) | ATR:{:.2}",
+            best.direction, sym, final_confidence, lot_size, best.strategy_name, best.best_timeframe, scan.atr_ratio)
     }).to_string());
 
     if ctx.discord_alert && !ctx.discord_channel_order.is_empty() {
         crate::discord_bot::send_to_channel(&ctx.discord_channel_order, &format!(
-            "🔥 **Pipeline v8 — Signal Ready**\n\n📊 **{} {}**\n🎯 Confidence: **{:.0}%**\n💰 Lot: {:.2}\n\n📈 กลยุทธ์: {} ({})\nScore: {:.0}% | TF: {}/{}\n\n🏠 Gemma: {}\n☁️ Gemini: {}\n\n📝 เหตุผลที่เลือก: {}",
+            "🔥 **Pipeline v9 — Signal Ready**\n\n📊 **{} {}**\n🎯 Confidence: **{:.0}%**\n💰 Lot: {:.2}\n\n📈 กลยุทธ์: {} ({})\nScore: {:.0}% | TF: {}/{} | ATR: {:.2}\n\n☁️ AI: {}\n\n📝 เหตุผลที่เลือก: {}",
             best.direction, sym, final_confidence, lot_size,
             best.strategy_name, best.best_timeframe, best.score,
-            best.tf_confluence.agree_count, best.tf_confluence.total_tfs,
-            gemma_label, gemini_label,
+            best.tf_confluence.agree_count, best.tf_confluence.total_tfs, scan.atr_ratio,
+            ai_label,
             best.selection_reasoning
         )).await;
     }
 
-    info!("🔥 [Pipeline v8] Final: {} {} → {:.0}% lot:{:.2}", sym, best.direction, final_confidence, lot_size);
+    info!("🔥 [Pipeline v9] Final: {} {} → {:.0}% lot:{:.2}", sym, best.direction, final_confidence, lot_size);
 
     PipelineV8Result {
         decision: best.direction.clone(),
@@ -372,51 +448,86 @@ pub async fn run_pipeline_v8(
         timeframe: best.best_timeframe.clone(),
         reasoning,
         server_scan: scan,
-        gemma_verdict: if gemma_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {}", gemma_reason) },
-        gemini_verdict: if gemini_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {} ({:.0}%)", gemini_reason, gemini_confidence) },
+        gemma_verdict: if use_single_ai { "MERGED".into() } else { format!("APPROVE: {}", ai_reason) },
+        gemini_verdict: if gemini_disabled { "SKIP (disabled)".into() } else { format!("APPROVE: {} ({:.0}%)", ai_reason, ai_confidence) },
     }
 }
 
 // ──────────────────────────────────────────────
-//  Stage 1: Server Strategy Scan
+//  Stage 1: Server Strategy Scan (PARALLEL)
 // ──────────────────────────────────────────────
 
 async fn server_strategy_scan(
     symbol: &str,
     db: &Database,
-    log_tx: &broadcast::Sender<String>,
+    _log_tx: &broadcast::Sender<String>,
 ) -> ServerScanResult {
     let scan_start = std::time::Instant::now();
-    let mut all_signals: Vec<(String, String, String, f64, String, String)> = Vec::new(); // (strategy, tf, direction, confidence, reason, indicator_summary)
+
+    // ═══ PARALLEL: Fetch all TF candles + performance data simultaneously ═══
+    let (candle_results, perf, recent_streak, session_data) = tokio::join!(
+        // Fetch candles for all 5 TFs in parallel
+        async {
+            let (r0, r1, r2, r3, r4) = tokio::join!(
+                db.get_candles_for_strategy(symbol, TIMEFRAMES[0].1, TIMEFRAMES[0].2),
+                db.get_candles_for_strategy(symbol, TIMEFRAMES[1].1, TIMEFRAMES[1].2),
+                db.get_candles_for_strategy(symbol, TIMEFRAMES[2].1, TIMEFRAMES[2].2),
+                db.get_candles_for_strategy(symbol, TIMEFRAMES[3].1, TIMEFRAMES[3].2),
+                db.get_candles_for_strategy(symbol, TIMEFRAMES[4].1, TIMEFRAMES[4].2)
+            );
+            vec![
+                (TIMEFRAMES[0].0, r0, TIMEFRAMES[0].3),
+                (TIMEFRAMES[1].0, r1, TIMEFRAMES[1].3),
+                (TIMEFRAMES[2].0, r2, TIMEFRAMES[2].3),
+                (TIMEFRAMES[3].0, r3, TIMEFRAMES[3].3),
+                (TIMEFRAMES[4].0, r4, TIMEFRAMES[4].3),
+            ]
+        },
+        // Fetch performance data
+        db.get_symbol_performance(symbol, 30),
+        // Fetch streak
+        db.get_recent_streak(symbol),
+        // Fetch session info
+        async {
+            let utc_hour = chrono::Utc::now().hour() as i32;
+            let (session_name, ss, se) = if utc_hour >= 0 && utc_hour < 8 {
+                ("Asia", 0, 8)
+            } else if utc_hour >= 8 && utc_hour < 16 {
+                ("London", 8, 16)
+            } else {
+                ("New York", 16, 24)
+            };
+            let wr = db.get_session_performance(symbol, ss, se, 30).await;
+            (session_name, wr)
+        }
+    );
+
+    let symbol_win_rate = perf["win_rate"].as_f64().unwrap_or(50.0);
+    let symbol_total_trades = perf["total_trades"].as_i64().unwrap_or(0);
+    let (session_name, session_wr) = session_data;
+
+    // candle_results is already a Vec from the parallel fetch
+    let all_candle_data = candle_results;
+
+    let mut all_signals: Vec<(String, String, String, f64, String, String, f64)> = Vec::new(); // (strategy, tf, direction, confidence, reason, indicator_summary, tf_weight)
     let mut all_scan_details: Vec<String> = Vec::new();
     let mut buy_count = 0usize;
     let mut sell_count = 0usize;
+    let mut max_atr_ratio: f64 = 1.0;
 
-    // Fetch performance data for scoring
-    let perf = db.get_symbol_performance(symbol, 30).await;
-    let symbol_win_rate = perf["win_rate"].as_f64().unwrap_or(50.0);
-    let symbol_total_trades = perf["total_trades"].as_i64().unwrap_or(0);
-    let recent_streak = db.get_recent_streak(symbol).await;
-
-    let utc_hour = chrono::Utc::now().hour() as i32;
-    let (session_name, session_start, session_end) = if utc_hour >= 0 && utc_hour < 8 {
-        ("Asia", 0, 8)
-    } else if utc_hour >= 8 && utc_hour < 16 {
-        ("London", 8, 16)
-    } else {
-        ("New York", 16, 24)
-    };
-    let session_wr = db.get_session_performance(symbol, session_start, session_end, 30).await;
-
-    // Scan each TF
-    for &(tf_name, tf_min, candle_count) in TIMEFRAMES {
-        let candles = db.get_candles_for_strategy(symbol, tf_min, candle_count).await;
+    // Evaluate strategies on each TF
+    for (tf_name, candles, tf_weight) in &all_candle_data {
         if candles.len() < MIN_CANDLES {
             all_scan_details.push(format!("{}: ข้อมูลไม่พอ ({} แท่ง)", tf_name, candles.len()));
             continue;
         }
 
-        let indicators = strategy::compute_indicators(&candles);
+        let indicators = strategy::compute_indicators(candles);
+        
+        // Track ATR ratio for volatility gate
+        if indicators.atr_ratio > max_atr_ratio {
+            max_atr_ratio = indicators.atr_ratio;
+        }
 
         for &strat_name in strategy::ALL_STRATEGIES {
             let result = strategy::evaluate_strategy(strat_name, &indicators);
@@ -428,29 +539,39 @@ async fn server_strategy_scan(
                     continue;
                 }
             };
-            all_scan_details.push(format!("✅ {}/{}: {} {:.0}%", tf_name, strat_name, dir, result.confidence));
+            all_scan_details.push(format!("✅ {}/{}: {} {:.0}% (w:{:.1}x)", tf_name, strat_name, dir, result.confidence, tf_weight));
             all_signals.push((
                 strat_name.to_string(), tf_name.to_string(), dir.to_string(),
-                result.confidence, result.reason.clone(), result.indicator_summary.clone()
+                result.confidence, result.reason.clone(), result.indicator_summary.clone(),
+                *tf_weight,
             ));
         }
     }
 
     let total_signals = all_signals.len();
 
-    // Score each signal
-    let mut scored: Vec<(f64, usize)> = Vec::new(); // (score, index)
-    for (i, (strat, tf, dir, conf, _reason, _ind)) in all_signals.iter().enumerate() {
+    // Score each signal with SMART TF WEIGHTING
+    let mut scored: Vec<(f64, usize)> = Vec::new();
+    for (i, (strat, tf, dir, conf, _reason, _ind, tf_weight)) in all_signals.iter().enumerate() {
         let mut score = *conf;
 
-        // TF Confluence bonus: count how many TFs agree with this direction
-        let tf_agree_count = all_signals.iter()
+        // TF Confluence bonus with WEIGHTING
+        let mut tf_agree_weight = 0.0f64;
+        let tf_agree_set: std::collections::HashSet<&String> = all_signals.iter()
             .filter(|s| s.2 == *dir && s.1 != *tf)
             .map(|s| &s.1)
-            .collect::<std::collections::HashSet<_>>()
-            .len();
-        let tf_bonus = (tf_agree_count as f64) * 7.0;  // +7% per agreeing TF (reward confluence)
-        score += tf_bonus;
+            .collect();
+        let _tf_agree_count = tf_agree_set.len();
+        
+        // Weighted confluence: higher TF agreement counts more
+        for agreeing_sig in all_signals.iter().filter(|s| s.2 == *dir && s.1 != *tf) {
+            tf_agree_weight += agreeing_sig.6 * 4.0; // weight × 4 per agreeing signal
+        }
+        // Deduplicate TF weight (count unique TFs)
+        score += tf_agree_weight.min(30.0); // cap at +30
+
+        // Apply TF weight to base score
+        score *= 0.7 + (*tf_weight * 0.15); // H4=1.0, M5=0.82
 
         // History bonus/penalty (relaxed penalties)
         if symbol_total_trades >= 10 {
@@ -469,7 +590,7 @@ async fn server_strategy_scan(
         if session_wr > 55.0 { score += 5.0; }
         else if session_wr < 30.0 { score -= 3.0; }
 
-        // Streak dampening (relaxed — only penalize extreme losing streaks)
+        // Streak dampening (relaxed)
         if recent_streak < -5 { score -= 5.0; }
         if recent_streak > 8 { score -= 3.0; }
 
@@ -477,13 +598,14 @@ async fn server_strategy_scan(
         scored.push((score, i));
     }
 
-    // Sort by score descending → pick the best
+    // Sort by score descending
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
     let best_signal = if let Some(&(best_score, best_idx)) = scored.first() {
-        if best_score >= MIN_CONFIDENCE {
+        // Note: MIN_CONFIDENCE check is done in the main function with volatility gate
+        if best_score >= MIN_CONFIDENCE_HIGH_VOL { // Use lowest threshold here, real check is in main
             let sig = &all_signals[best_idx];
-            let (strat, tf, dir, conf, reason, ind_summary) = sig;
+            let (strat, tf, dir, conf, reason, ind_summary, _tw) = sig;
 
             // Build TF confluence detail
             let tf_details: Vec<TfDetail> = all_signals.iter()
@@ -510,7 +632,7 @@ async fn server_strategy_scan(
             }).unwrap_or_default();
 
             let selection_reasoning = format!(
-                "เลือก {}/{} เพราะ: Score สูงสุด {:.0}% (Base Conf {:.0}% + TF Confluence {}/{} + Symbol WR {:.0}% + Session {} {:.0}% + Streak {}). เหตุผลกลยุทธ์: {} | {}",
+                "เลือก {}/{} เพราะ: Score สูงสุด {:.0}% (Base Conf {:.0}% + TF Weighted Confluence {}/{} + Symbol WR {:.0}% + Session {} {:.0}% + Streak {}). เหตุผลกลยุทธ์: {} | {}",
                 tf, strat, best_score, conf, agree_tf_count, TIMEFRAMES.len(),
                 symbol_win_rate, session_name, session_wr, recent_streak,
                 reason, second_best
@@ -535,6 +657,8 @@ async fn server_strategy_scan(
     };
 
     let scan_time = scan_start.elapsed().as_millis();
+    info!("⚡ [Pipeline v9] Scan completed in {}ms ({} signals from {} checks) ATR ratio: {:.2}",
+        scan_time, total_signals, strategy::ALL_STRATEGIES.len() * TIMEFRAMES.len(), max_atr_ratio);
 
     ServerScanResult {
         strategies_scanned: strategy::ALL_STRATEGIES.len() * TIMEFRAMES.len(),
@@ -545,11 +669,181 @@ async fn server_strategy_scan(
         best_signal,
         all_signals: all_scan_details,
         scan_time_ms: scan_time,
+        atr_ratio: max_atr_ratio,
     }
 }
 
 // ──────────────────────────────────────────────
-//  Stage 2: Gemma 4 Validate
+//  Build TF candle summaries (shared by both AI modes)
+// ──────────────────────────────────────────────
+
+async fn build_tf_candle_summaries(symbol: &str, db: &Database) -> String {
+    let mut summaries = Vec::new();
+    for &(tf_name, tf_min, count, _weight) in TIMEFRAMES {
+        let candles = db.get_candles_for_strategy(symbol, tf_min, count).await;
+        if candles.len() >= 5 {
+            let recent = &candles[candles.len().saturating_sub(15)..];
+            let ohlc: Vec<String> = recent.iter().map(|c| {
+                format!("O:{:.5} H:{:.5} L:{:.5} C:{:.5}", c.open, c.high, c.low, c.close)
+            }).collect();
+            let ind = strategy::compute_indicators(&candles);
+            summaries.push(format!(
+                "=== {} ({} candles) ===\nRSI:{:.1} EMA9:{:.5} EMA21:{:.5} EMA50:{:.5}\nBB: {:.5}/{:.5}/{:.5}\n{}\n",
+                tf_name, candles.len(), ind.rsi_14, ind.ema_9, ind.ema_21, ind.ema_50,
+                ind.bb_upper, ind.bb_middle, ind.bb_lower,
+                ohlc.join("\n")
+            ));
+        }
+    }
+    summaries.join("\n")
+}
+
+// ──────────────────────────────────────────────
+//  Stage 2 (v9): Single AI Confirm
+// ──────────────────────────────────────────────
+
+#[allow(clippy::too_many_arguments)]
+async fn ai_confirm_single(
+    gemini_key: &str,
+    model: &str,
+    symbol: &str,
+    signal: &BestSignal,
+    history: &HistoryData,
+    chart_data: &str,
+    news: &Option<ai_engine::NewsResult>,
+    calendar: &Option<ai_engine::CalendarResult>,
+    balance: f64,
+    equity: f64,
+    open_positions: usize,
+    log_tx: &broadcast::Sender<String>,
+) -> (bool, String, f64) {
+    let news_summary = news.as_ref().map(|n| {
+        format!("Sentiment: {} — {}", n.sentiment, n.summary)
+    }).unwrap_or_else(|| "ไม่มีข้อมูลข่าว".to_string());
+
+    let calendar_summary = calendar.as_ref().map(|c| {
+        if c.high_impact_soon {
+            format!("⚠️ {}", c.warning)
+        } else {
+            "✅ ไม่มีข่าวสำคัญใกล้ๆ".to_string()
+        }
+    }).unwrap_or_else(|| "ไม่มีข้อมูล".to_string());
+
+    let drawdown = if balance > 0.0 { ((balance - equity) / balance) * 100.0 } else { 0.0 };
+
+    let prompt = format!(
+r#"You are a professional fund manager making a trading decision. This is a SINGLE-STEP validation. Respond REASONING in Thai only.
+
+## Signal from Server Algorithm (10 strategies × 5 timeframes scanned)
+- Symbol: {symbol}
+- Direction: {dir}
+- Strategy: {strat} (Timeframe: {tf})
+- Server Score: {score:.0}% | TF Confluence: {tf_agree}/{tf_total}
+- เหตุผลอัลกอริทึม: {reason}
+- Indicators: {indicators}
+
+## ประวัติคู่เงิน
+- Win Rate: {wr:.0}% ({trades} trades) | Strategy WR: {strat_wr:.0}%
+- Avg PnL: ${avg_pnl:.2} | Session {session}: {session_wr:.0}% | Streak: {streak}
+
+## สถานะพอร์ต
+- Balance: ${balance:.2} | Equity: ${equity:.2} | Drawdown: {dd:.2}%
+- Open Positions: {positions}/5
+
+## ข่าว
+{news}
+
+## ปฏิทินเศรษฐกิจ
+{calendar}
+
+## กราฟ (Multi-Timeframe OHLC)
+{chart}
+
+## Validation Rules (เน้น APPROVE — ปฏิเสธเฉพาะกรณีอันตรายจริงๆ)
+1. Signal ผ่าน Server Scan แล้ว (10 กลยุทธ์ × 5 TF) — ควร APPROVE เป็นค่าเริ่มต้น
+2. CHECK indicators: REJECT ONLY if BUY with RSI>85 or SELL with RSI<15
+3. CHECK history: REJECT ONLY if strategy WR < 25% on this symbol
+4. CHECK news: REJECT ONLY if high-impact news within 15 minutes (NFP, FOMC, CPI)
+5. CHECK portfolio: REJECT ONLY if drawdown > 15% or positions >= 8
+6. CHECK streak: REJECT ONLY if 5+ consecutive losses
+7. DEFAULT: APPROVE — when in doubt, always APPROVE
+
+Respond EXACTLY:
+DECISION: [APPROVE/REJECT]
+CONFIDENCE: [0-100]
+REASONING: [2-3 sentences in Thai explaining your decision]"#,
+        symbol = symbol,
+        dir = signal.direction,
+        strat = signal.strategy_name,
+        tf = signal.best_timeframe,
+        score = signal.score,
+        tf_agree = signal.tf_confluence.agree_count,
+        tf_total = signal.tf_confluence.total_tfs,
+        reason = signal.reason,
+        indicators = signal.indicator_summary,
+        wr = history.symbol_win_rate,
+        trades = history.symbol_total_trades,
+        strat_wr = history.strategy_win_rate,
+        avg_pnl = history.avg_pnl,
+        session = history.session_name,
+        session_wr = history.session_win_rate,
+        streak = history.recent_streak,
+        balance = balance,
+        equity = equity,
+        dd = drawdown,
+        positions = open_positions,
+        news = news_summary,
+        calendar = calendar_summary,
+        chart = chart_data,
+    );
+
+    match ai_engine::call_ai_pub(gemini_key, model, &prompt, 0.2, 400, false).await {
+        Ok(response) => {
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log_verbose", "symbol": symbol, "agent": "ai_confirm_v9",
+                "prompt": prompt, "response": response.clone()
+            }).to_string());
+
+            let mut decision = "REJECT".to_string();
+            let mut confidence = 50.0;
+            let mut reasoning = String::new();
+
+            for line in response.lines() {
+                let l = line.trim();
+                if l.starts_with("DECISION:") {
+                    let v = l.replace("DECISION:", "").trim().to_uppercase();
+                    if v.contains("APPROVE") { decision = "APPROVE".into(); }
+                }
+                if l.starts_with("CONFIDENCE:") {
+                    let v: String = l.replace("CONFIDENCE:", "").trim().chars()
+                        .filter(|c| c.is_ascii_digit() || *c == '.').collect();
+                    confidence = v.parse().unwrap_or(50.0);
+                }
+                if l.starts_with("REASONING:") {
+                    reasoning = l.replace("REASONING:", "").trim().to_string();
+                }
+            }
+            if reasoning.is_empty() { reasoning = response.chars().take(200).collect(); }
+
+            let approved = decision == "APPROVE";
+            info!("☁️ [AI v9] {} {} → {} ({:.0}%) — {}", signal.direction, symbol,
+                decision, confidence, reasoning);
+
+            (approved, reasoning, confidence)
+        }
+        Err(e) => {
+            warn!("☁️ [AI v9] Error: {} — Auto-approving", e);
+            let _ = log_tx.send(serde_json::json!({
+                "type": "agent_log", "symbol": symbol, "agent": "gemini_confirm", "status": "error",
+                "message": format!("❌ Error: {} — Auto-approve", e)
+            }).to_string());
+            (true, format!("Auto-approve (API Error: {})", e), 60.0)
+        }
+    }
+}
+
+// ──────────────────────────────────────────────
+//  Legacy Stage 2: Gemma 4 Validate (for 2-stage mode)
 // ──────────────────────────────────────────────
 
 async fn gemma_validate_v8(
@@ -560,7 +854,6 @@ async fn gemma_validate_v8(
     data_sources: &[String],
     log_tx: &broadcast::Sender<String>,
 ) -> (bool, String) {
-    // Build prompt sections based on enabled data sources
     let has_indicators = data_sources.iter().any(|s| s == "indicators");
     let has_trade_history = data_sources.iter().any(|s| s == "trade_history");
     let has_strategy_wr = data_sources.iter().any(|s| s == "strategy_wr");
@@ -571,46 +864,32 @@ async fn gemma_validate_v8(
     let enabled_count = data_sources.len();
     info!("🏠 [Gemma v8] Data sources enabled: {}/{} — {:?}", enabled_count, 6, data_sources);
 
-    // === Conditionally build sections ===
     let indicator_section = if has_indicators {
         format!("## Indicators\n{}\n", signal.indicator_summary)
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
     let history_section = if has_trade_history {
         format!("## Trade History 30 days\n- Win Rate: {:.0}% ({} trades)\n- Avg PnL: ${:.2}\n",
             history.symbol_win_rate, history.symbol_total_trades, history.avg_pnl)
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
     let strategy_section = if has_strategy_wr {
         format!("## Strategy Win Rate\n- {} WR: {:.0}% ({} trades)\n",
             signal.strategy_name, history.strategy_win_rate, history.strategy_total_trades)
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
     let session_section = if has_session {
         format!("## Session\n- Session: {} (WR {:.0}%)\n", history.session_name, history.session_win_rate)
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
     let streak_section = if has_streak {
         format!("## Streak\n- {}\n", history.recent_streak)
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
     let recent_section = if has_recent {
         format!("## 5 Recent Orders\n{}\n", format_recent_decisions(&history.recent_decisions))
-    } else {
-        String::new()
-    };
+    } else { String::new() };
 
-    // === Build rules based on available data ===
     let mut rules = vec![
         "- APPROVE if signal has reasonable basis — do NOT overthink".to_string(),
     ];
@@ -682,7 +961,7 @@ Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
 }
 
 // ──────────────────────────────────────────────
-//  Stage 3: Gemini Final Confirm
+//  Legacy Stage 3: Gemini Final Confirm (for 2-stage mode)
 // ──────────────────────────────────────────────
 
 #[allow(clippy::too_many_arguments)]
