@@ -8,6 +8,7 @@ mod notify;
 mod discord_bot;
 mod ai_engine;
 mod pipeline_v8;
+mod position_manager;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -464,184 +465,137 @@ async fn run_server() {
                             continue; // Skip this symbol entirely
                         }
 
-                        // Read recovery threshold from config (default 3.0%)
-                        let recovery_threshold = db_ai.get_config("recovery_threshold").await
-                            .and_then(|v| v.parse::<f64>().ok()).unwrap_or(3.0);
-                        
-                        // Check if this symbol already has an open position
-                        let sym_position = {
+
+
+                        // Check if this symbol already has open positions
+                        let sym_positions: Vec<serde_json::Value> = {
                             let state = ea_state_ai.read().await;
                             state.positions_detail.iter()
-                                .find(|p| p["symbol"].as_str().unwrap_or("") == sym)
+                                .filter(|p| {
+                                    let ps = p["symbol"].as_str().unwrap_or("");
+                                    ps == sym || ps.split('.').next().unwrap_or("") == sym.split('.').next().unwrap_or("")
+                                })
                                 .cloned()
+                                .collect()
                         };
                         
-                        if let Some(pos) = sym_position {
+                        if !sym_positions.is_empty() {
                             // ═══════════════════════════════════════════════
-                            //  AI ORDER MANAGEMENT MODE — manage existing position
+                            //  AI POSITION MANAGER — ดูแลออเดอร์ที่เปิดอยู่
+                            //  แยกวิเคราะห์ทุกออเดอร์บน Symbol
                             // ═══════════════════════════════════════════════
-                            let ticket = pos["ticket"].as_i64().unwrap_or(0);
-                            info!("🛡️ [Auto-Pilot] {} has open position #{}, switching to AI Order Manager", sym, ticket);
+                            info!("🛡️ [Auto-Pilot] {} has {} open positions, switching to Position Manager", 
+                                sym, sym_positions.len());
                             
                             let start_msg = serde_json::json!({ "type": "agents_started", "symbol": sym }).to_string();
                             let _ = tx_ai.send(start_msg);
                             
-                            let candles_m5 = db_ai.get_candles_for_strategy(&sym, 5, 20).await;
-                            let bal = {
+                            let (bal, eq) = {
                                 let state = ea_state_ai.read().await;
-                                if state.balance > 0.0 { state.balance } else { 10000.0 }
+                                (
+                                    if state.balance > 0.0 { state.balance } else { 10000.0 },
+                                    if state.equity > 0.0 { state.equity } else { 10000.0 },
+                                )
                             };
-
-                            // ═══════════════════════════════════════════════
-                            //  Feature 1: Check if Recovery Mode needed
-                            // ═══════════════════════════════════════════════
-                            let pos_pnl = pos["pnl"].as_f64().unwrap_or(0.0);
-                            let pnl_pct = if bal > 0.0 { (pos_pnl / bal).abs() * 100.0 } else { 0.0 };
                             
-                            if pos_pnl < 0.0 && pnl_pct >= recovery_threshold {
-                                info!("🚨 [Recovery] {} #{} drawdown {:.2}% >= threshold {:.1}%, entering Recovery Mode", 
-                                    sym, ticket, pnl_pct, recovery_threshold);
-                                
-                                let recovery = ai_engine::run_ai_recovery_manager(
-                                    &gemini_key, &gemini_model, &sym, &pos, &candles_m5, bal, recovery_threshold, &tx_ai
-                                ).await;
-                                
+                            let max_loss_usd = job["max_loss_usd"].as_f64().unwrap_or(50.0);
+                            let hedge_enabled = job["hedge_enabled"].as_bool().unwrap_or(true);
+                            let manage_positions_enabled = job["manage_positions"].as_bool().unwrap_or(true);
+                            let discord_channel_order = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                            
+                            if !manage_positions_enabled {
+                                info!("⏸️ [Position Manager] Disabled for {} — skipping", sym);
                                 let _ = tx_ai.send(serde_json::json!({
-                                    "type": "ai_recovery_result", "symbol": sym, "ticket": ticket, "result": recovery
+                                    "type": "agent_log", "symbol": sym, "agent": "position_manager", "status": "done",
+                                    "message": "Position Manager ปิดใช้งาน — ไม่ดำเนินการ"
                                 }).to_string());
-                                
-                                match recovery.action.as_str() {
-                                    "HEDGE" => {
-                                        let hedge_lot = recovery.hedge_lot.unwrap_or(0.01);
-                                        let hedge_dir = if pos["type"].as_str().unwrap_or("BUY") == "BUY" { "SELL" } else { "BUY" };
-                                        info!("🔀 [Recovery] HEDGING {} #{} → {} {:.2} lot", sym, ticket, hedge_dir, hedge_lot);
-                                        let cmd = serde_json::json!({
-                                            "action": "open_trade", "symbol": sym,
-                                            "direction": hedge_dir, "lot_size": hedge_lot,
-                                            "comment": format!("EA24-HEDGE-#{}", ticket)
-                                        }).to_string();
-                                        let _ = tx_ai.send(cmd);
-                                        if discord_alert {
-                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
-                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                                "🔀 <b>AI Recovery: HEDGE</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
-                                                sym, ticket, hedge_dir, hedge_lot, recovery.reasoning
-                                            )).await;
-                                        }
-                                    }
-                                    "AVG_DOWN" => {
-                                        let avg_lot = recovery.avg_lot.unwrap_or(0.01);
-                                        let avg_dir = pos["type"].as_str().unwrap_or("BUY");
-                                        info!("📉 [Recovery] AVG_DOWN {} #{} → {} {:.2} lot", sym, ticket, avg_dir, avg_lot);
-                                        let cmd = serde_json::json!({
-                                            "action": "open_trade", "symbol": sym,
-                                            "direction": avg_dir, "lot_size": avg_lot,
-                                            "comment": format!("EA24-AVG-#{}", ticket)
-                                        }).to_string();
-                                        let _ = tx_ai.send(cmd);
-                                        if discord_alert {
-                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
-                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                                "📉 <b>AI Recovery: ถัวเฉลี่ย</b>\n\n📊 {} #{}\n💊 {} {:.2} lot\n📝 {}",
-                                                sym, ticket, avg_dir, avg_lot, recovery.reasoning
-                                            )).await;
-                                        }
-                                    }
-                                    "CUT" => {
-                                        info!("✂️ [Recovery] CUT LOSS {} #{}", sym, ticket);
-                                        let cmd = serde_json::json!({
-                                            "action": "close_trade", "ticket": ticket
-                                        }).to_string();
-                                        let _ = tx_ai.send(cmd);
-                                        if discord_alert {
-                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
-                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                                "✂️ <b>AI Recovery: ตัดขาดทุน</b>\n\n📊 {} #{}\n💔 DD: {:.2}%\n📝 {}",
-                                                sym, ticket, pnl_pct, recovery.reasoning
-                                            )).await;
-                                        }
-                                    }
-                                    _ => {
-                                        info!("⏸️ [Recovery] HOLD {} #{} — {}", sym, ticket, recovery.reasoning);
-                                    }
-                                }
                             } else {
-                            // Normal Order Management (not in recovery)
-                            let manage_result = ai_engine::run_ai_order_manager(
-                                &gemini_key, &gemini_model, &sym, &pos, &candles_m5, bal, &tx_ai
-                            ).await;
-                            
-                            // Broadcast result
-                            let resp = serde_json::json!({
-                                "type": "order_manage_result",
-                                "symbol": sym,
-                                "ticket": ticket,
-                                "result": manage_result
-                            });
-                            let _ = tx_ai.send(resp.to_string());
-                            
-                            // Execute the AI decision
-                            match manage_result.action.as_str() {
-                                "BREAK_EVEN" | "TRAIL" => {
-                                    if let Some(new_sl) = manage_result.new_sl {
-                                        info!("🔒 [Order Manager] Moving SL to {:.5} for {} #{}", new_sl, sym, ticket);
-                                        let cmd = serde_json::json!({
-                                            "action": "modify_sl",
-                                            "ticket": ticket,
-                                            "new_sl": new_sl
-                                        }).to_string();
-                                        let _ = tx_ai.send(cmd);
-                                        
-                                        if telegram_alert {
-                                            let tg_token = db_ai.get_config("telegram_bot_token").await.unwrap_or_default();
-                                            let tg_chat = db_ai.get_config("telegram_chat_id").await.unwrap_or_default();
-                                            let emoji = if manage_result.action == "BREAK_EVEN" { "🔒" } else { "📈" };
-                                            notify::send_telegram_notify(&tg_token, &tg_chat, &format!(
-                                                "{} <b>AI Order Manager</b>\n\n📊 {} #{}\n🎯 {} → SL เลื่อนไป {:.5}\n📝 {}",
-                                                emoji, sym, ticket, manage_result.action, new_sl, manage_result.reasoning
-                                            )).await;
+                                let positions = position_manager::parse_positions(&sym_positions, &sym);
+                                
+                                let manage_ctx = position_manager::ManageContext {
+                                    symbol: sym.clone(),
+                                    positions,
+                                    balance: bal,
+                                    equity: eq,
+                                    gemini_key: gemini_key.clone(),
+                                    gemini_model: gemini_model.clone(),
+                                    max_loss_usd,
+                                    manage_interval: job["manage_interval"].as_i64().unwrap_or(5) as i32,
+                                    hedge_enabled,
+                                    discord_alert,
+                                    discord_channel_order,
+                                    job_config: job.clone(),
+                                };
+                                
+                                let results = position_manager::manage_positions(&manage_ctx, &tx_ai).await;
+                                
+                                // Execute actions
+                                for r in &results {
+                                    match r.action.as_str() {
+                                        "CLOSE" => {
+                                            info!("🔴 [Position Manager] CLOSING {} #{}", sym, r.ticket);
+                                            let cmd = serde_json::json!({
+                                                "action": "close_trade",
+                                                "ticket": r.ticket
+                                            }).to_string();
+                                            let _ = tx_ai.send(cmd);
                                         }
+                                        "HEDGE" => {
+                                            if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
+                                                info!("🛡️ [Position Manager] HEDGING {} #{} → {} {:.2} lot", sym, r.ticket, dir, lot);
+                                                let cmd = serde_json::json!({
+                                                    "action": "open_trade",
+                                                    "symbol": sym,
+                                                    "direction": dir,
+                                                    "lot_size": lot,
+                                                    "comment": format!("EA24-HEDGE-#{}", r.ticket)
+                                                }).to_string();
+                                                let _ = tx_ai.send(cmd);
+                                            }
+                                        }
+                                        "PARTIAL_CLOSE" => {
+                                            info!("✂️ [Position Manager] Partial close 50% {} #{}", sym, r.ticket);
+                                            let cmd = serde_json::json!({
+                                                "action": "partial_close",
+                                                "ticket": r.ticket,
+                                                "percent": 50.0
+                                            }).to_string();
+                                            let _ = tx_ai.send(cmd);
+                                        }
+                                        "MODIFY_SL" => {
+                                            // Move SL to breakeven — need open price
+                                            let pos = sym_positions.iter().find(|p| p["ticket"].as_i64() == Some(r.ticket));
+                                            if let Some(p) = pos {
+                                                let open_price = p["open_price"].as_f64().unwrap_or(p["price_open"].as_f64().unwrap_or(0.0));
+                                                if open_price > 0.0 {
+                                                    info!("🔒 [Position Manager] Move SL to BE {:.5} for {} #{}", open_price, sym, r.ticket);
+                                                    let cmd = serde_json::json!({
+                                                        "action": "modify_sl",
+                                                        "ticket": r.ticket,
+                                                        "new_sl": open_price
+                                                    }).to_string();
+                                                    let _ = tx_ai.send(cmd);
+                                                }
+                                            }
+                                        }
+                                        _ => {} // HOLD — do nothing
                                     }
                                 }
-                                "CLOSE" => {
-                                    info!("🔴 [Order Manager] CLOSING {} #{}", sym, ticket);
-                                    let cmd = serde_json::json!({
-                                        "action": "close_trade",
-                                        "ticket": ticket
-                                    }).to_string();
-                                    let _ = tx_ai.send(cmd);
-                                    
-                                    if discord_alert {
-                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
-                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                            "🔴 <b>AI ปิดออเดอร์</b>\n\n📊 {} #{}\n📝 {}",
-                                            sym, ticket, manage_result.reasoning
-                                        )).await;
-                                        }
-                                }
-                                "PARTIAL_CLOSE" => {
-                                    info!("✂️ [Order Manager] Partial close 50% {} #{}", sym, ticket);
-                                    let cmd = serde_json::json!({
-                                        "action": "partial_close",
-                                        "ticket": ticket,
-                                        "percent": 50.0
-                                    }).to_string();
-                                    let _ = tx_ai.send(cmd);
-                                    
-                                    if discord_alert {
-                                            let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
-                                            crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                            "✂️ <b>AI ปิดบางส่วน 50%</b>\n\n📊 {} #{}\n📝 {}",
-                                            sym, ticket, manage_result.reasoning
-                                        )).await;
-                                        }
-                                }
-                                _ => {
-                                    // HOLD — do nothing
-                                    info!("⏸️ [Order Manager] HOLD {} #{} — {}", sym, ticket, manage_result.reasoning);
-                                }
+                                
+                                // Broadcast result
+                                let _ = tx_ai.send(serde_json::json!({
+                                    "type": "position_manage_result",
+                                    "symbol": sym,
+                                    "results": results,
+                                    "position_count": sym_positions.len()
+                                }).to_string());
                             }
-                            } // end recovery else (normal order management)
+                            
+                            // Send done event
+                            let _ = tx_ai.send(serde_json::json!({
+                                "type": "agents_done", "symbol": sym,
+                                "message": format!("Position Manager: {} ออเดอร์", sym_positions.len())
+                            }).to_string());
                         } else {
                             // ═══════════════════════════════════════════════
                             //  PIPELINE v8 — 3-Stage Decision Engine

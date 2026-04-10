@@ -605,6 +605,48 @@ export const SetupFormModal = ({ job, trackedSymbols, onClose, onSave, onDelete 
                         </button>
                     </div>
 
+                    {/* AI Position Manager */}
+                    <div className="p-4 mb-4 rounded-xl bg-default-100/50 dark:bg-white/5 border border-default-200 dark:border-white/5">
+                        <div className="flex items-center justify-between mb-3">
+                            <div className="flex items-center gap-3">
+                                <div className="size-8 rounded-lg bg-cyan-500/10 flex items-center justify-center">
+                                    <LuSettings2 className="size-4 text-cyan-500" />
+                                </div>
+                                <div>
+                                    <p className="text-xs font-bold text-default-700 dark:text-gray-200">AI Position Manager</p>
+                                    <p className="text-[10px] text-gray-500">ดูแลออเดอร์ + Hedge อัตโนมัติ</p>
+                                </div>
+                            </div>
+                            <button onClick={() => setLocalJob({ ...localJob, manage_positions: !localJob.manage_positions })} className={`relative inline-flex h-6 w-11 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors ${localJob.manage_positions !== false ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                                <span className={`inline-block h-4 w-4 transform rounded-full bg-white transition duration-200 ease-in-out ${localJob.manage_positions !== false ? 'translate-x-2.5' : '-translate-x-2.5'}`} />
+                            </button>
+                        </div>
+                        
+                        {localJob.manage_positions !== false && (
+                            <div className="space-y-3 pt-2 border-t border-gray-200/50 dark:border-white/5">
+                                <div className="grid grid-cols-2 gap-3">
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Max Loss ($)</label>
+                                        <input type="number" min="1" step="5" value={localJob.max_loss_usd || 50} onChange={(e) => setLocalJob({ ...localJob, max_loss_usd: parseFloat(e.target.value) || 50 })} className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/10 text-red-500" />
+                                    </div>
+                                    <div className="flex flex-col gap-1.5">
+                                        <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">Check (min)</label>
+                                        <input type="number" min="1" step="1" value={localJob.manage_interval || 5} onChange={(e) => setLocalJob({ ...localJob, manage_interval: parseInt(e.target.value) || 5 })} className="w-full px-3 py-2 text-xs font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/10" />
+                                    </div>
+                                </div>
+                                <div className="flex items-center justify-between py-1">
+                                    <div className="flex items-center gap-2">
+                                        <span className="text-[10px] font-bold text-gray-500">Auto Hedge</span>
+                                        <span className="text-[8px] text-gray-400">เปิดออเดอร์ตรงข้ามเมื่อขาดทุนเกิน</span>
+                                    </div>
+                                    <button onClick={() => setLocalJob({ ...localJob, hedge_enabled: localJob.hedge_enabled === false ? true : !(localJob.hedge_enabled ?? true) })} className={`relative inline-flex h-5 w-9 shrink-0 cursor-pointer items-center justify-center rounded-full transition-colors ${localJob.hedge_enabled !== false ? 'bg-cyan-500' : 'bg-gray-300 dark:bg-gray-700'}`}>
+                                        <span className={`inline-block h-3.5 w-3.5 transform rounded-full bg-white transition duration-200 ${localJob.hedge_enabled !== false ? 'translate-x-[7px]' : '-translate-x-[7px]'}`} />
+                                    </button>
+                                </div>
+                            </div>
+                        )}
+                    </div>
+
                     {/* TP/SL + Settings */}
                     <div className="grid grid-cols-2 gap-4 mb-4">
                         <div className="flex flex-col gap-1.5 col-span-2">
