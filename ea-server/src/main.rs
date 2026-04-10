@@ -532,14 +532,6 @@ async fn run_server() {
                                 // Execute actions
                                 for r in &results {
                                     match r.action.as_str() {
-                                        "CLOSE" => {
-                                            info!("🔴 [Position Manager] CLOSING {} #{}", sym, r.ticket);
-                                            let cmd = serde_json::json!({
-                                                "action": "close_trade",
-                                                "ticket": r.ticket
-                                            }).to_string();
-                                            let _ = tx_ai.send(cmd);
-                                        }
                                         "HEDGE" => {
                                             if let (Some(dir), Some(lot)) = (&r.hedge_direction, r.hedge_lot) {
                                                 info!("🛡️ [Position Manager] HEDGING {} #{} → {} {:.2} lot", sym, r.ticket, dir, lot);
@@ -553,6 +545,15 @@ async fn run_server() {
                                                 let _ = tx_ai.send(cmd);
                                             }
                                         }
+                                        "UNHEDGE" => {
+                                            // Close the losing side of a hedge pair
+                                            info!("🔓 [Position Manager] UNHEDGE — closing #{} on {}", r.ticket, sym);
+                                            let cmd = serde_json::json!({
+                                                "action": "close_trade",
+                                                "ticket": r.ticket
+                                            }).to_string();
+                                            let _ = tx_ai.send(cmd);
+                                        }
                                         "PARTIAL_CLOSE" => {
                                             info!("✂️ [Position Manager] Partial close 50% {} #{}", sym, r.ticket);
                                             let cmd = serde_json::json!({
@@ -563,7 +564,6 @@ async fn run_server() {
                                             let _ = tx_ai.send(cmd);
                                         }
                                         "MODIFY_SL" => {
-                                            // Move SL to breakeven — need open price
                                             let pos = sym_positions.iter().find(|p| p["ticket"].as_i64() == Some(r.ticket));
                                             if let Some(p) = pos {
                                                 let open_price = p["open_price"].as_f64().unwrap_or(p["price_open"].as_f64().unwrap_or(0.0));
