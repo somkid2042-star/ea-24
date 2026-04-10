@@ -42,7 +42,7 @@ const STAGES = [
   { key: 'gemini_confirm', label: 'Gemini',          icon: <LuBrainCircuit size={14} />,  desc: 'ยืนยันขั้นสุดท้าย' },
 ];
 
-export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult }) => {
+export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEnabled = true, interval, lastRunTime, onToggleJob, onEditJob, logs, agentStatus, finalResult: _finalResult }) => {
   const [timeLeft, setTimeLeft] = useState<{ m: number, s: number } | null>(null);
   const logsRef = useRef<HTMLDivElement>(null);
   const [autoScroll, setAutoScroll] = useState(true);
@@ -191,7 +191,6 @@ export const AgentPanel: React.FC<AgentPanelProps> = ({ symbol, isClosed, jobEna
                    const isGemma = log.agent === 'gemma_filter';
                    const isGemini = log.agent === 'gemini_confirm';
                    const isPipeline = log.agent === 'pipeline_v8';
-                   const isDone = log.status === 'done';
                    const isRunning = log.status === 'running';
 
                    return (

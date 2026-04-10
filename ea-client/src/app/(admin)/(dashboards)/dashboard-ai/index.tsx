@@ -137,7 +137,6 @@ const DashboardAi = () => {
         if (data.type === 'tracked_symbols') {
           // Filter: if both BTCUSD and BTCUSD.iux exist, keep only the broker variant (.suffix)
           const raw: string[] = data.symbols || [];
-          const baseNames = new Set(raw.filter((s: string) => !s.includes('.')));
           const filtered = raw.filter((s: string) => {
             if (s.includes('.')) return true; // always keep broker variants
             // keep plain only if no broker variant exists
