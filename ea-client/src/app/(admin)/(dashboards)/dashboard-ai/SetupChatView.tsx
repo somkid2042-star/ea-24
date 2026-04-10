@@ -35,20 +35,50 @@ const parseStageData = (logs: AiLog[]) => {
         const msg = stripEmojis(log.message || '');
         const agent = log.agent || '';
         const status = log.status || '';
+
         if (agent === 'pipeline_v8' || agent.includes('pipeline')) {
+            // Reset all stage data when a new scan starts (new pipeline run)
+            if (msg.includes('เริ่ม scan') || msg.includes('Pipeline v8:')) {
+                stages.server.result = '';
+                stages.server.strategy = '';
+                stages.server.score = '';
+                stages.server.tf = '';
+                stages.gemma.verdict = '';
+                stages.gemma.reason = '';
+                stages.gemini.decision = '';
+                stages.gemini.confidence = '';
+                stages.gemini.reason = '';
+            }
             stages.server.lines.push(msg);
             stages.server.status = status;
+
+            // Detect Stage 1 result: "Stage 1: BUY/SELL SYMBOL — Score X%"
+            const stageMatch = msg.match(/Stage 1:\s*(BUY|SELL)\s+\S+.*Score\s+(\d+)/i);
+            if (stageMatch) {
+                stages.server.result = stageMatch[1];
+                stages.server.score = stageMatch[2];
+            }
+
             const stratMatch = msg.match(/Best Signal:\s*(\w+)/i) || msg.match(/เลือก.*?:\s*(\w+)/i);
             if (stratMatch) stages.server.strategy = stratMatch[1];
-            const scoreMatch = msg.match(/Score[:\s]+(\d+\.?\d*)/i) || msg.match(/WScore[:\s]+\w+:(\d+\.?\d*)/i);
-            if (scoreMatch) stages.server.score = scoreMatch[1];
+
+            // Extract strategy name from Stage 1 line
+            const stratFromStage = msg.match(/\|\s*(\w[\w\s]*?)\s*\(/);
+            if (stratFromStage) stages.server.strategy = stratFromStage[1].trim();
+
             const tfMatch = msg.match(/(M5|M15|M30|H1|H4)/);
             if (tfMatch) stages.server.tf = tfMatch[1];
-            if (msg.includes('BUY') || msg.includes('SELL')) {
-                const dirMatch = msg.match(/(BUY|SELL)/);
-                if (dirMatch) stages.server.result = dirMatch[1];
+
+            // Final pipeline result: "🔥 BUY/SELL SYMBOL — XX% lot:X.XX"
+            const finalMatch = msg.match(/^.*?(BUY|SELL)\s+\S+\s+(\d+)%\s+lot:/i);
+            if (finalMatch) {
+                stages.server.result = finalMatch[1];
+                stages.server.score = finalMatch[2];
             }
-            if (msg.includes('ไม่มีสัญญาณ') || msg.includes('No signal') || (msg.includes('BUY:0') && msg.includes('SELL:0'))) {
+
+            // NO_SIGNAL: only match the specific "ไม่มีสัญญาณผ่าน" message (with ผ่าน suffix)
+            // Also match "BUY:0 SELL:0" but NOT "BUY:1" etc.
+            if (msg.includes('ไม่มีสัญญาณผ่าน') || msg.includes('No signal') || (msg.includes('BUY:0') && msg.includes('SELL:0'))) {
                 stages.server.result = 'NO_SIGNAL';
             }
         }
@@ -57,6 +87,7 @@ const parseStageData = (logs: AiLog[]) => {
             stages.gemma.status = status;
             if (msg.toLowerCase().includes('approve') || msg.includes('เห็นด้วย') || msg.includes('ผ่าน')) stages.gemma.verdict = 'APPROVED';
             if (msg.toLowerCase().includes('reject') || msg.includes('ไม่เห็นด้วย') || msg.includes('ไม่ผ่าน')) stages.gemma.verdict = 'REJECTED';
+            if (msg.includes('ปิดใช้งาน') || msg.includes('SKIP')) stages.gemma.verdict = 'SKIPPED';
             stages.gemma.reason = msg;
         }
         if (agent === 'gemini_confirm' || agent === 'gemini_confirm_v8' || agent.includes('gemini') || agent === 'decision_maker') {
@@ -66,6 +97,7 @@ const parseStageData = (logs: AiLog[]) => {
             if (decMatch) stages.gemini.decision = decMatch[1];
             const confMatch = msg.match(/(\d+)%/) || msg.match(/confidence[:\s]+(\d+)/i);
             if (confMatch) stages.gemini.confidence = confMatch[1];
+            if (msg.includes('ปิดใช้งาน') || msg.includes('SKIP')) stages.gemini.decision = 'SKIPPED';
             stages.gemini.reason = msg;
         }
     });
@@ -146,11 +178,12 @@ export const SetupChatView = ({
             icon: LuBrainCircuit, color: 'amber', status: stages.gemini.status, lines: stages.gemini.lines, alwaysOn: false,
             summary: () => {
                 if (disabledStages.includes('gemini')) return { text: 'ปิดใช้งาน', color: 'text-gray-400' };
+                if (stages.gemini.decision === 'SKIPPED') return { text: 'ปิดใช้งาน', color: 'text-gray-400' };
                 if (stages.gemini.decision === 'BUY') return { text: `BUY ${stages.gemini.confidence ? stages.gemini.confidence + '%' : ''}`.trim(), color: 'text-emerald-500' };
                 if (stages.gemini.decision === 'SELL') return { text: `SELL ${stages.gemini.confidence ? stages.gemini.confidence + '%' : ''}`.trim(), color: 'text-red-500' };
                 if (stages.gemini.decision === 'HOLD') return { text: 'HOLD -- ไม่เทรด', color: 'text-amber-500' };
                 if (stages.gemini.status === 'running') return { text: 'กำลังวิเคราะห์...', color: 'text-amber-500' };
-                return { text: 'รอ Gemma ส่งต่อ', color: 'text-gray-500' };
+                return { text: disabledStages.includes('gemma') ? 'รอ Server Scan ส่งต่อ' : 'รอ Gemma ส่งต่อ', color: 'text-gray-500' };
             }
         },
     ];
