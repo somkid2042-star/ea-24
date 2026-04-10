@@ -199,7 +199,12 @@ pub async fn run_pipeline_v8(
                 best.direction, sym, best.score, best.strategy_name)
         }).to_string());
 
-        let gemma = gemma_validate_v8(&ctx.gemini_key, sym, &best, &history, log_tx).await;
+        let gemma_data_sources: Vec<String> = ctx.job_config["gemma_data_sources"]
+            .as_array()
+            .map(|arr| arr.iter().filter_map(|v| v.as_str().map(String::from)).collect())
+            .unwrap_or_else(|| vec!["indicators".into(), "trade_history".into(), "strategy_wr".into(), "session".into(), "streak".into(), "recent_orders".into()]);
+
+        let gemma = gemma_validate_v8(&ctx.gemini_key, sym, &best, &history, &gemma_data_sources, log_tx).await;
 
         if !gemma.0 {
             let reason = &gemma.1;
@@ -552,39 +557,90 @@ async fn gemma_validate_v8(
     symbol: &str,
     signal: &BestSignal,
     history: &HistoryData,
+    data_sources: &[String],
     log_tx: &broadcast::Sender<String>,
 ) -> (bool, String) {
+    // Build prompt sections based on enabled data sources
+    let has_indicators = data_sources.iter().any(|s| s == "indicators");
+    let has_trade_history = data_sources.iter().any(|s| s == "trade_history");
+    let has_strategy_wr = data_sources.iter().any(|s| s == "strategy_wr");
+    let has_session = data_sources.iter().any(|s| s == "session");
+    let has_streak = data_sources.iter().any(|s| s == "streak");
+    let has_recent = data_sources.iter().any(|s| s == "recent_orders");
+
+    let enabled_count = data_sources.len();
+    info!("🏠 [Gemma v8] Data sources enabled: {}/{} — {:?}", enabled_count, 6, data_sources);
+
+    // === Conditionally build sections ===
+    let indicator_section = if has_indicators {
+        format!("## Indicators\n{}\n", signal.indicator_summary)
+    } else {
+        String::new()
+    };
+
+    let history_section = if has_trade_history {
+        format!("## Trade History 30 days\n- Win Rate: {:.0}% ({} trades)\n- Avg PnL: ${:.2}\n",
+            history.symbol_win_rate, history.symbol_total_trades, history.avg_pnl)
+    } else {
+        String::new()
+    };
+
+    let strategy_section = if has_strategy_wr {
+        format!("## Strategy Win Rate\n- {} WR: {:.0}% ({} trades)\n",
+            signal.strategy_name, history.strategy_win_rate, history.strategy_total_trades)
+    } else {
+        String::new()
+    };
+
+    let session_section = if has_session {
+        format!("## Session\n- Session: {} (WR {:.0}%)\n", history.session_name, history.session_win_rate)
+    } else {
+        String::new()
+    };
+
+    let streak_section = if has_streak {
+        format!("## Streak\n- {}\n", history.recent_streak)
+    } else {
+        String::new()
+    };
+
+    let recent_section = if has_recent {
+        format!("## 5 Recent Orders\n{}\n", format_recent_decisions(&history.recent_decisions))
+    } else {
+        String::new()
+    };
+
+    // === Build rules based on available data ===
+    let mut rules = vec![
+        "- APPROVE if signal has reasonable basis — do NOT overthink".to_string(),
+    ];
+    
+    if has_indicators {
+        rules.push("- REJECT ONLY if BUY with RSI>85 or SELL with RSI<15 (extreme overbought/oversold)".to_string());
+        rules.push("- REJECT ONLY if signal clearly conflicts with a very strong opposing trend".to_string());
+    }
+    if has_strategy_wr {
+        rules.push("- REJECT ONLY if this strategy has very poor win rate (<25%) on this symbol".to_string());
+    }
+    if has_streak {
+        rules.push("- REJECT ONLY if 5+ consecutive losses".to_string());
+    }
+    rules.push("- DEFAULT: APPROVE — when in doubt, always APPROVE".to_string());
+
     let prompt = format!(
 r#"You are a quick trade signal validator for EA-24. Answer ONLY "APPROVE" or "REJECT" followed by 1 short reason (under 50 words) in Thai.
 
-## Signal from Server (เลือกโดยอัลกอริทึม)
+## Signal from Server
 - Symbol: {symbol}
 - Direction: {dir}
 - Strategy: {strat} (Timeframe: {tf})
 - Score: {score:.0}% (Base Confidence: {conf:.0}%)
-- TF Confluence: {tf_agree}/{tf_total} timeframes เห็นด้วย
-- เหตุผลที่เลือก: {selection}
+- TF Confluence: {tf_agree}/{tf_total} timeframes
+- Reason: {selection}
 
-## Indicators
-{indicators}
-
-## ประวัติคู่เงินนี้ 30 วัน
-- Win Rate: {wr:.0}% ({trades} trades)
-- Strategy Win Rate: {strat_wr:.0}% ({strat_trades} trades)
-- Avg PnL: ${avg_pnl:.2}
-- Session: {session} (WR {session_wr:.0}%)
-- Streak: {streak}
-
-## 5 ออเดอร์ล่าสุด
-{recent}
-
-## Rules (เน้น APPROVE เป็นหลัก ปฏิเสธเฉพาะกรณีชัดเจนมากๆ)
-- APPROVE if signal has reasonable basis — do NOT overthink
-- REJECT ONLY if BUY with RSI>85 or SELL with RSI<15 (extreme overbought/oversold)
-- REJECT ONLY if signal clearly conflicts with a very strong opposing trend
-- REJECT ONLY if this strategy has very poor win rate (<25%) on this symbol
-- REJECT ONLY if 5+ consecutive losses
-- DEFAULT: APPROVE — เมื่อไม่แน่ใจ ให้ APPROVE เสมอ
+{indicator_section}{history_section}{strategy_section}{session_section}{streak_section}{recent_section}
+## Rules
+{rules}
 
 Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
         symbol = symbol,
@@ -596,16 +652,13 @@ Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
         tf_agree = signal.tf_confluence.agree_count,
         tf_total = signal.tf_confluence.total_tfs,
         selection = signal.selection_reasoning,
-        indicators = signal.indicator_summary,
-        wr = history.symbol_win_rate,
-        trades = history.symbol_total_trades,
-        strat_wr = history.strategy_win_rate,
-        strat_trades = history.strategy_total_trades,
-        avg_pnl = history.avg_pnl,
-        session = history.session_name,
-        session_wr = history.session_win_rate,
-        streak = history.recent_streak,
-        recent = format_recent_decisions(&history.recent_decisions),
+        indicator_section = indicator_section,
+        history_section = history_section,
+        strategy_section = strategy_section,
+        session_section = session_section,
+        streak_section = streak_section,
+        recent_section = recent_section,
+        rules = rules.join("\n"),
     );
 
     match ai_engine::call_ai_pub(gemini_key, "gemma-4-31b-it", &prompt, 0.2, 100, false).await {
@@ -613,8 +666,8 @@ Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
             let clean = response.trim().to_uppercase();
             let approved = clean.starts_with("APPROVE");
             let reason = response.trim().to_string();
-            info!("🏠 [Gemma v8] {} {} → {} — {}", signal.direction, symbol,
-                if approved { "APPROVE" } else { "REJECT" }, reason);
+            info!("🏠 [Gemma v8] {} {} → {} — {} (sources: {})", signal.direction, symbol,
+                if approved { "APPROVE" } else { "REJECT" }, reason, enabled_count);
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log_verbose", "symbol": symbol, "agent": "gemma_filter_v8",
                 "prompt": prompt, "response": response.clone()
