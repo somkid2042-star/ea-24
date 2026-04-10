@@ -703,11 +703,20 @@ async fn run_server() {
                             if auto_trade {
                                 info!("🤖 [Pipeline v8] Executing {} on {} (conf: {:.0}%, lot: {:.2})", 
                                     result.decision, sym, result.confidence, result.lot_size);
+                                let tp_sl_mode = job["tp_sl_mode"].as_str().unwrap_or("none");
+                                let tp_val = job["tp_value"].as_f64().unwrap_or(0.0);
+                                let sl_val = job["sl_value"].as_f64().unwrap_or(0.0);
+                                let ts_val = job["ts_value"].as_f64().unwrap_or(0.0);
+
                                 let cmd = serde_json::json!({
                                     "action": "open_trade",
                                     "symbol": sym,
                                     "direction": result.decision,
                                     "lot_size": result.lot_size,
+                                    "tp_sl_mode": tp_sl_mode,
+                                    "tp_value": tp_val,
+                                    "sl_value": sl_val,
+                                    "ts_value": ts_val,
                                     "comment": format!("EA24v8-{:.0}%", result.confidence)
                                 }).to_string();
                                 let _ = tx_ai.send(cmd);

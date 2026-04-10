@@ -619,7 +619,7 @@ export const SetupFormModal = ({ job, trackedSymbols, onClose, onSave, onDelete 
                         </div>
 
                         {(localJob.tp_sl_mode && localJob.tp_sl_mode !== 'none') && (
-                            <>
+                            <div className="col-span-2 grid grid-cols-3 gap-3">
                                 <div className="flex flex-col gap-1.5">
                                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">{localJob.tp_sl_mode === 'usd' ? 'TP ($)' : 'TP (Pips)'}</label>
                                     <input type="number" min="0" value={localJob.tp_value || 0} onChange={(e) => setLocalJob({ ...localJob, tp_value: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/10 text-emerald-600" />
@@ -628,7 +628,11 @@ export const SetupFormModal = ({ job, trackedSymbols, onClose, onSave, onDelete 
                                     <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">SL (Pips)</label>
                                     <input type="number" min="0" value={localJob.sl_value || 0} onChange={(e) => setLocalJob({ ...localJob, sl_value: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/10 text-orange-600" />
                                 </div>
-                            </>
+                                <div className="flex flex-col gap-1.5">
+                                    <label className="text-[10px] font-bold text-gray-500 uppercase tracking-widest">TS (Pips)</label>
+                                    <input type="number" min="0" value={localJob.ts_value || 0} onChange={(e) => setLocalJob({ ...localJob, ts_value: parseFloat(e.target.value) || 0 })} className="w-full px-3 py-2.5 text-xs font-bold rounded-xl bg-white dark:bg-[#131826] border border-default-200 dark:border-white/10 text-purple-600" />
+                                </div>
+                            </div>
                         )}
                         
                         <div className="flex flex-col gap-1.5 justify-center mt-2">
