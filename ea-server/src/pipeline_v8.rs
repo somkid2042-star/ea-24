@@ -116,8 +116,8 @@ const TIMEFRAMES: &[(&str, i64, i64)] = &[
     ("H4",  240, 30),
 ];
 
-const MIN_CONFIDENCE: f64 = 65.0;
-const MIN_CANDLES: usize = 20;
+const MIN_CONFIDENCE: f64 = 55.0;
+const MIN_CANDLES: usize = 15;
 
 // ──────────────────────────────────────────────
 //  Main Entry Point
@@ -444,29 +444,29 @@ async fn server_strategy_scan(
             .map(|s| &s.1)
             .collect::<std::collections::HashSet<_>>()
             .len();
-        let tf_bonus = (tf_agree_count as f64) * 5.0;  // +5% per agreeing TF
+        let tf_bonus = (tf_agree_count as f64) * 7.0;  // +7% per agreeing TF (reward confluence)
         score += tf_bonus;
 
-        // History bonus/penalty
+        // History bonus/penalty (relaxed penalties)
         if symbol_total_trades >= 10 {
-            if symbol_win_rate > 60.0 { score += (symbol_win_rate - 50.0) * 0.3; }
-            else if symbol_win_rate < 40.0 { score -= (50.0 - symbol_win_rate) * 0.5; }
+            if symbol_win_rate > 55.0 { score += (symbol_win_rate - 50.0) * 0.4; }
+            else if symbol_win_rate < 35.0 { score -= (50.0 - symbol_win_rate) * 0.3; }
         }
 
-        // Strategy-specific performance
+        // Strategy-specific performance (relaxed)
         let (strat_wr, strat_count) = db.get_strategy_performance(symbol, strat, 30).await;
         if strat_count >= 5 {
-            if strat_wr > 60.0 { score += (strat_wr - 50.0) * 0.2; }
-            else if strat_wr < 40.0 { score -= (50.0 - strat_wr) * 0.3; }
+            if strat_wr > 55.0 { score += (strat_wr - 50.0) * 0.3; }
+            else if strat_wr < 30.0 { score -= (50.0 - strat_wr) * 0.2; }
         }
 
-        // Session bonus
-        if session_wr > 55.0 { score += 3.0; }
-        else if session_wr < 35.0 { score -= 5.0; }
+        // Session bonus (relaxed)
+        if session_wr > 55.0 { score += 5.0; }
+        else if session_wr < 30.0 { score -= 3.0; }
 
-        // Streak dampening
-        if recent_streak < -3 { score -= 10.0; }
-        if recent_streak > 5 { score -= 5.0; }
+        // Streak dampening (relaxed — only penalize extreme losing streaks)
+        if recent_streak < -5 { score -= 5.0; }
+        if recent_streak > 8 { score -= 3.0; }
 
         score = score.clamp(0.0, 100.0);
         scored.push((score, i));
@@ -578,13 +578,13 @@ r#"You are a quick trade signal validator for EA-24. Answer ONLY "APPROVE" or "R
 ## 5 ออเดอร์ล่าสุด
 {recent}
 
-## Rules
-- APPROVE if signal aligns with trend & indicators reasonable & history supports
-- REJECT if BUY with RSI>80 or SELL with RSI<20
-- REJECT if signal conflicts with strong trend
-- REJECT if this strategy has poor win rate (<35%) on this symbol
-- REJECT if 3+ consecutive losses (be very strict)
-- When in doubt, APPROVE
+## Rules (เน้น APPROVE เป็นหลัก ปฏิเสธเฉพาะกรณีชัดเจนมากๆ)
+- APPROVE if signal has reasonable basis — do NOT overthink
+- REJECT ONLY if BUY with RSI>85 or SELL with RSI<15 (extreme overbought/oversold)
+- REJECT ONLY if signal clearly conflicts with a very strong opposing trend
+- REJECT ONLY if this strategy has very poor win rate (<25%) on this symbol
+- REJECT ONLY if 5+ consecutive losses
+- DEFAULT: APPROVE — เมื่อไม่แน่ใจ ให้ APPROVE เสมอ
 
 Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
         symbol = symbol,
@@ -690,13 +690,13 @@ r#"You are a professional fund manager making a FINAL trading decision. Respond 
 ## กราฟ (Multi-Timeframe OHLC)
 {chart}
 
-## Instructions
-1. Verify signal aligns with news + chart patterns + portfolio risk
-2. REJECT if high-impact news within 30 minutes
-3. REJECT if drawdown > 8%
-4. REJECT if open positions >= 5
-5. REJECT if news clearly conflicts with trade direction
-6. Otherwise APPROVE with your confidence level
+## Instructions (เน้น APPROVE — ปฏิเสธเฉพาะกรณีอันตรายจริงๆ)
+1. Signal ผ่านมา 2 ด่านแล้ว (Server + Gemma) — ควร APPROVE เป็นค่าเริ่มต้น
+2. REJECT ONLY if high-impact news within 15 minutes (NFP, FOMC, CPI level)
+3. REJECT ONLY if drawdown > 15%
+4. REJECT ONLY if open positions >= 8
+5. REJECT ONLY if news STRONGLY and DIRECTLY conflicts with trade direction
+6. DEFAULT: APPROVE with your confidence level — เมื่อไม่มีเหตุผลชัดเจนในการปฏิเสธ ให้ APPROVE
 
 Respond EXACTLY:
 DECISION: [APPROVE/REJECT]
