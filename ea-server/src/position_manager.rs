@@ -111,7 +111,7 @@ pub async fn manage_positions(
     
     // Ask AI to analyze each position
     let prompt = format!(
-r#"You are an AI portfolio manager for forex/crypto trading. Analyze EACH open position below and decide the best action.
+r#"You are a CONSERVATIVE AI portfolio manager. Your PRIMARY job is to PROTECT positions, NOT close them.
 
 ## Open Positions on {symbol}
 {positions}
@@ -120,24 +120,26 @@ r#"You are an AI portfolio manager for forex/crypto trading. Analyze EACH open p
 - Balance: ${balance:.2}
 - Equity: ${equity:.2}
 - Total P&L: ${total_pnl:.2}
-- Max Loss Threshold: ${max_loss:.2} (if loss exceeds this, consider HEDGE)
+- Max Loss Threshold: ${max_loss:.2}
 - Hedge Enabled: {hedge_enabled}
 
-## Rules
-1. For each position, decide ONE action:
-   - **HOLD**: Position is OK, let it run
-   - **CLOSE**: Close this position (take profit or cut loss)
-   - **HEDGE**: Open opposite position to lock loss (ONLY if loss > ${max_loss:.2} AND hedge is enabled)
-   - **PARTIAL_CLOSE**: Close 50% of position (lock some profit)
-   - **MODIFY_SL**: Move SL to breakeven (when in profit)
+## CRITICAL RULES (ห้ามละเมิด)
+1. **DEFAULT = HOLD** — เมื่อไม่แน่ใจ ต้อง HOLD เสมอ
+2. **ห้าม CLOSE ออเดอร์ที่ขาดทุน** ยกเว้นขาดทุนเกิน ${max_loss:.2} USD เท่านั้น
+3. **ห้าม CLOSE ออเดอร์ที่กำไรน้อยกว่า $5** — ปล่อยให้กำไรวิ่ง
+4. CLOSE เฉพาะเมื่อ:
+   - กำไร >= $10 AND มีสัญญาณกลับทิศชัดเจน
+   - หรือ ขาดทุน > ${max_loss:.2} (เกิน threshold)
+5. HEDGE เฉพาะเมื่อ: ขาดทุน > ${max_loss:.2} AND hedge_enabled = true
+6. PARTIAL_CLOSE เฉพาะเมื่อ: กำไร > $20
+7. MODIFY_SL เฉพาะเมื่อ: กำไร > $10 → ย้าย SL เข้า breakeven
 
-2. Priority rules:
-   - If a position's loss > ${max_loss:.2} AND hedge_enabled → HEDGE
-   - If a position is profitable > $20 → consider PARTIAL_CLOSE or MODIFY_SL
-   - If trend is reversing against position → CLOSE
-   - Default: HOLD
-
-3. For HEDGE action, specify the opposite direction and same lot size
+## Actions
+- **HOLD**: ปล่อยไว้ (ใช้กรณี 90% ของสถานการณ์)
+- **CLOSE**: ปิดออเดอร์ (ใช้เฉพาะกำไรดีมาก หรือ ขาดทุนเกิน threshold)
+- **HEDGE**: เปิดตรงข้าม (เฉพาะขาดทุนเกิน threshold)
+- **PARTIAL_CLOSE**: ปิด 50% (เฉพาะกำไรเยอะ)
+- **MODIFY_SL**: ย้าย SL (เฉพาะกำไรพอสมควร)
 
 Respond EXACTLY in this JSON format (array of decisions, one per position):
 [
@@ -158,7 +160,7 @@ ONLY output valid JSON array. No markdown, no explanation outside JSON."#,
         hedge_enabled = ctx.hedge_enabled,
     );
     
-    match crate::ai_engine::call_ai_pub(&ctx.gemini_key, &ctx.gemini_model, &prompt, 0.3, 2048, true).await {
+    match crate::ai_engine::call_ai_pub(&ctx.gemini_key, &ctx.gemini_model, &prompt, 0.2, 2048, true).await {
         Ok(response) => {
             // Parse JSON response
             let clean = response.trim().trim_start_matches("```json").trim_start_matches("```").trim_end_matches("```").trim();
@@ -167,8 +169,8 @@ ONLY output valid JSON array. No markdown, no explanation outside JSON."#,
                 Ok(decisions) => {
                     for decision in decisions {
                         let ticket = decision["ticket"].as_i64().unwrap_or(0);
-                        let action = decision["action"].as_str().unwrap_or("HOLD").to_uppercase();
-                        let reasoning = decision["reasoning"].as_str().unwrap_or("").to_string();
+                        let mut action = decision["action"].as_str().unwrap_or("HOLD").to_uppercase();
+                        let mut reasoning = decision["reasoning"].as_str().unwrap_or("").to_string();
                         
                         // Find matching position
                         let pos = ctx.positions.iter().find(|p| p.ticket == ticket);
@@ -176,6 +178,40 @@ ONLY output valid JSON array. No markdown, no explanation outside JSON."#,
                             Some(p) => p,
                             None => continue,
                         };
+                        
+                        // ═══════════════════════════════════════════
+                        //  SAFETY GUARD — ป้องกัน AI ปิดออเดอร์ผิด
+                        // ═══════════════════════════════════════════
+                        
+                        // Guard 1: ห้าม CLOSE ออเดอร์ที่ขาดทุน ถ้ายังไม่ถึง threshold
+                        if action == "CLOSE" && pos.pnl < 0.0 && pos.pnl.abs() < ctx.max_loss_usd {
+                            warn!("🛡️ [Safety] Blocked CLOSE on #{} — loss ${:.2} < threshold ${:.2}, forcing HOLD",
+                                ticket, pos.pnl.abs(), ctx.max_loss_usd);
+                            action = "HOLD".to_string();
+                            reasoning = format!("(Safety Override) ขาดทุน ${:.2} ยังไม่ถึงเกณฑ์ ${:.2} — ปล่อยไว้ก่อน",
+                                pos.pnl.abs(), ctx.max_loss_usd);
+                        }
+                        
+                        // Guard 2: ห้าม CLOSE ออเดอร์ที่กำไรน้อยกว่า $5
+                        if action == "CLOSE" && pos.pnl >= 0.0 && pos.pnl < 5.0 {
+                            warn!("🛡️ [Safety] Blocked CLOSE on #{} — profit ${:.2} < $5, forcing HOLD",
+                                ticket, pos.pnl);
+                            action = "HOLD".to_string();
+                            reasoning = format!("(Safety Override) กำไร ${:.2} ยังน้อย — ปล่อยให้กำไรวิ่ง", pos.pnl);
+                        }
+                        
+                        // Guard 3: ห้าม HEDGE ถ้าปิดใช้งาน
+                        if action == "HEDGE" && !ctx.hedge_enabled {
+                            action = "HOLD".to_string();
+                            reasoning = "Hedge ถูกปิดใช้งาน — HOLD".to_string();
+                        }
+                        
+                        // Guard 4: ห้าม HEDGE ถ้าขาดทุนยังไม่ถึง threshold
+                        if action == "HEDGE" && pos.pnl.abs() < ctx.max_loss_usd {
+                            action = "HOLD".to_string();
+                            reasoning = format!("ขาดทุน ${:.2} ยังไม่ถึงเกณฑ์ ${:.2} — ไม่ต้อง Hedge", 
+                                pos.pnl.abs(), ctx.max_loss_usd);
+                        }
                         
                         let (hedge_dir, hedge_lot) = if action == "HEDGE" && ctx.hedge_enabled {
                             let dir = if pos.direction == "BUY" { "SELL" } else { "BUY" };
