@@ -158,7 +158,7 @@ fn generate_indicator_summary(ind: &Indicators) -> String {
 pub const ALL_STRATEGIES: &[&str] = &[
     "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
     "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
-    "Reversal Catcher", "Fractal Breakout", "Scalper Pro"
+    "Reversal Catcher", "Fractal Breakout", "Scalper Pro", "Grid Master"
 ];
 
 /// Per-symbol cooldown tracker
@@ -795,30 +795,194 @@ fn eval_mean_revert(ind: &Indicators) -> StrategyResult {
     StrategyResult::none()
 }
 
-// ─── 5. Grid Master (ปรับ: zone + trend filter) ───
+// ─── 5. Grid Master V2 — Aggressive Multi-Zone Grid ───
+// 5 zones: BB Extreme, Fib Grid, EMA Bounce Grid, Swing Level, Mid-Grid Reversal
+// Features: ATR-based grid spacing, session awareness, tight SL/TP, momentum filter
 fn eval_grid(ind: &Indicators) -> StrategyResult {
     let range = ind.bb_upper - ind.bb_lower;
-    if range <= 0.0 { return StrategyResult::none(); }
-    let pos = (ind.current_close - ind.bb_lower) / range;
-    
-    if pos < 0.15 && ind.rsi_14 < 35.0 {
-        let mut conf = 55.0;
-        if ind.current_close > ind.current_open { conf += 10.0; } // reversal candle
-        if ind.ema_9 > ind.ema_21 { conf += 5.0; }
-        return StrategyResult::buy(
-            format!("Grid BUY: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14),
-            conf, ind,
+    if range <= 0.0 || ind.atr <= 0.0 { return StrategyResult::none(); }
+    let bb_pos = (ind.current_close - ind.bb_lower) / range; // 0.0 = bottom, 1.0 = top
+
+    // Session awareness — more aggressive during high-volume sessions
+    let utc_hour = chrono::Utc::now().hour();
+    let in_london = utc_hour >= 7 && utc_hour < 16;
+    let in_ny = utc_hour >= 13 && utc_hour < 21;
+    let in_overlap = utc_hour >= 13 && utc_hour < 16;
+    let session_active = in_london || in_ny;
+    let aggro_bonus: f64 = if in_overlap { 10.0 } else if session_active { 5.0 } else { 0.0 };
+
+    // Skip dead market
+    if ind.atr_ratio < 0.2 { return StrategyResult::none(); }
+
+    // Tight SL/TP for grid (tighter than standard)
+    let build_grid_result = |signal: Signal, reason: String, conf: f64| -> StrategyResult {
+        StrategyResult {
+            signal,
+            reason,
+            confidence: conf,
+            indicator_summary: generate_indicator_summary(ind),
+            suggested_sl_atr: ind.atr * 1.0,  // tight SL (1.0 ATR)
+            suggested_tp_atr: ind.atr * 1.5,   // tight TP (R:R = 1:1.5)
+        }
+    };
+
+    // ═══ ZONE 1: BB Extreme (ราคาอยู่ขอบ BB สุด — ดีดกลับ) ═══
+    // More aggressive: enter at 10% from edge (vs 15% in v1)
+    if bb_pos < 0.10 && ind.rsi_14 < 35.0 {
+        let mut conf: f64 = 62.0 + aggro_bonus;
+        if ind.current_close > ind.current_open { conf += 10.0; } // bullish reversal candle
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; } // RSI turning up
+        if ind.fair_value_gap_bull { conf += 5.0; }
+        if ind.momentum > -0.1 { conf += 3.0; } // momentum slowing
+        return build_grid_result(Signal::Buy,
+            format!("Grid BB-Extreme BUY: BB={:.0}%, RSI={:.1}, Turn={}", 
+                bb_pos*100.0, ind.rsi_14, ind.rsi_prev < ind.rsi_14),
+            conf.clamp(0.0, 100.0),
         );
     }
-    if pos > 0.85 && ind.rsi_14 > 65.0 {
-        let mut conf = 55.0;
+    if bb_pos > 0.90 && ind.rsi_14 > 65.0 {
+        let mut conf: f64 = 62.0 + aggro_bonus;
         if ind.current_close < ind.current_open { conf += 10.0; }
-        if ind.ema_9 < ind.ema_21 { conf += 5.0; }
-        return StrategyResult::sell(
-            format!("Grid SELL: BB pos={:.0}%, RSI={:.1}", pos*100.0, ind.rsi_14),
-            conf, ind,
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        if ind.fair_value_gap_bear { conf += 5.0; }
+        if ind.momentum < 0.1 { conf += 3.0; }
+        return build_grid_result(Signal::Sell,
+            format!("Grid BB-Extreme SELL: BB={:.0}%, RSI={:.1}, Turn={}",
+                bb_pos*100.0, ind.rsi_14, ind.rsi_prev > ind.rsi_14),
+            conf.clamp(0.0, 100.0),
         );
     }
+
+    // ═══ ZONE 2: Fib Grid (ราคาชน Fib level — เด้ง) ═══
+    let near_fib = |price: f64, level: f64| -> bool {
+        if level <= 0.0 { return false; }
+        ((price - level) / level).abs() < 0.002 // within 0.2%
+    };
+
+    // BUY at Fib 61.8% support in uptrend
+    if ind.current_close > ind.ema_50 && near_fib(ind.current_close, ind.fib_618)
+        && ind.rsi_14 > 35.0 && ind.rsi_14 < 55.0 {
+        let mut conf: f64 = 60.0 + aggro_bonus;
+        if ind.ema_9 > ind.ema_21 { conf += 8.0; }
+        if ind.current_close > ind.current_open { conf += 5.0; }
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; }
+        return build_grid_result(Signal::Buy,
+            format!("Grid Fib BUY: @61.8%={:.5}, RSI={:.1}, Trend=UP",
+                ind.fib_618, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+    // BUY at Fib 50.0% support
+    if ind.current_close > ind.ema_50 && near_fib(ind.current_close, ind.fib_500)
+        && ind.rsi_14 > 35.0 && ind.rsi_14 < 55.0 {
+        let mut conf: f64 = 58.0 + aggro_bonus;
+        if ind.ema_9 > ind.ema_21 { conf += 8.0; }
+        if ind.current_close > ind.current_open { conf += 5.0; }
+        return build_grid_result(Signal::Buy,
+            format!("Grid Fib BUY: @50.0%={:.5}, RSI={:.1}", ind.fib_500, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+    // SELL at Fib 38.2% resistance in downtrend
+    if ind.current_close < ind.ema_50 && near_fib(ind.current_close, ind.fib_382)
+        && ind.rsi_14 > 45.0 && ind.rsi_14 < 65.0 {
+        let mut conf: f64 = 60.0 + aggro_bonus;
+        if ind.ema_9 < ind.ema_21 { conf += 8.0; }
+        if ind.current_close < ind.current_open { conf += 5.0; }
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        return build_grid_result(Signal::Sell,
+            format!("Grid Fib SELL: @38.2%={:.5}, RSI={:.1}, Trend=DOWN",
+                ind.fib_382, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+
+    // ═══ ZONE 3: EMA Bounce Grid (ราคาเด้ง EMA ในเทรนด์) ═══
+    let near_ema21 = ((ind.current_close - ind.ema_21) / ind.ema_21).abs() < 0.0015;
+    
+    // BUY: bounce off EMA21 in uptrend
+    if near_ema21 && ind.ema_9 > ind.ema_21 && ind.current_close > ind.ema_21
+        && ind.current_close > ind.current_open && ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 {
+        let mut conf: f64 = 58.0 + aggro_bonus;
+        if ind.ema_50 > ind.ema_200 { conf += 5.0; }
+        if ind.momentum > 0.0 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.4 { conf += 3.0; }
+        return build_grid_result(Signal::Buy,
+            format!("Grid EMA21 BUY: Bounce EMA21={:.5}, RSI={:.1}", ind.ema_21, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+    // SELL: bounce off EMA21 in downtrend
+    if near_ema21 && ind.ema_9 < ind.ema_21 && ind.current_close < ind.ema_21
+        && ind.current_close < ind.current_open && ind.rsi_14 > 40.0 && ind.rsi_14 < 60.0 {
+        let mut conf: f64 = 58.0 + aggro_bonus;
+        if ind.ema_50 < ind.ema_200 { conf += 5.0; }
+        if ind.momentum < 0.0 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.4 { conf += 3.0; }
+        return build_grid_result(Signal::Sell,
+            format!("Grid EMA21 SELL: Bounce EMA21={:.5}, RSI={:.1}", ind.ema_21, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+
+    // ═══ ZONE 4: Swing Level Grid (ราคาชน swing high/low เก่า) ═══
+    let near_swing_low = ind.swing_low > 0.0 && 
+        ((ind.current_close - ind.swing_low) / ind.swing_low).abs() < 0.002;
+    let near_swing_high = ind.swing_high > 0.0 && 
+        ((ind.current_close - ind.swing_high) / ind.swing_high).abs() < 0.002;
+
+    if near_swing_low && ind.current_close > ind.swing_low 
+        && ind.current_close > ind.current_open && ind.rsi_14 < 45.0 {
+        let mut conf: f64 = 60.0 + aggro_bonus;
+        if ind.fair_value_gap_bull { conf += 5.0; }
+        if ind.rsi_prev < ind.rsi_14 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.4 { conf += 3.0; }
+        return build_grid_result(Signal::Buy,
+            format!("Grid Swing BUY: @SwLow={:.5}, RSI={:.1}", ind.swing_low, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+    if near_swing_high && ind.current_close < ind.swing_high
+        && ind.current_close < ind.current_open && ind.rsi_14 > 55.0 {
+        let mut conf: f64 = 60.0 + aggro_bonus;
+        if ind.fair_value_gap_bear { conf += 5.0; }
+        if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+        if ind.candle_body_ratio > 0.4 { conf += 3.0; }
+        return build_grid_result(Signal::Sell,
+            format!("Grid Swing SELL: @SwHigh={:.5}, RSI={:.1}", ind.swing_high, ind.rsi_14),
+            conf.clamp(0.0, 100.0),
+        );
+    }
+
+    // ═══ ZONE 5: Mid-Grid Reversal (BB middle + RSI extreme — aggressive) ═══
+    // Only during active sessions — contrarian play at BB middle
+    if session_active {
+        let near_bb_mid = ((ind.current_close - ind.bb_middle) / ind.bb_middle).abs() < 0.001;
+        
+        // BUY: price at BB middle + RSI oversold + bullish candle
+        if near_bb_mid && ind.rsi_14 < 35.0 && ind.current_close > ind.current_open
+            && ind.ema_9 > ind.ema_21 {
+            let mut conf: f64 = 55.0 + aggro_bonus;
+            if ind.rsi_prev < ind.rsi_14 { conf += 5.0; }
+            if ind.momentum > 0.0 { conf += 5.0; }
+            return build_grid_result(Signal::Buy,
+                format!("Grid Mid BUY: @BB_mid, RSI={:.1}<35, EMA↑", ind.rsi_14),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+        // SELL: price at BB middle + RSI overbought + bearish candle
+        if near_bb_mid && ind.rsi_14 > 65.0 && ind.current_close < ind.current_open
+            && ind.ema_9 < ind.ema_21 {
+            let mut conf: f64 = 55.0 + aggro_bonus;
+            if ind.rsi_prev > ind.rsi_14 { conf += 5.0; }
+            if ind.momentum < 0.0 { conf += 5.0; }
+            return build_grid_result(Signal::Sell,
+                format!("Grid Mid SELL: @BB_mid, RSI={:.1}>65, EMA↓", ind.rsi_14),
+                conf.clamp(0.0, 100.0),
+            );
+        }
+    }
+
     StrategyResult::none()
 }
 
