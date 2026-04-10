@@ -360,7 +360,7 @@ async fn run_server() {
                 let ai_mode = db_ai.get_config("ai_mode").await.unwrap_or_else(|| "auto".to_string());
                 
                 for job in jobs {
-                    let sym = job["symbol"].as_str().unwrap_or("").to_uppercase();
+                    let sym = job["symbol"].as_str().unwrap_or("").to_string();
                     if sym.is_empty() { continue; }
                     
                     let is_enabled = job["enabled"].as_bool().unwrap_or(true);

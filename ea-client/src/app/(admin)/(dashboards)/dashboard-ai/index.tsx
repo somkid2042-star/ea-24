@@ -135,10 +135,18 @@ const DashboardAi = () => {
         }
 
         if (data.type === 'tracked_symbols') {
-          setTrackedSymbols(data.symbols || []);
+          // Filter: if both BTCUSD and BTCUSD.iux exist, keep only the broker variant (.suffix)
+          const raw: string[] = data.symbols || [];
+          const baseNames = new Set(raw.filter((s: string) => !s.includes('.')));
+          const filtered = raw.filter((s: string) => {
+            if (s.includes('.')) return true; // always keep broker variants
+            // keep plain only if no broker variant exists
+            return !raw.some((other: string) => other.startsWith(s) && other.includes('.'));
+          });
+          setTrackedSymbols(filtered);
           if (data.closed_map) setClosedMap(data.closed_map);
-          if (data.symbols?.length > 0 && !data.symbols.includes(globalSymbol)) {
-            setGlobalSymbol(data.symbols[0]);
+          if (filtered.length > 0 && !filtered.includes(globalSymbol)) {
+            setGlobalSymbol(filtered[0]);
           }
         }
 
