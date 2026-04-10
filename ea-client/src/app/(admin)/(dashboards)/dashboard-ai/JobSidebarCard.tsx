@@ -1,4 +1,4 @@
-import { LuActivity, LuPencil, LuLoader } from 'react-icons/lu';
+import { LuActivity, LuPencil, LuLoader, LuShield } from 'react-icons/lu';
 
 export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agentStatusM1Map }: any) => {
 
@@ -8,17 +8,25 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
     // Check if any stage is running
     const agentStatuses = agentStatusM1Map || {};
     const isRunning = Object.values(agentStatuses).some((s: any) => s === 'running');
+    
+    // Check if Position Manager is active (has status entry)
+    const isManaging = agentStatuses.position_manager === 'running' || agentStatuses.position_manager === 'done';
 
-    const statusLabel = decision ? (
+    const statusLabel = isManaging ? (
+        agentStatuses.position_manager === 'running' ? 'กำลังดูแลออเดอร์...' : 'ดูแลออเดอร์เสร็จสิ้น'
+    ) : decision ? (
         decision === 'BUY' ? 'BUY Signal' :
         decision === 'SELL' ? 'SELL Signal' :
         decision === 'HOLD' ? 'HOLD' : decision
     ) : isRunning ? 'กำลังวิเคราะห์...' : 'รอวิเคราะห์...';
 
-    const statusColor = decision === 'BUY' ? 'text-emerald-500' :
+    const statusColor = isManaging ? 'text-cyan-500' :
+                        decision === 'BUY' ? 'text-emerald-500' :
                         decision === 'SELL' ? 'text-red-500' :
                         decision === 'HOLD' ? 'text-amber-500' :
                         isRunning ? 'text-blue-500' : 'text-gray-400';
+
+    const StatusIcon = isManaging ? LuShield : isRunning ? LuLoader : LuActivity;
 
     return (
         <div 
@@ -33,14 +41,16 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
            <div className="relative">
                <div className={`size-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
                  job.enabled !== false 
-                   ? 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm' 
+                   ? isManaging
+                     ? 'bg-gradient-to-br from-cyan-500 to-teal-600 text-white shadow-sm'
+                     : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm' 
                    : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
                }`}>
                    {job.symbol.substring(0, 2)}
                </div>
                <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-[#0b0e17] ${
                  job.enabled !== false 
-                   ? isRunning ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500' 
+                   ? isManaging ? 'bg-cyan-500 animate-pulse' : isRunning ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500' 
                    : 'bg-gray-400'
                }`} />
            </div>
@@ -62,11 +72,7 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
                </div>
                
                <div className={`text-[12px] font-medium truncate flex items-center gap-1.5 ${statusColor}`}>
-                   {isRunning ? (
-                     <LuLoader size={11} className="animate-spin shrink-0" />
-                   ) : (
-                     <LuActivity size={11} className="shrink-0" />
-                   )}
+                   <StatusIcon size={11} className={`shrink-0 ${isRunning || (isManaging && agentStatuses.position_manager === 'running') ? 'animate-spin' : ''}`} />
                    {statusLabel}
                    {confidence && <span className="opacity-70 text-[10px]">({confidence}%)</span>}
                </div>
