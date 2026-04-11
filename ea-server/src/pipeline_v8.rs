@@ -56,6 +56,18 @@ pub struct TfDetail {
     pub strategy: String,
 }
 
+/// Ranked signal for top-N display
+#[derive(Debug, Clone, serde::Serialize)]
+pub struct TopSignal {
+    pub rank: usize,
+    pub strategy_name: String,
+    pub timeframe: String,
+    pub direction: String,
+    pub score: f64,
+    pub base_confidence: f64,
+    pub reason: String,
+}
+
 /// The best signal selected by server scan
 #[derive(Debug, Clone, serde::Serialize)]
 pub struct BestSignal {
@@ -79,6 +91,7 @@ pub struct ServerScanResult {
     pub buy_signals: usize,
     pub sell_signals: usize,
     pub best_signal: Option<BestSignal>,
+    pub top_signals: Vec<TopSignal>,
     pub all_signals: Vec<String>,
     pub scan_time_ms: u128,
     pub atr_ratio: f64,
@@ -601,6 +614,20 @@ async fn server_strategy_scan(
     // Sort by score descending
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
+    // Build top 3 signals for dashboard display
+    let top_signals: Vec<TopSignal> = scored.iter().take(3).enumerate().map(|(rank, &(score, idx))| {
+        let sig = &all_signals[idx];
+        TopSignal {
+            rank: rank + 1,
+            strategy_name: sig.0.clone(),
+            timeframe: sig.1.clone(),
+            direction: sig.2.clone(),
+            score,
+            base_confidence: sig.3,
+            reason: sig.4.clone(),
+        }
+    }).collect();
+
     let best_signal = if let Some(&(best_score, best_idx)) = scored.first() {
         // Note: MIN_CONFIDENCE check is done in the main function with volatility gate
         if best_score >= MIN_CONFIDENCE_HIGH_VOL { // Use lowest threshold here, real check is in main
@@ -667,6 +694,7 @@ async fn server_strategy_scan(
         buy_signals: buy_count,
         sell_signals: sell_count,
         best_signal,
+        top_signals,
         all_signals: all_scan_details,
         scan_time_ms: scan_time,
         atr_ratio: max_atr_ratio,

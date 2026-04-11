@@ -1,6 +1,6 @@
-import { LuActivity, LuPencil, LuLoader, LuShield } from 'react-icons/lu';
+import { LuActivity, LuPencil, LuLoader, LuShield, LuMoonStar } from 'react-icons/lu';
 
-export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agentStatusM1Map }: any) => {
+export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agentStatusM1Map, isClosed }: any) => {
 
     const decision = result?.final_decision || result?.decision;
     const confidence = result?.confidence;
@@ -12,21 +12,24 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
     // Check if Position Manager is active (has status entry)
     const isManaging = agentStatuses.position_manager === 'running' || agentStatuses.position_manager === 'done';
 
-    const statusLabel = isManaging ? (
-        agentStatuses.position_manager === 'running' ? 'กำลังดูแลออเดอร์...' : 'ดูแลออเดอร์เสร็จสิ้น'
-    ) : decision ? (
-        decision === 'BUY' ? 'BUY Signal' :
-        decision === 'SELL' ? 'SELL Signal' :
-        decision === 'HOLD' ? 'HOLD' : decision
-    ) : isRunning ? 'กำลังวิเคราะห์...' : 'รอวิเคราะห์...';
+    // Market closed takes priority — no calculations should run
+    const statusLabel = isClosed ? 'ตลาดปิด' :
+        isManaging ? (
+            agentStatuses.position_manager === 'running' ? 'กำลังดูแลออเดอร์...' : 'ดูแลออเดอร์เสร็จสิ้น'
+        ) : decision ? (
+            decision === 'BUY' ? 'BUY Signal' :
+            decision === 'SELL' ? 'SELL Signal' :
+            decision === 'HOLD' ? 'HOLD' : decision
+        ) : isRunning ? 'กำลังวิเคราะห์...' : 'รอวิเคราะห์...';
 
-    const statusColor = isManaging ? 'text-cyan-500' :
+    const statusColor = isClosed ? 'text-gray-400 dark:text-gray-500' :
+                        isManaging ? 'text-cyan-500' :
                         decision === 'BUY' ? 'text-emerald-500' :
                         decision === 'SELL' ? 'text-red-500' :
                         decision === 'HOLD' ? 'text-amber-500' :
                         isRunning ? 'text-blue-500' : 'text-gray-400';
 
-    const StatusIcon = isManaging ? LuShield : isRunning ? LuLoader : LuActivity;
+    const StatusIcon = isClosed ? LuMoonStar : isManaging ? LuShield : isRunning ? LuLoader : LuActivity;
 
     return (
         <div 
@@ -40,25 +43,29 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
            {/* Avatar */}
            <div className="relative">
                <div className={`size-10 rounded-xl flex items-center justify-center font-bold text-sm shrink-0 ${
-                 job.enabled !== false 
-                   ? isManaging
-                     ? 'bg-gradient-to-br from-cyan-500 to-teal-600 text-white shadow-sm'
-                     : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm' 
-                   : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
+                 isClosed
+                   ? 'bg-gray-200 dark:bg-gray-800 text-gray-500'
+                   : job.enabled !== false 
+                     ? isManaging
+                       ? 'bg-gradient-to-br from-cyan-500 to-teal-600 text-white shadow-sm'
+                       : 'bg-gradient-to-br from-blue-500 to-indigo-600 text-white shadow-sm' 
+                     : 'bg-gray-200 dark:bg-gray-800 text-gray-500'
                }`}>
                    {job.symbol.substring(0, 2)}
                </div>
                <div className={`absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-white dark:border-[#0b0e17] ${
-                 job.enabled !== false 
-                   ? isManaging ? 'bg-cyan-500 animate-pulse' : isRunning ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500' 
-                   : 'bg-gray-400'
+                 isClosed
+                   ? 'bg-gray-400'
+                   : job.enabled !== false 
+                     ? isManaging ? 'bg-cyan-500 animate-pulse' : isRunning ? 'bg-blue-500 animate-pulse' : 'bg-emerald-500' 
+                     : 'bg-gray-400'
                }`} />
            </div>
 
            {/* Content */}
            <div className="flex-1 min-w-0">
                <div className="flex justify-between items-center mb-0.5">
-                   <h3 className="text-[14px] font-bold text-gray-900 dark:text-white truncate font-mono">
+                   <h3 className={`text-[14px] font-bold truncate font-mono ${isClosed ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
                        {job.symbol}
                    </h3>
                    <div className="flex items-center gap-1.5">
@@ -72,9 +79,9 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
                </div>
                
                <div className={`text-[12px] font-medium truncate flex items-center gap-1.5 ${statusColor}`}>
-                   <StatusIcon size={11} className={`shrink-0 ${isRunning || (isManaging && agentStatuses.position_manager === 'running') ? 'animate-spin' : ''}`} />
+                   <StatusIcon size={11} className={`shrink-0 ${!isClosed && (isRunning || (isManaging && agentStatuses.position_manager === 'running')) ? 'animate-spin' : ''}`} />
                    {statusLabel}
-                   {confidence && <span className="opacity-70 text-[10px]">({confidence}%)</span>}
+                   {!isClosed && confidence && <span className="opacity-70 text-[10px]">({confidence}%)</span>}
                </div>
            </div>
         </div>

@@ -1,5 +1,5 @@
 import { useState } from 'react';
-import { LuChevronDown, LuServer, LuBrainCircuit, LuCheck, LuSparkles, LuLoader, LuSettings, LuPower } from 'react-icons/lu';
+import { LuChevronDown, LuServer, LuBrainCircuit, LuCheck, LuSparkles, LuLoader, LuSettings, LuPower, LuTrophy } from 'react-icons/lu';
 import type { AiLog, AgentStatusMap } from './AgentPanel';
 import { CountdownBadge } from './CountdownBadge';
 
@@ -18,6 +18,7 @@ interface SetupChatViewProps {
     agentStatusM1Map: Record<string, AgentStatusMap>;
     finalResultBySymbol: Record<string, any>;
     verboseLogs: {timestamp: number, agent: string, prompt: string, response: string}[];
+    topSignals: any[];
 }
 
 const stripEmojis = (msg: string) => {
@@ -118,7 +119,7 @@ const glowKeyframes = `
 
 export const SetupChatView = ({
     job, logsBySymbol, lastRunMap, agentStatusBySymbol, closedMap, finalResultBySymbol, handleEditJob,
-    saveJobsToDb, autoPilotJobs, jobIdx,
+    saveJobsToDb, autoPilotJobs, jobIdx, topSignals,
 }: SetupChatViewProps) => {
     const [expandedCard, setExpandedCard] = useState<string | null>(null);
 
@@ -334,6 +335,49 @@ export const SetupChatView = ({
                                         <p className="text-[10px] text-gray-500 dark:text-gray-400 truncate leading-relaxed mt-2 ml-12">
                                             {card.lines[card.lines.length - 1]}
                                         </p>
+                                    )}
+
+                                    {/* Top 3 Strategies — Server Scan only */}
+                                    {card.key === 'server' && topSignals && topSignals.length > 0 && !isExpanded && (
+                                        <div className="mt-3 ml-12 space-y-1.5">
+                                            {topSignals.map((sig: any, i: number) => {
+                                                const medalColors = [
+                                                    'text-amber-500',   // #1 gold
+                                                    'text-gray-400',    // #2 silver  
+                                                    'text-orange-700',  // #3 bronze
+                                                ];
+                                                const barColors = [
+                                                    'bg-amber-500',
+                                                    'bg-gray-400',
+                                                    'bg-orange-600/70',
+                                                ];
+                                                const dirColor = sig.direction === 'BUY' ? 'text-emerald-500' : sig.direction === 'SELL' ? 'text-red-500' : 'text-gray-400';
+                                                const scoreWidth = Math.min(sig.score, 100);
+                                                return (
+                                                    <div key={i} className="flex items-center gap-2 group">
+                                                        <LuTrophy size={10} className={`shrink-0 ${medalColors[i] || 'text-gray-500'}`} />
+                                                        <span className="text-[10px] font-mono font-bold text-gray-700 dark:text-gray-300 w-[100px] truncate">
+                                                            {sig.strategy_name}
+                                                        </span>
+                                                        <span className="text-[9px] font-mono text-gray-400 w-[28px] shrink-0">
+                                                            {sig.timeframe}
+                                                        </span>
+                                                        <span className={`text-[10px] font-black w-[30px] shrink-0 ${dirColor}`}>
+                                                            {sig.direction}
+                                                        </span>
+                                                        <div className="flex-1 h-[6px] bg-gray-100 dark:bg-white/5 rounded-full overflow-hidden">
+                                                            <div 
+                                                                className={`h-full rounded-full transition-all duration-700 ${barColors[i] || 'bg-gray-400'}`}
+                                                                style={{ width: `${scoreWidth}%` }}
+                                                            />
+                                                        </div>
+                                                        <span className="text-[10px] font-mono font-bold text-gray-600 dark:text-gray-400 w-[32px] text-right shrink-0">
+                                                            {Math.round(sig.score)}%
+                                                        </span>
+                                                    </div>
+                                                );
+                                            })}
+                                        </div>
                                     )}
 
                                     {!isDisabled && isExpanded && card.lines.length > 0 && (

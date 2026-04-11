@@ -38,6 +38,7 @@ const DashboardAi = () => {
   // Auto-Pilot States
   const [autoPilotJobs, setAutoPilotJobs] = useState<AutoPilotJob[]>([]);
   const [closedMap, setClosedMap] = useState<Record<string, boolean>>({});
+  const [topSignalsBySymbol, setTopSignalsBySymbol] = useState<Record<string, any[]>>({});
   
   // UI States
   const [activeSetupId, setActiveSetupId] = useState<string | null>(null);
@@ -176,7 +177,14 @@ const DashboardAi = () => {
              });
           }
         }
-        
+
+        if (data.type === 'pipeline_v8_scan') {
+          const sym = data.symbol || globalSymbol;
+          if (data.scan?.top_signals) {
+            setTopSignalsBySymbol(prev => ({ ...prev, [sym]: data.scan.top_signals }));
+          }
+        }
+
         if (data.type === 'multi_agent_result' || data.type === 'pipeline_result') {
           const sym = data.symbol || globalSymbol;
           setFinalResultBySymbol(prev => ({ ...prev, [sym]: data.result }));
@@ -210,6 +218,11 @@ const DashboardAi = () => {
              return newObj;
           });
           setTradeProposal(null);
+          setTopSignalsBySymbol(prev => {
+             const newObj = {...prev};
+             delete newObj[sym];
+             return newObj;
+          });
         }
 
         if (data.type === 'ai_trade_proposal') {
@@ -340,6 +353,7 @@ const DashboardAi = () => {
                           result={finalResultBySymbol[job.symbol]}
                           lastRunTime={lastRunMap[job.symbol] || null}
                           agentStatusM1Map={agentStatusBySymbol[job.symbol]}
+                          isClosed={!!closedMap[job.symbol]}
                       />
                  ))}
                  {autoPilotJobs.length === 0 && (
@@ -379,6 +393,7 @@ const DashboardAi = () => {
                         agentStatusM1Map={{}}
                         finalResultBySymbol={finalResultBySymbol}
                         verboseLogs={verboseLogsBySymbol[activeSetupId] || []}
+                        topSignals={topSignalsBySymbol[activeSetupId] || []}
                      />
                  );
              })() : (
