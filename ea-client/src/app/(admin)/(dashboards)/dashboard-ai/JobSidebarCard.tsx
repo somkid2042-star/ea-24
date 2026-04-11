@@ -1,6 +1,6 @@
-import { LuActivity, LuPencil, LuLoader, LuShield, LuMoonStar } from 'react-icons/lu';
+import { LuActivity, LuLoader, LuShield, LuMoonStar } from 'react-icons/lu';
 
-export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agentStatusM1Map, isClosed }: any) => {
+export const JobSidebarCard = ({ job, isSelected, onClick, result, agentStatusM1Map, isClosed }: any) => {
 
     const decision = result?.final_decision || result?.decision;
     const confidence = result?.confidence;
