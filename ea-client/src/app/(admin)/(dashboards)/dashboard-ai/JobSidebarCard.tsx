@@ -64,19 +64,9 @@ export const JobSidebarCard = ({ job, isSelected, onClick, onEdit, result, agent
 
            {/* Content */}
            <div className="flex-1 min-w-0">
-               <div className="flex justify-between items-center mb-0.5">
-                   <h3 className={`text-[14px] font-bold truncate font-mono ${isClosed ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
-                       {job.symbol}
-                   </h3>
-                   <div className="flex items-center gap-1.5">
-                     <button onClick={(e) => { e.stopPropagation(); onEdit(); }} className="text-gray-300 hover:text-blue-500 transition-colors p-0.5">
-                        <LuPencil size={11} />
-                     </button>
-                     <span className="text-[10px] text-gray-400 font-medium bg-gray-100 dark:bg-white/5 px-1.5 py-0.5 rounded font-mono">
-                         {job.interval}m
-                     </span>
-                   </div>
-               </div>
+               <h3 className={`text-[13px] font-bold truncate font-mono mb-0.5 ${isClosed ? 'text-gray-400 dark:text-gray-500' : 'text-gray-900 dark:text-white'}`}>
+                   {job.symbol}
+               </h3>
                
                <div className={`text-[12px] font-medium truncate flex items-center gap-1.5 ${statusColor}`}>
                    <StatusIcon size={11} className={`shrink-0 ${!isClosed && (isRunning || (isManaging && agentStatuses.position_manager === 'running')) ? 'animate-spin' : ''}`} />

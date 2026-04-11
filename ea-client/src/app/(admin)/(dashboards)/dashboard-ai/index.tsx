@@ -327,7 +327,7 @@ const DashboardAi = () => {
       <div className="flex w-full h-full bg-white dark:bg-[#090C15] border border-gray-200 dark:border-white/[0.06] rounded-2xl shadow-sm overflow-hidden">
       
       {/* SIDEBAR */}
-      <div className="w-[240px] lg:w-[280px] flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06] flex flex-col bg-[#fafafa] dark:bg-[#0b0e17]">
+      <div className="w-[180px] lg:w-[200px] flex-shrink-0 border-r border-gray-200 dark:border-white/[0.06] flex flex-col bg-[#fafafa] dark:bg-[#0b0e17]">
         <div className="p-4 flex items-center justify-between border-b border-gray-100 dark:border-white/5">
           <div className="flex items-center gap-2">
             <LuZap className="size-4 text-blue-500" />

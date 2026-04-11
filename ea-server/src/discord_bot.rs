@@ -218,3 +218,34 @@ pub async fn send_to_channel(channel_id_str: &str, msg: &str) -> bool {
         false
     }
 }
+
+/// Send a chart image + text message to a Discord channel
+pub async fn send_chart_to_channel(channel_id_str: &str, msg: &str, image_data: &[u8], filename: &str) -> bool {
+    if channel_id_str.is_empty() { return false; }
+    
+    let Ok(id) = channel_id_str.parse::<u64>() else { return false; };
+    let channel_id = ChannelId::new(id);
+
+    if let Some(http) = DISCORD_HTTP.get() {
+        use serenity::builder::{CreateMessage, CreateAttachment};
+        
+        let attachment = CreateAttachment::bytes(image_data.to_vec(), filename.to_string());
+        let message = CreateMessage::new()
+            .content(msg)
+            .add_file(attachment);
+
+        match channel_id.send_message(http, message).await {
+            Ok(_) => {
+                info!("📊 Chart sent to Discord channel {}", channel_id_str);
+                true
+            }
+            Err(e) => {
+                warn!("⚠️ Discord chart send error: {:?}", e);
+                false
+            }
+        }
+    } else {
+        warn!("⚠️ Discord HTTP Client not initialized");
+        false
+    }
+}

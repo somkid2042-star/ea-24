@@ -1,6 +1,6 @@
 [package]
 name = "ea-server"
-version = "8.4.2"
+version = "9.0.0"
 edition = "2021"
 
 [dependencies]
@@ -47,6 +47,10 @@ rust-embed = "8.11.0"
 mime_guess = "2.0.5"
 base64 = "0.22.1"
 serenity = { version = "0.12.5", default-features = false, features = ["rustls_backend", "client", "gateway", "model", "builder"] }
+
+# Chart generation
+plotters = "0.3"
+plotters-bitmap = "0.3"
 
 [package.metadata.deb]
 maintainer = "EA Developer"

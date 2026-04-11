@@ -6,6 +6,7 @@ mod updater;
 mod strategy;
 mod notify;
 mod discord_bot;
+mod chart_gen;
 mod ai_engine;
 mod pipeline_v8;
 mod position_manager;
@@ -476,7 +477,7 @@ async fn run_server() {
                             if discord_alert {
                                             let chan_id = db_ai.get_config("discord_channel_news").await.unwrap_or_default();
                                             crate::discord_bot::send_to_channel(&chan_id, &format!(
-                                    "📅 <b>News Avoidance</b>\n\n⚠️ หยุดวิเคราะห์ {}\n📰 {} ออกในอีก {} นาที\n🛑 ไม่เปิดออเดอร์ใหม่",
+                                    "📅 **News Avoidance**\n\n⚠️ หยุดวิเคราะห์ {}\n📰 {} ออกในอีก {} นาที\n🛑 ไม่เปิดออเดอร์ใหม่",
                                     sym, event_name, mins
                                 )).await;
                                         }
@@ -759,6 +760,28 @@ async fn run_server() {
                                     &result.reasoning, result.lot_size, 0.0,
                                     0, &gemini_model, &format!("pipeline_v8:{}", result.strategy_name),
                                 ).await;
+
+                                // Send chart to Discord
+                                let chan_id = db_ai.get_config("discord_channel_order").await.unwrap_or_default();
+                                if !chan_id.is_empty() {
+                                    let mem = db_ai.mem_candles.read().await;
+                                    if let Some(candle_map) = mem.get(sym.as_str()) {
+                                        let candles: Vec<crate::strategy::Candle> = candle_map.values().rev().take(60).cloned().collect::<Vec<_>>().into_iter().rev().collect();
+                                        if candles.len() >= 10 {
+                                            if let Some(img) = crate::chart_gen::generate_candlestick_chart(
+                                                &sym, &candles, &result.decision, &result.strategy_name, &result.timeframe, result.confidence,
+                                            ) {
+                                                let fname = format!("{}_{}.bmp", sym.to_lowercase(), chrono::Utc::now().format("%H%M%S"));
+                                                crate::discord_bot::send_chart_to_channel(
+                                                    &chan_id,
+                                                    &format!("🟢 **Order Executed** | {} **{}** | {:.0}% | Lot {:.2} | {} ({})",
+                                                        result.decision, sym, result.confidence, result.lot_size, result.strategy_name, result.timeframe),
+                                                    &img, &fname,
+                                                ).await;
+                                            }
+                                        }
+                                    }
+                                }
                                     } // end Ok(())
                                 } // end match guard_ai
                             } else {
@@ -785,6 +808,27 @@ async fn run_server() {
                                     "🚨 **AI Trade Proposal (Pipeline v8)**\n\n📊 {} **{}**\n🎯 Confidence: {:.0}%\n💰 Lot: {:.2}\n\n📝 {}",
                                     result.decision, sym, result.confidence, result.lot_size, result.reasoning
                                 )).await;
+
+                                // Send chart to Discord
+                                if !chan_id.is_empty() {
+                                    let mem = db_ai.mem_candles.read().await;
+                                    if let Some(candle_map) = mem.get(sym.as_str()) {
+                                        let candles: Vec<crate::strategy::Candle> = candle_map.values().rev().take(60).cloned().collect::<Vec<_>>().into_iter().rev().collect();
+                                        if candles.len() >= 10 {
+                                            if let Some(img) = crate::chart_gen::generate_candlestick_chart(
+                                                &sym, &candles, &result.decision, &result.strategy_name, &result.timeframe, result.confidence,
+                                            ) {
+                                                let fname = format!("{}_{}.bmp", sym.to_lowercase(), chrono::Utc::now().format("%H%M%S"));
+                                                crate::discord_bot::send_chart_to_channel(
+                                                    &chan_id,
+                                                    &format!("📊 {} **{}** | {} ({}) | {:.0}%",
+                                                        result.decision, sym, result.strategy_name, result.timeframe, result.confidence),
+                                                    &img, &fname,
+                                                ).await;
+                                            }
+                                        }
+                                    }
+                                }
                             }
                         }
                         
@@ -991,8 +1035,9 @@ async fn run_server() {
                             cal_summary,
                             chrono::Local::now().format("%H:%M:%S %d/%m/%Y")
                         );
-                        notify::send_telegram_notify(&tg_token, &tg_chat, &news_msg).await;
-                        info!("📰 [News Alert] Telegram sent — sentiment changed to {}", news_result.sentiment);
+                        // Telegram disabled — ใช้ Discord แทน
+                        // notify::send_telegram_notify(&tg_token, &tg_chat, &news_msg).await;
+                        info!("📰 [News Alert] Telegram disabled — sentiment: {}", news_result.sentiment);
                     } else {
                         info!("📰 [News Alert] No change in sentiment — skipping Telegram");
                     }

@@ -20,6 +20,22 @@ use crate::db::Database;
 use crate::ai_engine;
 use crate::strategy;
 
+use std::collections::HashMap;
+use std::sync::{LazyLock, Mutex};
+
+// ── AI Call Cache: ป้องกันเรียก AI ซ้ำสำหรับสัญญาณเดิม ──
+#[derive(Clone)]
+struct LastAiCall {
+    direction: String,
+    strategy: String,
+    timeframe: String,
+    score: f64,
+    timestamp: std::time::Instant,
+}
+
+static AI_CALL_CACHE: LazyLock<Mutex<HashMap<String, LastAiCall>>> =
+    LazyLock::new(|| Mutex::new(HashMap::new()));
+
 // ──────────────────────────────────────────────
 //  Types
 // ──────────────────────────────────────────────
@@ -142,6 +158,10 @@ const MIN_CONFIDENCE_NORMAL: f64 = 55.0;
 const MIN_CONFIDENCE_LOW_VOL: f64 = 65.0;
 const MIN_CONFIDENCE_HIGH_VOL: f64 = 50.0;
 const MIN_CANDLES: usize = 10;
+const MIN_SCORE_FOR_AI: f64 = 65.0;       // ── Score Gate: ต่ำกว่านี้ไม่ต้องถาม AI
+const AI_DEDUP_SECS: u64 = 300;            // ── Signal Dedup: สัญญาณเดิมภายใน 5 นาทีไม่ถามซ้ำ
+const FLIP_SCORE_DELTA: f64 = 15.0;        // ── Direction Lock: ต้อง score สูงกว่าเดิม 15% ถึงจะกลับทิศได้
+const DIRECTION_LOCK_SECS: u64 = 600;      // ── ล็อคทิศทาง 10 นาที
 
 // ──────────────────────────────────────────────
 //  Main Entry Point
@@ -225,6 +245,101 @@ pub async fn run_pipeline_v8(
             best.direction, sym, best.score, best.strategy_name, best.best_timeframe,
             best.tf_confluence.agree_count, best.tf_confluence.total_tfs, scan.atr_ratio)
     }).to_string());
+
+    // ═══════════════════════════════════════════════
+    //  GATE 1: Score Gate — ไม่ถึง 65% ไม่ต้องถาม AI
+    // ═══════════════════════════════════════════════
+    if best.score < MIN_SCORE_FOR_AI {
+        let msg = format!("⏭️ Score {:.0}% < {:.0}% — ข้ามการเรียก AI (ประหยัด API)",
+            best.score, MIN_SCORE_FOR_AI);
+        info!("🛡️ [Pipeline v9] {}", msg);
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
+            "message": &msg
+        }).to_string());
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
+            "message": "⏭️ ข้าม — Score ต่ำเกินไป"
+        }).to_string());
+        let _ = log_tx.send(serde_json::json!({
+            "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+            "message": "⏭️ ข้าม — Score ต่ำเกินไป"
+        }).to_string());
+        return build_hold_result(scan, &msg);
+    }
+
+    // ═══════════════════════════════════════════════
+    //  GATE 2: Signal Dedup — สัญญาณเดิมไม่ถามซ้ำ
+    // ═══════════════════════════════════════════════
+    {
+        let cache = AI_CALL_CACHE.lock().unwrap();
+        if let Some(last) = cache.get(sym.as_str()) {
+            let elapsed = last.timestamp.elapsed().as_secs();
+            if elapsed < AI_DEDUP_SECS
+                && last.direction == best.direction
+                && last.strategy == best.strategy_name
+                && last.timeframe == best.best_timeframe
+            {
+                let msg = format!(
+                    "⏭️ สัญญาณเดิม ({} {} {}) — ถามไปแล้ว {}s ที่แล้ว (dedup {}s)",
+                    best.direction, best.strategy_name, best.best_timeframe,
+                    elapsed, AI_DEDUP_SECS
+                );
+                info!("🛡️ [Pipeline v9] {}", msg);
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
+                    "message": &msg
+                }).to_string());
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
+                    "message": "⏭️ ข้าม — สัญญาณเดิม"
+                }).to_string());
+                let _ = log_tx.send(serde_json::json!({
+                    "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+                    "message": "⏭️ ข้าม — สัญญาณเดิม"
+                }).to_string());
+                return build_hold_result(scan, &msg);
+            }
+        }
+    } // drop lock
+
+    // ═══════════════════════════════════════════════
+    //  GATE 3: Direction Lock — ห้ามกลับทิศง่ายๆ
+    // ═══════════════════════════════════════════════
+    {
+        let cache = AI_CALL_CACHE.lock().unwrap();
+        if let Some(last) = cache.get(sym.as_str()) {
+            let elapsed = last.timestamp.elapsed().as_secs();
+            // ถ้ายังอยู่ในช่วงล็อค และทิศทางกลับกัน
+            if elapsed < DIRECTION_LOCK_SECS && last.direction != best.direction {
+                let score_diff = best.score - last.score;
+                if score_diff < FLIP_SCORE_DELTA {
+                    let msg = format!(
+                        "⛔ Direction Lock: กลับทิศ {} → {} แต่ score ต่างแค่ {:.0} ({:.0}% vs {:.0}%) — ต้อง ≥{:.0}% ถึงจะกลับทิศได้ (ล็อคอีก {}s)",
+                        last.direction, best.direction, score_diff,
+                        best.score, last.score, FLIP_SCORE_DELTA, DIRECTION_LOCK_SECS - elapsed
+                    );
+                    info!("🛡️ [Pipeline v9] {}", msg);
+                    let _ = log_tx.send(serde_json::json!({
+                        "type": "agent_log", "symbol": sym, "agent": "pipeline_v8", "status": "done",
+                        "message": &msg
+                    }).to_string());
+                    let _ = log_tx.send(serde_json::json!({
+                        "type": "agent_log", "symbol": sym, "agent": "gemma_filter", "status": "done",
+                        "message": "⛔ ข้าม — Direction Lock"
+                    }).to_string());
+                    let _ = log_tx.send(serde_json::json!({
+                        "type": "agent_log", "symbol": sym, "agent": "gemini_confirm", "status": "done",
+                        "message": "⛔ ข้าม — Direction Lock"
+                    }).to_string());
+                    return build_hold_result(scan, &msg);
+                } else {
+                    info!("🔄 [Pipeline v9] Direction flip allowed: {} → {} (score diff {:.0}% ≥ {:.0}%)",
+                        last.direction, best.direction, score_diff, FLIP_SCORE_DELTA);
+                }
+            }
+        }
+    } // drop lock
 
     // ═══════════════════════════════════════════════
     //  Fetch History (parallel with candle prep)
@@ -405,6 +520,20 @@ pub async fn run_pipeline_v8(
     };
 
     // ═══════════════════════════════════════════════
+    //  Save to Dedup Cache (ป้องกันเรียก AI ซ้ำ)
+    // ═══════════════════════════════════════════════
+    {
+        let mut cache = AI_CALL_CACHE.lock().unwrap();
+        cache.insert(sym.to_string(), LastAiCall {
+            direction: best.direction.clone(),
+            strategy: best.strategy_name.clone(),
+            timeframe: best.best_timeframe.clone(),
+            score: best.score,
+            timestamp: std::time::Instant::now(),
+        });
+    }
+
+    // ═══════════════════════════════════════════════
     //  Final: Calculate Lot + Return
     // ═══════════════════════════════════════════════
 
@@ -449,6 +578,27 @@ pub async fn run_pipeline_v8(
             ai_label,
             best.selection_reasoning
         )).await;
+
+        // ═══ Send chart image to Discord ═══
+        {
+            let mem = db.mem_candles.read().await;
+            if let Some(candle_map) = mem.get(sym.as_str()) {
+                let candles: Vec<crate::strategy::Candle> = candle_map.values().rev().take(60).cloned().collect::<Vec<_>>().into_iter().rev().collect();
+                if candles.len() >= 10 {
+                    if let Some(img) = crate::chart_gen::generate_candlestick_chart(
+                        sym, &candles, &best.direction, &best.strategy_name, &best.best_timeframe, best.score,
+                    ) {
+                        let filename = format!("{}_{}.bmp", sym.to_lowercase(), chrono::Utc::now().format("%H%M%S"));
+                        crate::discord_bot::send_chart_to_channel(
+                            &ctx.discord_channel_order,
+                            &format!("📊 {} {} — {} ({})", best.direction, sym, best.strategy_name, best.best_timeframe),
+                            &img,
+                            &filename,
+                        ).await;
+                    }
+                }
+            }
+        }
     }
 
     info!("🔥 [Pipeline v9] Final: {} {} → {:.0}% lot:{:.2}", sym, best.direction, final_confidence, lot_size);
@@ -614,8 +764,8 @@ async fn server_strategy_scan(
     // Sort by score descending
     scored.sort_by(|a, b| b.0.partial_cmp(&a.0).unwrap_or(std::cmp::Ordering::Equal));
 
-    // Build top 3 signals for dashboard display
-    let top_signals: Vec<TopSignal> = scored.iter().take(3).enumerate().map(|(rank, &(score, idx))| {
+    // Build top 2 signals for dashboard display
+    let top_signals: Vec<TopSignal> = scored.iter().take(2).enumerate().map(|(rank, &(score, idx))| {
         let sig = &all_signals[idx];
         TopSignal {
             rank: rank + 1,
@@ -879,111 +1029,78 @@ async fn gemma_validate_v8(
     symbol: &str,
     signal: &BestSignal,
     history: &HistoryData,
-    data_sources: &[String],
+    _data_sources: &[String],
     log_tx: &broadcast::Sender<String>,
 ) -> (bool, String) {
-    let has_indicators = data_sources.iter().any(|s| s == "indicators");
-    let has_trade_history = data_sources.iter().any(|s| s == "trade_history");
-    let has_strategy_wr = data_sources.iter().any(|s| s == "strategy_wr");
-    let has_session = data_sources.iter().any(|s| s == "session");
-    let has_streak = data_sources.iter().any(|s| s == "streak");
-    let has_recent = data_sources.iter().any(|s| s == "recent_orders");
+    info!("🏠 [Gemma v8] Data Organizer: จัดเรียงข้อมูล {} {}", signal.direction, symbol);
 
-    let enabled_count = data_sources.len();
-    info!("🏠 [Gemma v8] Data sources enabled: {}/{} — {:?}", enabled_count, 6, data_sources);
-
-    let indicator_section = if has_indicators {
-        format!("## Indicators\n{}\n", signal.indicator_summary)
-    } else { String::new() };
-
-    let history_section = if has_trade_history {
-        format!("## Trade History 30 days\n- Win Rate: {:.0}% ({} trades)\n- Avg PnL: ${:.2}\n",
-            history.symbol_win_rate, history.symbol_total_trades, history.avg_pnl)
-    } else { String::new() };
-
-    let strategy_section = if has_strategy_wr {
-        format!("## Strategy Win Rate\n- {} WR: {:.0}% ({} trades)\n",
-            signal.strategy_name, history.strategy_win_rate, history.strategy_total_trades)
-    } else { String::new() };
-
-    let session_section = if has_session {
-        format!("## Session\n- Session: {} (WR {:.0}%)\n", history.session_name, history.session_win_rate)
-    } else { String::new() };
-
-    let streak_section = if has_streak {
-        format!("## Streak\n- {}\n", history.recent_streak)
-    } else { String::new() };
-
-    let recent_section = if has_recent {
-        format!("## 5 Recent Orders\n{}\n", format_recent_decisions(&history.recent_decisions))
-    } else { String::new() };
-
-    let mut rules = vec![
-        "- APPROVE if signal has reasonable basis — do NOT overthink".to_string(),
-    ];
-    
-    if has_indicators {
-        rules.push("- REJECT ONLY if BUY with RSI>85 or SELL with RSI<15 (extreme overbought/oversold)".to_string());
-        rules.push("- REJECT ONLY if signal clearly conflicts with a very strong opposing trend".to_string());
-    }
-    if has_strategy_wr {
-        rules.push("- REJECT ONLY if this strategy has very poor win rate (<25%) on this symbol".to_string());
-    }
-    if has_streak {
-        rules.push("- REJECT ONLY if 5+ consecutive losses".to_string());
-    }
-    rules.push("- DEFAULT: APPROVE — when in doubt, always APPROVE".to_string());
-
+    // Gemma 4 = Data Organizer: จัดเรียงข้อมูลจาก top 2 กลยุทธ์
+    // ตัดข้อมูลที่ไม่จำเป็นออก ส่งเฉพาะสิ่งสำคัญให้ Gemini ตัดสินใจ
     let prompt = format!(
-r#"You are a quick trade signal validator for EA-24. Answer ONLY "APPROVE" or "REJECT" followed by 1 short reason (under 50 words) in Thai.
+r#"คุณเป็น Data Organizer สำหรับระบบเทรด EA-24
 
-## Signal from Server
-- Symbol: {symbol}
-- Direction: {dir}
-- Strategy: {strat} (Timeframe: {tf})
-- Score: {score:.0}% (Base Confidence: {conf:.0}%)
-- TF Confluence: {tf_agree}/{tf_total} timeframes
-- Reason: {selection}
+หน้าที่: จัดเรียงข้อมูลให้กระชับที่สุด เพื่อส่งให้ AI ตัดสินใจเทรด
+ตอบเป็นภาษาไทย สรุปสั้นๆ ไม่เกิน 80 คำ
 
-{indicator_section}{history_section}{strategy_section}{session_section}{streak_section}{recent_section}
-## Rules
-{rules}
+## ข้อมูลจาก Server Scan
+- คู่เงิน: {symbol}
+- ทิศทาง: {dir}
+- กลยุทธ์หลัก: {strat} ({tf}) — Score {score:.0}%
+- TF ที่เห็นด้วย: {tf_agree}/{tf_total}
+- Indicators: {ind}
 
-Answer ONLY: APPROVE or REJECT + 1 line Thai reason"#,
+## ประวัติ
+- Win Rate {symbol}: {wr:.0}% ({trades} trades)
+- กลยุทธ์ {strat} WR: {strat_wr:.0}%
+- Session {session}: {session_wr:.0}%
+- Streak: {streak}
+
+## คำสั่ง
+สรุปข้อมูลข้างต้นให้กระชับ เน้น:
+1. ทิศทางและเหตุผลหลัก
+2. จุดแข็ง/จุดอ่อนของสัญญาณนี้
+3. ความเสี่ยงที่ควรระวัง
+
+ตอบ:
+SUMMARY: [สรุปข้อมูลกระชับ]"#,
         symbol = symbol,
         dir = signal.direction,
         strat = signal.strategy_name,
         tf = signal.best_timeframe,
         score = signal.score,
-        conf = signal.confidence,
         tf_agree = signal.tf_confluence.agree_count,
         tf_total = signal.tf_confluence.total_tfs,
-        selection = signal.selection_reasoning,
-        indicator_section = indicator_section,
-        history_section = history_section,
-        strategy_section = strategy_section,
-        session_section = session_section,
-        streak_section = streak_section,
-        recent_section = recent_section,
-        rules = rules.join("\n"),
+        ind = signal.indicator_summary,
+        wr = history.symbol_win_rate,
+        trades = history.symbol_total_trades,
+        strat_wr = history.strategy_win_rate,
+        session = history.session_name,
+        session_wr = history.session_win_rate,
+        streak = history.recent_streak,
     );
 
-    match ai_engine::call_ai_pub(gemini_key, "gemma-4-31b-it", &prompt, 0.2, 100, false).await {
+    match ai_engine::call_ai_pub(gemini_key, "gemma-4-31b-it", &prompt, 0.2, 150, false).await {
         Ok(response) => {
-            let clean = response.trim().to_uppercase();
-            let approved = clean.starts_with("APPROVE");
-            let reason = response.trim().to_string();
-            info!("🏠 [Gemma v8] {} {} → {} — {} (sources: {})", signal.direction, symbol,
-                if approved { "APPROVE" } else { "REJECT" }, reason, enabled_count);
+            let summary = response.trim().to_string();
+            info!("🏠 [Gemma v8] Data organized for {} — {}", symbol, summary.chars().take(100).collect::<String>());
             let _ = log_tx.send(serde_json::json!({
                 "type": "agent_log_verbose", "symbol": symbol, "agent": "gemma_filter_v8",
                 "prompt": prompt, "response": response.clone()
             }).to_string());
-            (approved, reason)
+            // Always APPROVE — Gemma is data organizer, not judge
+            (true, summary)
         }
         Err(e) => {
-            warn!("🏠 [Gemma v8] Error: {} — Auto-approving", e);
-            (true, format!("Auto-approve (API Error: {})", e))
+            warn!("🏠 [Gemma v8] Error: {} — ส่งข้อมูลดิบให้ Gemini", e);
+            // Fallback: ส่งสรุปข้อมูลดิบไปเลย
+            let raw_summary = format!(
+                "{} {} | {} ({}) | Score {:.0}% | WR {:.0}% | TF {}/{} | {} | Streak {}",
+                signal.direction, symbol, signal.strategy_name, signal.best_timeframe,
+                signal.score, history.symbol_win_rate,
+                signal.tf_confluence.agree_count, signal.tf_confluence.total_tfs,
+                history.session_name, history.recent_streak,
+            );
+            (true, raw_summary)
         }
     }
 }
