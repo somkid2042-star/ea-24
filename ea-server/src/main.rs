@@ -436,7 +436,7 @@ async fn run_server() {
                                 "message": "ตลาดปิดหยุดการคำนวณจาก AI"
                             }).to_string();
                             let _ = tx_ai.send(closed_msg);
-                            // continue; // Temporarily removed for weekend testing!
+                            continue; // Market closed — skip analysis
                         }
                         
                         info!("🤖 [Auto-Pilot] Checking {} for existing positions...", sym);
