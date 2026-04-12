@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "ea-server"
-version = "8.4.2"
+version = "9.0.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",

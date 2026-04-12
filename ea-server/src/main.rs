@@ -1702,7 +1702,30 @@ async fn handle_ws_connection(
                                             "M1" => 1, "M5" => 5, "M15" => 15, "M30" => 30,
                                             "H1" => 60, "H4" => 240, "D1" => 1440, _ => 5,
                                         };
-                                        info!("📊 [UI] Requesting candles for {} {}", sym, tf);
+                                        info!("📊 [UI/DB] Requesting candles from DB for {} {}", sym, tf);
+                                        
+                                        // 1. Fetch immediately from Server DB
+                                        let final_candles = db.get_candles_for_strategy(sym, tf_minutes, 100).await;
+                                        let converted: Vec<serde_json::Value> = final_candles.into_iter().map(|c| {
+                                            serde_json::json!({
+                                                "time": c.time,
+                                                "open": c.open,
+                                                "high": c.high,
+                                                "low": c.low,
+                                                "close": c.close,
+                                            })
+                                        }).collect();
+                                        
+                                        let history_msg = serde_json::json!({
+                                            "type": "history",
+                                            "symbol": sym,
+                                            "timeframe": tf,
+                                            "candles": converted,
+                                            "source": "server_db"
+                                        });
+                                        let _ = write.send(Message::Text(history_msg.to_string())).await;
+                                        
+                                        // 2. Also ask MT5 to gap-fill if it is online (optional, but good for sync)
                                         let cmd = serde_json::json!({
                                             "action": "request_candles",
                                             "symbol": sym,
