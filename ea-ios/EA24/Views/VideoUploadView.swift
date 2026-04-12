@@ -30,7 +30,6 @@ struct VideoUploadView: View {
     @EnvironmentObject var state: TradingState
     
     @State private var urlInput = ""
-    @State private var showSettings = false
     @State private var selectedVideo: VideoItem?
     @FocusState private var isInputFocused: Bool
     
@@ -40,16 +39,8 @@ struct VideoUploadView: View {
             AuraGradients.mainBackground.ignoresSafeArea()
             
             VStack(spacing: 40) {
-                // Header
-                HStack {
-                    Spacer()
-                    Button(action: { showSettings = true }) {
-                        Image(systemName: "slider.horizontal.3")
-                            .font(.system(size: 22, weight: .regular))
-                            .foregroundColor(AuraColors.textSecondary)
-                    }
-                    .padding(24)
-                }
+                // Header spacing removed
+                HStack {}
                 
                 Spacer()
                 
@@ -135,12 +126,6 @@ struct VideoUploadView: View {
         }
         .onAppear {
             state.requestGcsConfig()
-        }
-        .sheet(isPresented: $showSettings) {
-            GcsSetupSheet()
-                .environmentObject(state)
-                .presentationDetents([.fraction(0.8)])
-                .presentationDragIndicator(.visible)
         }
         .fullScreenCover(item: $selectedVideo) { item in
             ZStack(alignment: .topTrailing) {
@@ -315,98 +300,7 @@ struct VideoUploadView: View {
     }
 }
 
-// MARK: - GCS Settings Sheet
-struct GcsSetupSheet: View {
-    @Environment(\.dismiss) var dismiss
-    @EnvironmentObject var state: TradingState
-    
-    @State private var saJson: String = ""
-    @State private var bucketNameText: String = ""
-    
-    var body: some View {
-        ZStack {
-            AuraColors.backgroundStart.ignoresSafeArea()
-            
-            VStack(spacing: 0) {
-                HStack {
-                    Text("GOOGLE CLOUD STORAGE")
-                        .font(.system(size: 14, weight: .bold))
-                        .tracking(2)
-                        .foregroundColor(.white)
-                    Spacer()
-                    Button(action: { dismiss() }) {
-                        Image(systemName: "xmark.circle.fill")
-                            .font(.system(size: 24))
-                            .foregroundColor(AuraColors.textSecondary)
-                    }
-                }
-                .padding(24)
-                
-                ScrollView {
-                    VStack(alignment: .leading, spacing: 24) {
-                        
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("SERVICE ACCOUNT JSON")
-                                .font(.system(size: 11, weight: .bold))
-                                .tracking(1.5)
-                                .foregroundColor(AuraColors.textSecondary)
-                            
-                            TextEditor(text: $saJson)
-                                .font(.system(size: 12, design: .monospaced))
-                                .frame(height: 180)
-                                .padding(12)
-                                .scrollContentBackground(.hidden)
-                                .background(Color.white.opacity(0.05))
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .foregroundColor(AuraColors.accent)
-                        }
-                        
-                        VStack(alignment: .leading, spacing: 12) {
-                            Text("TARGET BUCKET NAME (OPTIONAL)")
-                                .font(.system(size: 11, weight: .bold))
-                                .tracking(1.5)
-                                .foregroundColor(AuraColors.textSecondary)
-                            
-                            TextField("", text: $bucketNameText)
-                                .padding(16)
-                                .background(Color.white.opacity(0.05))
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                                .foregroundColor(.white)
-                        }
-                        
-                        Spacer().frame(height: 20)
-                        
-                        Button(action: save) {
-                            Text("COMMIT CONFIGURATION")
-                                .font(.system(size: 12, weight: .bold))
-                                .tracking(2)
-                                .foregroundColor(.black)
-                                .frame(maxWidth: .infinity)
-                                .padding(.vertical, 16)
-                                .background(AuraGradients.accentGlow)
-                                .clipShape(RoundedRectangle(cornerRadius: 16))
-                        }
-                    }
-                    .padding(.horizontal, 24)
-                }
-            }
-        }
-        .onAppear {
-            if state.gcsConfigured {
-                saJson = "/// Server already configured ///\n/// Paste new JSON to override ///"
-            }
-            bucketNameText = state.bucketName
-        }
-    }
-    
-    private func save() {
-        let jsonToSave = saJson.contains("/// Server already configured") ? nil : saJson
-        state.saveGcsConfig(serviceAccountJSON: jsonToSave, bucketName: bucketNameText.isEmpty ? nil : bucketNameText)
-        dismiss()
-    }
-}
-
-// Helper font modifier for convenience
+// MARK: - Helper font modifier for convenience
 extension Font {
     static func line(_ size: CGFloat, weight: Font.Weight = .regular) -> Font {
         .system(size: size, weight: weight, design: .rounded)
