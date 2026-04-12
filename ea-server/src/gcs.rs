@@ -159,8 +159,6 @@ pub async fn download_video(
         let mut child = tokio::process::Command::new("python3")
             .arg("telegram_downloader.py")
             .arg(&target_url)
-            .arg("--info")
-            .current_dir("/opt/ea-24")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
