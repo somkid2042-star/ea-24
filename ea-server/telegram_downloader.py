@@ -58,8 +58,13 @@ async def main():
     os.close(fd)
     
     print(f"Downloading to {path}...")
-    await client.download_media(message, file=path)
-    print(f"SUCCESS:{path}")
+    sys.stdout.flush()
+
+    def progress(current, total):
+        print(f"PROGRESS:{current}/{total}", flush=True)
+
+    await client.download_media(message, file=path, progress_callback=progress)
+    print(f"SUCCESS:{path}", flush=True)
     await client.disconnect()
 
 if __name__ == '__main__':

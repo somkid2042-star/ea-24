@@ -153,25 +153,68 @@ pub async fn download_video(
             let _ = tx.send(msg);
         }
 
-        let output = tokio::process::Command::new("python3")
+        use std::process::Stdio;
+        use tokio::io::{AsyncBufReadExt, BufReader};
+
+        let mut child = tokio::process::Command::new("python3")
             .arg("telegram_downloader.py")
             .arg(&target_url)
-            .output()
-            .await
-            .map_err(|e| format!("Failed to run python proxy: {}", e))?;
+            .stdout(Stdio::piped())
+            .stderr(Stdio::piped())
+            .spawn()
+            .map_err(|e| format!("Failed to spawn python proxy: {}", e))?;
 
-        let stdout_str = String::from_utf8_lossy(&output.stdout);
-        let stderr_str = String::from_utf8_lossy(&output.stderr);
+        let stdout = child.stdout.take().expect("Child did not have a handle to stdout");
+        let stderr = child.stderr.take().expect("Child did not have a handle to stderr");
 
-        if !output.status.success() || !stdout_str.contains("SUCCESS:") {
-            error!("Telethon Script Failed. Status: {}\nOutput: {}\nError: {}", output.status, stdout_str, stderr_str);
-            return Err(format!("Python Telethon proxy failed: {}", stderr_str));
+        let progress_tx_clone = progress_tx.clone();
+        let job_id_clone = job_id.to_string();
+        
+        let mut file_path_opt: Option<String> = None;
+        let mut output_log = String::new();
+
+        let mut reader = BufReader::new(stdout).lines();
+        while let Ok(Some(line)) = reader.next_line().await {
+            output_log.push_str(&line);
+            output_log.push('\n');
+
+            if line.starts_with("PROGRESS:") {
+                if let Some(tx) = &progress_tx_clone {
+                    let parts: Vec<&str> = line.trim_start_matches("PROGRESS:").split('/').collect();
+                    if parts.len() == 2 {
+                        let cur: f64 = parts[0].parse().unwrap_or(0.0);
+                        let tot: f64 = parts[1].parse().unwrap_or(1.0);
+                        let mut pct = (cur / tot * 50.0) as u32; // Telegram download is first 50% of total job
+                        if pct < 10 { pct = 10; }
+                        
+                        let msg = serde_json::json!({
+                            "type": "upload_video_progress",
+                            "job_id": job_id_clone,
+                            "stage": "downloading_telegram",
+                            "progress": pct,
+                        }).to_string();
+                        let _ = tx.send(msg);
+                    }
+                }
+            } else if line.starts_with("SUCCESS:") {
+                file_path_opt = Some(line.replace("SUCCESS:", "").trim().to_string());
+            } else {
+                info!("Python TG Proxy: {}", line);
+            }
         }
 
-        let file_path_str = stdout_str.lines()
-            .find(|l| l.starts_with("SUCCESS:"))
-            .map(|l| l.replace("SUCCESS:", "").trim().to_string())
-            .ok_or("Failed to extract path from python script output")?;
+        let status = child.wait().await.map_err(|e| format!("Failed to wait on child: {}", e))?;
+
+        if !status.success() || file_path_opt.is_none() {
+            let mut err_log = String::new();
+            let mut err_reader = BufReader::new(stderr).lines();
+            while let Ok(Some(l)) = err_reader.next_line().await { err_log.push_str(&l); err_log.push('\n'); }
+            
+            error!("Telethon Script Failed. Status: {}\nOutput: {}\nError: {}", status, output_log, err_log);
+            return Err(format!("Python Telethon proxy failed: {}", err_log));
+        }
+
+        let file_path_str = file_path_opt.unwrap();
 
         let file_path = std::path::Path::new(&file_path_str);
         

@@ -382,7 +382,7 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
     func uploadVideoFromURL(url: String) {
         let cmd: [String: String] = [
             "action": "upload_video_from_url",
-            "video_url": url
+            "url": url
         ]
         if let data = try? JSONSerialization.data(withJSONObject: cmd),
            let str = String(data: data, encoding: .utf8) {
