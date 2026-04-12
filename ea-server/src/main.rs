@@ -111,6 +111,7 @@ struct EaState {
     symbol: String,
     gap_status: std::collections::HashMap<String, String>,
     last_quote_times: std::collections::HashMap<String, i64>,
+    market_watch_symbols: Vec<String>,
     broker_offset: i64,
     balance: f64,
     equity: f64,
@@ -271,6 +272,7 @@ async fn run_server() {
         symbol: "".to_string(),
         gap_status: std::collections::HashMap::new(),
         last_quote_times: std::collections::HashMap::new(),
+        market_watch_symbols: Vec::new(),
         broker_offset: 0,
         balance: 0.0,
         equity: 0.0,
@@ -1345,11 +1347,13 @@ async fn handle_mt5_connection(
                                             }
                                         }
                                         if let Some(symbols) = val.get("symbols").and_then(|s| s.as_array()) {
+                                            state.market_watch_symbols.clear(); // Clear old to match MT5 exactly
                                             for info in symbols {
                                                 let sym = info["symbol"].as_str().unwrap_or("");
                                                 let digits = info["digits"].as_i64().unwrap_or(5);
                                                 let time = info["time"].as_i64().unwrap_or(0);
                                                 if !sym.is_empty() {
+                                                    state.market_watch_symbols.push(sym.to_string());
                                                     digits_map.insert(sym.to_string(), digits);
                                                     if time > 0 {
                                                         state.last_quote_times.insert(sym.to_string(), time);
@@ -2656,9 +2660,9 @@ async fn handle_ws_connection(
                                         let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     "get_tracked_symbols" => {
-                                        let symbols = db.get_tracked_symbols().await;
-                                        let mut closed_map = serde_json::Map::new();
                                         let state = ea_state.read().await;
+                                        let symbols = state.market_watch_symbols.clone();
+                                        let mut closed_map = serde_json::Map::new();
                                         let mut now_ts = chrono::Utc::now().timestamp();
                                         if state.broker_offset != 0 {
                                             now_ts += state.broker_offset;
