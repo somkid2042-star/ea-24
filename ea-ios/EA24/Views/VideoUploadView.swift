@@ -154,6 +154,8 @@ struct VideoUploadView: View {
                 activeIndicator(text: "CONNECTING...", progress: 0)
             case .downloading(let p):
                 activeIndicator(text: "DOWNLOADING TO SERVER", progress: CGFloat(p))
+            case .downloadingTelegram(let p):
+                activeIndicator(text: "DOWNLOADING FROM TELEGRAM", progress: CGFloat(p))
             case .uploading(let p):
                 activeIndicator(text: "UPLOADING TO CLOUD", progress: CGFloat(p))
             case .done(let name, let link, _):

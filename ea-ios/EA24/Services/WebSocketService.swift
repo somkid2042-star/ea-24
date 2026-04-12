@@ -306,8 +306,10 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
             case "upload_video_progress":
                 if let msg = try? self.decoder.decode(UploadVideoProgressMessage.self, from: data) {
                     DispatchQueue.main.async {
-                        if msg.stage == "downloading" || msg.stage == "downloading_telegram" {
+                        if msg.stage == "downloading" {
                             self.state?.videoUploadStatus = .downloading(progress: msg.progress ?? 0)
+                        } else if msg.stage == "downloading_telegram" {
+                            self.state?.videoUploadStatus = .downloadingTelegram(progress: msg.progress ?? 0)
                         } else if msg.stage == "uploading" {
                             self.state?.videoUploadStatus = .uploading(progress: msg.progress ?? 50)
                         }

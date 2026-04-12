@@ -147,7 +147,7 @@ pub async fn download_video(
             let msg = serde_json::json!({
                 "type": "upload_video_progress",
                 "job_id": job_id,
-                "stage": "downloading",
+                "stage": "downloading_telegram",
                 "progress": 10,
             }).to_string();
             let _ = tx.send(msg);
@@ -190,7 +190,7 @@ pub async fn download_video(
                         let msg = serde_json::json!({
                             "type": "upload_video_progress",
                             "job_id": job_id_clone,
-                            "stage": "downloading",
+                            "stage": "downloading_telegram",
                             "progress": pct,
                         }).to_string();
                         let _ = tx.send(msg);
