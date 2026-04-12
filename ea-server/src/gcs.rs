@@ -433,7 +433,7 @@ pub async fn upload_to_gcs(
 }
 
 // ──────────────────────────────────────────────
-//  Full Pipeline: URL → Download → GCS Upload
+//  Full Pipeline: URL → Download → GCS Upload (with Gofile fallback)
 // ──────────────────────────────────────────────
 
 pub async fn upload_url_to_gcs(
@@ -453,15 +453,121 @@ pub async fn upload_url_to_gcs(
 
     drop(tmp_file);
 
-    let result = upload_to_gcs(
-        file_bytes,
+    // Try GCS first, fallback to Gofile if GCS fails
+    match upload_to_gcs(
+        file_bytes.clone(),
         &file_name,
         bucket_name,
         sa,
-        progress_tx,
+        progress_tx.clone(),
         job_id,
     )
-    .await?;
+    .await
+    {
+        Ok(result) => Ok(result),
+        Err(gcs_err) => {
+            info!("GCS failed ({}), falling back to Gofile.io...", gcs_err);
+            upload_to_gofile(file_bytes, &file_name, progress_tx, job_id).await
+        }
+    }
+}
 
-    Ok(result)
+// ──────────────────────────────────────────────
+//  Gofile.io — Free File Upload (No Account Needed)
+// ──────────────────────────────────────────────
+
+async fn upload_to_gofile(
+    file_bytes: Vec<u8>,
+    file_name: &str,
+    progress_tx: Option<tokio::sync::broadcast::Sender<String>>,
+    job_id: &str,
+) -> Result<GcsUploadResult, String> {
+    info!("Uploading {} ({} bytes) to Gofile.io...", file_name, file_bytes.len());
+
+    // Send progress: uploading stage
+    if let Some(ref tx) = progress_tx {
+        let msg = serde_json::json!({
+            "type": "upload_video_progress",
+            "job_id": job_id,
+            "stage": "uploading",
+            "progress": 60,
+        }).to_string();
+        let _ = tx.send(msg);
+    }
+
+    // Step 1: Get best server
+    let client = reqwest::Client::new();
+    let server_resp: serde_json::Value = client
+        .get("https://api.gofile.io/servers")
+        .send()
+        .await
+        .map_err(|e| format!("Gofile servers request failed: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Gofile servers parse failed: {}", e))?;
+
+    let server_name = server_resp["data"]["servers"][0]["name"]
+        .as_str()
+        .unwrap_or("store1");
+    let upload_url = format!("https://{}.gofile.io/uploadFile", server_name);
+
+    if let Some(ref tx) = progress_tx {
+        let msg = serde_json::json!({
+            "type": "upload_video_progress",
+            "job_id": job_id,
+            "stage": "uploading",
+            "progress": 70,
+        }).to_string();
+        let _ = tx.send(msg);
+    }
+
+    // Step 2: Upload file
+    let part = reqwest::multipart::Part::bytes(file_bytes.clone())
+        .file_name(file_name.to_string())
+        .mime_str("video/mp4")
+        .map_err(|e| format!("Failed to create multipart: {}", e))?;
+
+    let form = reqwest::multipart::Form::new().part("file", part);
+
+    let upload_resp: serde_json::Value = client
+        .post(&upload_url)
+        .multipart(form)
+        .send()
+        .await
+        .map_err(|e| format!("Gofile upload failed: {}", e))?
+        .json()
+        .await
+        .map_err(|e| format!("Gofile upload parse failed: {}", e))?;
+
+    if let Some(ref tx) = progress_tx {
+        let msg = serde_json::json!({
+            "type": "upload_video_progress",
+            "job_id": job_id,
+            "stage": "uploading",
+            "progress": 95,
+        }).to_string();
+        let _ = tx.send(msg);
+    }
+
+    let status = upload_resp["status"].as_str().unwrap_or("");
+    if status != "ok" {
+        return Err(format!("Gofile upload failed: {}", upload_resp));
+    }
+
+    let download_page = upload_resp["data"]["downloadPage"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+    let file_id = upload_resp["data"]["fileId"]
+        .as_str()
+        .unwrap_or("")
+        .to_string();
+
+    info!("Gofile upload success! Link: {} | FileID: {}", download_page, file_id);
+
+    Ok(GcsUploadResult {
+        file_name: file_name.to_string(),
+        gcs_link: download_page,
+        size_bytes: file_bytes.len() as u64,
+    })
 }
