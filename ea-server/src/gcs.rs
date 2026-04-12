@@ -139,25 +139,63 @@ pub async fn download_video(
 
     let mut target_url = url.to_string();
 
-    // -- Telegram Link Interceptor --
+    // -- Telegram Link Interceptor (Using Telethon Python Proxy for Private/Public) --
     if target_url.contains("t.me/") {
-        let embed_url = if target_url.contains("?embed=1") { target_url.clone() } else { format!("{}?embed=1", target_url) };
-        info!("Extracting Telegram video from: {}", embed_url);
-        
-        let html_resp = client.get(&embed_url).send().await.map_err(|e| format!("Telegram HTML fetch failed: {}", e))?;
-        if html_resp.status().is_success() {
-            let html_text = html_resp.text().await.unwrap_or_default();
-            if let Some(video_tag) = html_text.split("<video").nth(1) {
-                if let Some(src_part) = video_tag.split("src=\"").nth(1) {
-                    if let Some(raw_url) = src_part.split("\"").next() {
-                        target_url = raw_url.replace("&amp;", "&");
-                        info!("Found raw Telegram video stream: {}", target_url);
-                    }
-                }
-            } else {
-                return Err("Could not find video in Telegram link. Ensure the post is public and contains a video.".to_string());
-            }
+        info!("Delegating Telegram download to python Telethon proxy for: {}", target_url);
+
+        if let Some(tx) = &progress_tx {
+            let msg = serde_json::json!({
+                "type": "upload_video_progress",
+                "job_id": job_id,
+                "stage": "downloading_telegram",
+                "progress": 10,
+            }).to_string();
+            let _ = tx.send(msg);
         }
+
+        let output = tokio::process::Command::new("python3")
+            .arg("telegram_downloader.py")
+            .arg(&target_url)
+            .output()
+            .await
+            .map_err(|e| format!("Failed to run python proxy: {}", e))?;
+
+        let stdout_str = String::from_utf8_lossy(&output.stdout);
+        let stderr_str = String::from_utf8_lossy(&output.stderr);
+
+        if !output.status.success() || !stdout_str.contains("SUCCESS:") {
+            error!("Telethon Script Failed. Status: {}\nOutput: {}\nError: {}", output.status, stdout_str, stderr_str);
+            return Err(format!("Python Telethon proxy failed: {}", stderr_str));
+        }
+
+        let file_path_str = stdout_str.lines()
+            .find(|l| l.starts_with("SUCCESS:"))
+            .map(|l| l.replace("SUCCESS:", "").trim().to_string())
+            .ok_or("Failed to extract path from python script output")?;
+
+        let file_path = std::path::Path::new(&file_path_str);
+        
+        // Wrap the downloaded python temp file into a standard NamedTempFile so the rest of the flow is identical
+        let mut tmp = tempfile::NamedTempFile::new().map_err(|e| format!("Failed to create temp for TG: {}", e))?;
+        
+        let py_bytes = tokio::fs::read(file_path).await.map_err(|e| format!("Failed to read python downloaded file: {}", e))?;
+        std::io::Write::write_all(&mut tmp, &py_bytes).map_err(|e| format!("Write all error: {}", e))?;
+        
+        // Cleanup the python-generated temp file
+        let _ = tokio::fs::remove_file(file_path).await;
+
+        let file_name = format!("telegram_video_{}.mp4", chrono::Utc::now().timestamp());
+        
+        let tmp_file = tempfile::Builder::new()
+            .suffix(&format!("_{}", file_name))
+            .tempfile()
+            .map_err(|e| format!("Tempfile error: {}", e))?;
+
+        std::fs::copy(tmp.path(), tmp_file.path())
+            .map_err(|e| format!("Copy file error: {}", e))?;
+
+        info!("Telethon Download OK: '{}': {} bytes", file_name, py_bytes.len());
+        return Ok((tmp_file, file_name));
     }
 
     let resp = client
