@@ -137,8 +137,31 @@ pub async fn download_video(
         .build()
         .map_err(|e| format!("HTTP client build failed: {}", e))?;
 
+    let mut target_url = url.to_string();
+
+    // -- Telegram Link Interceptor --
+    if target_url.contains("t.me/") {
+        let embed_url = if target_url.contains("?embed=1") { target_url.clone() } else { format!("{}?embed=1", target_url) };
+        info!("Extracting Telegram video from: {}", embed_url);
+        
+        let html_resp = client.get(&embed_url).send().await.map_err(|e| format!("Telegram HTML fetch failed: {}", e))?;
+        if html_resp.status().is_success() {
+            let html_text = html_resp.text().await.unwrap_or_default();
+            if let Some(video_tag) = html_text.split("<video").nth(1) {
+                if let Some(src_part) = video_tag.split("src=\"").nth(1) {
+                    if let Some(raw_url) = src_part.split("\"").next() {
+                        target_url = raw_url.replace("&amp;", "&");
+                        info!("Found raw Telegram video stream: {}", target_url);
+                    }
+                }
+            } else {
+                return Err("Could not find video in Telegram link. Ensure the post is public and contains a video.".to_string());
+            }
+        }
+    }
+
     let resp = client
-        .get(url)
+        .get(&target_url)
         .send()
         .await
         .map_err(|e| format!("Download request failed: {}", e))?;
