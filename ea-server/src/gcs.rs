@@ -159,6 +159,8 @@ pub async fn download_video(
         let mut child = tokio::process::Command::new("python3")
             .arg("telegram_downloader.py")
             .arg(&target_url)
+            .arg("--info")
+            .current_dir("/opt/ea-24")
             .stdout(Stdio::piped())
             .stderr(Stdio::piped())
             .spawn()
@@ -171,6 +173,7 @@ pub async fn download_video(
         let job_id_clone = job_id.to_string();
         
         let mut file_path_opt: Option<String> = None;
+        let mut info_msg_opt: Option<String> = None;
         let mut output_log = String::new();
 
         let mut reader = BufReader::new(stdout).lines();
@@ -197,13 +200,27 @@ pub async fn download_video(
                     }
                 }
             } else if line.starts_with("SUCCESS:") {
-                file_path_opt = Some(line.replace("SUCCESS:", "").trim().to_string());
+                let parts: Vec<&str> = line.splitn(2, ':').collect();
+                if parts.len() == 2 {
+                    file_path_opt = Some(parts[1].trim().to_string());
+                }
+            } else if line.starts_with("INFO:") {
+                let parts: Vec<&str> = line.split(':').collect();
+                if parts.len() >= 3 {
+                    let size_bytes: f64 = parts[1].parse().unwrap_or(0.0);
+                    let size_mb = size_bytes / 1024.0 / 1024.0;
+                    info_msg_opt = Some(format!("✅ TEST CONNECTION SUCCESS!\n\nFile Name: {}\nFile Size: {:.2} MB\n\nThe bot can successfully read the private channel without downloading it!", parts[2], size_mb));
+                }
             } else {
                 info!("Python TG Proxy: {}", line);
             }
         }
 
         let status = child.wait().await.map_err(|e| format!("Failed to wait on child: {}", e))?;
+
+        if let Some(info_msg) = info_msg_opt {
+             return Err(info_msg);
+        }
 
         if !status.success() || file_path_opt.is_none() {
             let mut err_log = String::new();

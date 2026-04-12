@@ -21,6 +21,7 @@ enum VideoUploadStatus: Equatable {
     case idle
     case started
     case downloading(progress: Int)
+    case downloadingTelegram(progress: Int)
     case uploading(progress: Int)
     case done(fileName: String, cloudLink: String, fileId: String)
     case error(String)
@@ -196,6 +197,14 @@ struct VideoUploadView: View {
             Text("\(Int(progress))%")
                 .font(.system(size: 32, weight: .thin, design: .rounded))
                 .foregroundColor(.white)
+                
+            Button("CANCEL") {
+                state.videoUploadStatus = .idle
+                urlInput = ""
+            }
+            .font(.system(size: 11, weight: .bold))
+            .foregroundColor(.white.opacity(0.3))
+            .padding(.top, 8)
         }
     }
     

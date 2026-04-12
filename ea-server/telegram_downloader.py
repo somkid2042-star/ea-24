@@ -48,16 +48,24 @@ async def main():
         await client.disconnect()
         sys.exit(1)
 
-    print(f"Fetching message {msg_id} from {chat_id}...")
+    print(f"Fetching message {msg_id} from {chat_id}...", flush=True)
     message = await client.get_messages(chat_id, ids=msg_id)
     if not message or not message.media:
-        print("Message not found or has no media.")
+        print("Message not found or has no media.", flush=True)
         sys.exit(1)
+
+    has_info = False
+    if len(sys.argv) > 2 and sys.argv[2] == "--info":
+        has_info = True
+        file_size = getattr(message.media, "document", None)
+        size = file_size.size if file_size else 0
+        print(f"INFO:{size}:telegram_video.mp4", flush=True)
+        sys.exit(0)
 
     fd, path = tempfile.mkstemp(suffix=".mp4")
     os.close(fd)
     
-    print(f"Downloading to {path}...")
+    print(f"Downloading to {path}...", flush=True)
     sys.stdout.flush()
 
     def progress(current, total):
