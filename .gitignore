@@ -30,3 +30,4 @@ ea-client/.env
 ea-client/src-tauri/target/
 ea-server/target/
 github_token.txt
+ea-ios/EA24/SecretConfig.swift
