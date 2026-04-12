@@ -1,4 +1,11 @@
 import SwiftUI
+import AVKit
+
+struct VideoItem: Identifiable {
+    let id = UUID()
+    let url: URL
+}
+
 
 struct VideoUploadRecord: Codable, Identifiable {
     var id: String { job_id }
@@ -24,6 +31,7 @@ struct VideoUploadView: View {
     
     @State private var urlInput = ""
     @State private var showSettings = false
+    @State private var selectedVideo: VideoItem?
     @FocusState private var isInputFocused: Bool
     
     var body: some View {
@@ -134,6 +142,21 @@ struct VideoUploadView: View {
                 .presentationDetents([.fraction(0.8)])
                 .presentationDragIndicator(.visible)
         }
+        .fullScreenCover(item: $selectedVideo) { item in
+            ZStack(alignment: .topTrailing) {
+                Color.black.ignoresSafeArea()
+                
+                VideoPlayer(player: AVPlayer(url: item.url))
+                    .ignoresSafeArea()
+                
+                Button(action: { selectedVideo = nil }) {
+                    Image(systemName: "xmark.circle.fill")
+                        .font(.system(size: 32))
+                        .foregroundColor(.white.opacity(0.8))
+                        .padding(24)
+                }
+            }
+        }
     }
     
     // MARK: - Progress View
@@ -202,7 +225,7 @@ struct VideoUploadView: View {
             
             Button("OPEN IN CLOUD") {
                 if let url = URL(string: link) {
-                    UIApplication.shared.open(url)
+                    selectedVideo = VideoItem(url: url)
                 }
             }
             .font(.system(size: 12, weight: .bold))
@@ -253,7 +276,7 @@ struct VideoUploadView: View {
     private func historyCard(_ record: VideoUploadRecord) -> some View {
         Button(action: {
             if record.status == "done", let link = record.cloud_link, let url = URL(string: link) {
-                UIApplication.shared.open(url)
+                selectedVideo = VideoItem(url: url)
             }
         }) {
             VStack(alignment: .leading, spacing: 8) {
