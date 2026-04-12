@@ -12,6 +12,7 @@ mod pipeline_v8;
 mod position_manager;
 mod news;
 mod order_guard;
+mod drive;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -86,6 +87,10 @@ struct ClientMessage {
     // Upload fields
     file_name: Option<String>,
     content_base64: Option<String>,
+    // Video upload fields
+    video_url: Option<String>,
+    drive_folder_id: Option<String>,
+    service_account_json: Option<String>,
     // AI fields
     question: Option<String>,
     ai_mode: Option<String>,
@@ -2447,6 +2452,91 @@ async fn handle_ws_connection(
                                             });
                                             let _ = write.send(Message::Text(resp.to_string())).await;
                                         }
+                                    }
+                                    // ═══════════════════════════════════════════════
+                                    //  VIDEO UPLOAD VIA URL → GOOGLE DRIVE
+                                    // ═══════════════════════════════════════════════
+                                    "upload_video_from_url" => {
+                                        if let Some(video_url) = client_msg.video_url.clone() {
+                                            let job_id = format!("{}", chrono::Utc::now().timestamp_millis());
+                                            let sa_json = if let Some(j) = client_msg.service_account_json.clone() { j }
+                                                          else { db.get_config("drive_service_account").await.unwrap_or_default() };
+                                            let folder_id_opt = if let Some(f) = client_msg.drive_folder_id.clone() { f }
+                                                                else { db.get_config("drive_folder_id").await.unwrap_or_default() };
+                                            if sa_json.is_empty() {
+                                                let resp = serde_json::json!({"type":"upload_video_status","job_id":job_id,"status":"error","error":"Google Service Account JSON not configured. Set it in Upload Settings."});
+                                                let _ = write.send(Message::Text(resp.to_string())).await;
+                                            } else {
+                                                let ack = serde_json::json!({"type":"upload_video_status","job_id":&job_id,"status":"started","url":&video_url});
+                                                let _ = write.send(Message::Text(ack.to_string())).await;
+                                                let tx_drive = tx.clone();
+                                                let db_drive = db.clone();
+                                                let job_id2 = job_id.clone();
+                                                tokio::spawn(async move {
+                                                    let sa: drive::ServiceAccountKey = match serde_json::from_str(&sa_json) {
+                                                        Ok(s) => s,
+                                                        Err(e) => {
+                                                            let resp = serde_json::json!({"type":"upload_video_status","job_id":job_id2,"status":"error","error":format!("Invalid Service Account JSON: {}", e)});
+                                                            let _ = tx_drive.send(resp.to_string()); return;
+                                                        }
+                                                    };
+                                                    let actual_folder_id = if folder_id_opt.is_empty() {
+                                                        info!("[Drive] No folder configured, creating EA24-Videos...");
+                                                        match drive::create_drive_folder(&sa, "EA24-Videos", None).await {
+                                                            Ok(id) => {
+                                                                let _ = db_drive.set_config("drive_folder_id", &id).await;
+                                                                let _ = drive::make_public(&sa, &id).await;
+                                                                let note = serde_json::json!({"type":"drive_folder_created","folder_id":&id,"folder_name":"EA24-Videos"});
+                                                                let _ = tx_drive.send(note.to_string());
+                                                                id
+                                                            }
+                                                            Err(e) => {
+                                                                let resp = serde_json::json!({"type":"upload_video_status","job_id":job_id2,"status":"error","error":format!("Failed to create Drive folder: {}", e)});
+                                                                let _ = tx_drive.send(resp.to_string()); return;
+                                                            }
+                                                        }
+                                                    } else { folder_id_opt };
+                                                    match drive::upload_url_to_drive(&video_url, &actual_folder_id, &sa, Some(tx_drive.clone()), &job_id2).await {
+                                                        Ok(result) => {
+                                                            let _ = drive::make_public(&sa, &result.file_id).await;
+                                                            let entry = serde_json::json!({"job_id":&job_id2,"file_name":&result.file_name,"file_id":&result.file_id,"drive_link":&result.drive_link,"size_bytes":result.size_bytes,"source_url":&video_url,"uploaded_at":chrono::Utc::now().to_rfc3339()});
+                                                            let hist_str = db_drive.get_config("drive_upload_history").await.unwrap_or_else(|| "[]".to_string());
+                                                            let mut hist: Vec<serde_json::Value> = serde_json::from_str(&hist_str).unwrap_or_default();
+                                                            hist.insert(0, entry); hist.truncate(50);
+                                                            let _ = db_drive.set_config("drive_upload_history", &serde_json::to_string(&hist).unwrap_or_default()).await;
+                                                            let resp = serde_json::json!({"type":"upload_video_status","job_id":job_id2,"status":"done","file_name":result.file_name,"file_id":result.file_id,"drive_link":result.drive_link,"size_bytes":result.size_bytes});
+                                                            let _ = tx_drive.send(resp.to_string());
+                                                        }
+                                                        Err(e) => {
+                                                            log::error!("[Drive] Upload failed: {}", e);
+                                                            let resp = serde_json::json!({"type":"upload_video_status","job_id":job_id2,"status":"error","error":e});
+                                                            let _ = tx_drive.send(resp.to_string());
+                                                        }
+                                                    }
+                                                });
+                                            }
+                                        } else {
+                                            let resp = serde_json::json!({"type":"upload_video_status","status":"error","error":"video_url is required"});
+                                            let _ = write.send(Message::Text(resp.to_string())).await;
+                                        }
+                                    }
+                                    "set_drive_config" => {
+                                        if let Some(sa_json) = client_msg.service_account_json.clone() {
+                                            let _ = db.set_config("drive_service_account", &sa_json).await;
+                                        }
+                                        if let Some(fid) = client_msg.drive_folder_id.clone() {
+                                            let _ = db.set_config("drive_folder_id", &fid).await;
+                                        }
+                                        let has_sa = db.get_config("drive_service_account").await.map(|s| !s.is_empty()).unwrap_or(false);
+                                        let resp = serde_json::json!({"type":"drive_config_saved","has_sa":has_sa,"folder_id":db.get_config("drive_folder_id").await.unwrap_or_default()});
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
+                                    }
+                                    "get_drive_config" => {
+                                        let hist_str = db.get_config("drive_upload_history").await.unwrap_or_else(|| "[]".to_string());
+                                        let history: serde_json::Value = serde_json::from_str(&hist_str).unwrap_or(serde_json::Value::Array(vec![]));
+                                        let has_sa = db.get_config("drive_service_account").await.map(|s| !s.is_empty()).unwrap_or(false);
+                                        let resp = serde_json::json!({"type":"drive_config","has_sa":has_sa,"folder_id":db.get_config("drive_folder_id").await.unwrap_or_default(),"upload_history":history});
+                                        let _ = write.send(Message::Text(resp.to_string())).await;
                                     }
                                     "test_ai" => {
                                         info!("🤖 [UI] AI connection test requested");

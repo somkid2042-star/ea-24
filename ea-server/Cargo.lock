@@ -499,7 +499,7 @@ dependencies = [
 
 [[package]]
 name = "ea-server"
-version = "9.0.0"
+version = "9.1.0"
 dependencies = [
  "base64 0.22.1",
  "chrono",
@@ -513,13 +513,16 @@ dependencies = [
  "plotters-bitmap",
  "rand 0.8.5",
  "reqwest",
+ "rsa",
  "rust-embed",
  "serde",
  "serde_json",
  "serenity",
+ "sha2",
  "socket2 0.5.10",
  "sqlx",
  "sysinfo",
+ "tempfile",
  "tokio",
  "tokio-tungstenite",
 ]
@@ -2030,6 +2033,7 @@ dependencies = [
  "pkcs1",
  "pkcs8",
  "rand_core 0.6.4",
+ "sha2",
  "signature",
  "spki",
  "subtle",
