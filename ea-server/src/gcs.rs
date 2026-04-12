@@ -209,7 +209,7 @@ pub async fn download_video(
                 if parts.len() >= 3 {
                     let size_bytes: f64 = parts[1].parse().unwrap_or(0.0);
                     let size_mb = size_bytes / 1024.0 / 1024.0;
-                    info_msg_opt = Some(format!("✅ TEST CONNECTION SUCCESS!\n\nFile Name: {}\nFile Size: {:.2} MB\n\nThe bot can successfully read the private channel without downloading it!", parts[2], size_mb));
+                    info_msg_opt = Some(format!("✅ TEST CONNECTION SUCCESS!\n\n[Server Tag: v9.3.7]\nFile Name: {}\nFile Size: {:.2} MB\n\nThe bot can successfully read the private channel without downloading it!", parts[2], size_mb));
                 }
             } else {
                 info!("Python TG Proxy: {}", line);
