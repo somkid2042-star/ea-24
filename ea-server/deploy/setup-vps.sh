@@ -42,6 +42,10 @@ echo "   URL: ${LATEST_URL}"
 wget -O ${INSTALL_DIR}/ea-server "${LATEST_URL}"
 chmod +x ${INSTALL_DIR}/ea-server
 
+echo "📥 Downloading Telegram Python Proxy Scripts..."
+wget -O ${INSTALL_DIR}/telegram_downloader.py "https://raw.githubusercontent.com/${REPO}/main/ea-server/telegram_downloader.py"
+wget -O ${INSTALL_DIR}/telegram_session.session "https://raw.githubusercontent.com/${REPO}/main/ea-server/telegram_session.session"
+
 echo "✅ Downloaded to ${INSTALL_DIR}/ea-server"
 
 # ── Step 3: Create .env file (if not exists) ──
