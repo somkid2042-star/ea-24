@@ -1,0 +1,216 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/DashboardView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Categories",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 23
+        }
+      },
+      {
+        "comment": "",
+        "key": "Active Signals",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Welcome back!",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 92
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hello! Smith 👋",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 95
+        }
+      },
+      {
+        "comment": "",
+        "key": "Total Balance",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 145
+        }
+      },
+      {
+        "comment": "",
+        "key": "Invest Now",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 180
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%% Sure",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 291
+        }
+      },
+      {
+        "comment": "",
+        "key": "Trade %@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "Market Overview",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 514
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live Market Price",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 425
+        }
+      },
+      {
+        "comment": "",
+        "key": "Syncing MT5 Chart...",
+        "location": {
+          "startingColumn": 58,
+          "startingLine": 442
+        }
+      },
+      {
+        "comment": "",
+        "key": "Loading DB Chart...",
+        "location": {
+          "startingColumn": 83,
+          "startingLine": 442
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Candlestick Data",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 452
+        }
+      },
+      {
+        "comment": "",
+        "key": "Try selecting another timeframe or symbol.",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 455
+        }
+      },
+      {
+        "comment": "",
+        "key": "Retry / Fetch",
+        "location": {
+          "startingColumn": 32,
+          "startingLine": 458
+        }
+      },
+      {
+        "comment": "",
+        "key": "Time",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 477
+        }
+      },
+      {
+        "comment": "",
+        "key": "High",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 478
+        }
+      },
+      {
+        "comment": "",
+        "key": "Low",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 479
+        }
+      },
+      {
+        "comment": "",
+        "key": "Time",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 486
+        }
+      },
+      {
+        "comment": "",
+        "key": "Open",
+        "location": {
+          "startingColumn": 44,
+          "startingLine": 487
+        }
+      },
+      {
+        "comment": "",
+        "key": "Close",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 488
+        }
+      },
+      {
+        "comment": "",
+        "key": "Jobko - Job Finder Mobile App",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 589
+        }
+      },
+      {
+        "comment": "",
+        "key": "Good morning",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 619
+        }
+      },
+      {
+        "comment": "",
+        "key": "Hello! Smith",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 622
+        }
+      },
+      {
+        "comment": "",
+        "key": "MAIN MENU",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 632
+        }
+      },
+      {
+        "comment": "",
+        "key": "SETTING",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 647
+        }
+      }
+    ]
+  },
+  "version": 1
+}

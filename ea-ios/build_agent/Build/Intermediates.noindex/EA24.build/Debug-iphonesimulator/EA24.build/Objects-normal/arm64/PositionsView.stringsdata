@@ -1,0 +1,56 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PositionsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Positions",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 16
+        }
+      },
+      {
+        "comment": "",
+        "key": "No Open Positions",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "Positions will appear here when\nthe AI opens trades",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld positions",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 63
+        }
+      },
+      {
+        "comment": "",
+        "key": "#%lld",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 103
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ lot",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 117
+        }
+      }
+    ]
+  },
+  "version": 1
+}

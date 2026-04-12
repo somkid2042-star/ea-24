@@ -1,0 +1,149 @@
+{
+  "" : {
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24-primary.dia",
+    "emit-module-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24-primary-emit-module.dia",
+    "pch" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24-primary.swiftdeps"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/ContentView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ContentView~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/EA24App.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/EA24App~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/ServerMessage.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/ServerMessage~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/TradingActivityAttributes.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingActivityAttributes~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/TradingState.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/TradingState~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Services/LiveActivityManager.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/LiveActivityManager~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Services/WebSocketService.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/WebSocketService~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Theme.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/Theme~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/Components/CustomTabBar.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/CustomTabBar~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/DashboardView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/DashboardView~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PipelineView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PipelineView~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PositionsView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/PositionsView~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/SettingsView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/SettingsView~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/VideoUploadView.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24.build/Objects-normal/arm64/VideoUploadView~partial.swiftmodule"
+  }
+}

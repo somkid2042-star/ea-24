@@ -1194,6 +1194,11 @@ async fn run_server() {
         strategy::run_strategy_engine(engine_db, engine_tx, engine_ea).await;
     });
 
+    // Spawn Video File Server (port 9090)
+    tokio::spawn(async move {
+        gcs::start_video_file_server().await;
+    });
+
     // Accept WebSocket connections
     while let Ok((stream, peer_addr)) = ws_listener.accept().await {
 

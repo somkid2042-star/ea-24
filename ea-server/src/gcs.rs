@@ -466,50 +466,23 @@ pub async fn upload_url_to_gcs(
     {
         Ok(result) => Ok(result),
         Err(gcs_err) => {
-            info!("GCS failed ({}), falling back to Gofile.io...", gcs_err);
-            upload_to_gofile(file_bytes, &file_name, progress_tx, job_id).await
+            info!("GCS failed ({}), falling back to local VPS storage...", gcs_err);
+            save_to_local(file_bytes, &file_name, progress_tx, job_id).await
         }
     }
 }
 
 // ──────────────────────────────────────────────
-//  Gofile.io — Free File Upload (No Account Needed)
+//  Local VPS Storage — Save files & serve via HTTP
 // ──────────────────────────────────────────────
 
-async fn upload_to_gofile(
+async fn save_to_local(
     file_bytes: Vec<u8>,
     file_name: &str,
     progress_tx: Option<tokio::sync::broadcast::Sender<String>>,
     job_id: &str,
 ) -> Result<GcsUploadResult, String> {
-    info!("Uploading {} ({} bytes) to Gofile.io...", file_name, file_bytes.len());
-
-    // Send progress: uploading stage
-    if let Some(ref tx) = progress_tx {
-        let msg = serde_json::json!({
-            "type": "upload_video_progress",
-            "job_id": job_id,
-            "stage": "uploading",
-            "progress": 60,
-        }).to_string();
-        let _ = tx.send(msg);
-    }
-
-    // Step 1: Get best server
-    let client = reqwest::Client::new();
-    let server_resp: serde_json::Value = client
-        .get("https://api.gofile.io/servers")
-        .send()
-        .await
-        .map_err(|e| format!("Gofile servers request failed: {}", e))?
-        .json()
-        .await
-        .map_err(|e| format!("Gofile servers parse failed: {}", e))?;
-
-    let server_name = server_resp["data"]["servers"][0]["name"]
-        .as_str()
-        .unwrap_or("store1");
-    let upload_url = format!("https://{}.gofile.io/uploadFile", server_name);
+    info!("Saving {} ({} bytes) to local VPS storage...", file_name, file_bytes.len());
 
     if let Some(ref tx) = progress_tx {
         let msg = serde_json::json!({
@@ -521,23 +494,21 @@ async fn upload_to_gofile(
         let _ = tx.send(msg);
     }
 
-    // Step 2: Upload file
-    let part = reqwest::multipart::Part::bytes(file_bytes.clone())
-        .file_name(file_name.to_string())
-        .mime_str("video/mp4")
-        .map_err(|e| format!("Failed to create multipart: {}", e))?;
+    // Save to videos/ directory
+    let videos_dir = std::path::Path::new("videos");
+    std::fs::create_dir_all(videos_dir).map_err(|e| format!("Failed to create videos dir: {}", e))?;
 
-    let form = reqwest::multipart::Form::new().part("file", part);
+    // Use timestamp + original name for uniqueness
+    let ts = std::time::SystemTime::now()
+        .duration_since(std::time::UNIX_EPOCH)
+        .unwrap_or_default()
+        .as_millis();
+    let safe_name = file_name.replace(' ', "_").replace('/', "_");
+    let stored_name = format!("{}_{}", ts, safe_name);
+    let file_path = videos_dir.join(&stored_name);
 
-    let upload_resp: serde_json::Value = client
-        .post(&upload_url)
-        .multipart(form)
-        .send()
-        .await
-        .map_err(|e| format!("Gofile upload failed: {}", e))?
-        .json()
-        .await
-        .map_err(|e| format!("Gofile upload parse failed: {}", e))?;
+    std::fs::write(&file_path, &file_bytes)
+        .map_err(|e| format!("Failed to write video file: {}", e))?;
 
     if let Some(ref tx) = progress_tx {
         let msg = serde_json::json!({
@@ -549,25 +520,89 @@ async fn upload_to_gofile(
         let _ = tx.send(msg);
     }
 
-    let status = upload_resp["status"].as_str().unwrap_or("");
-    if status != "ok" {
-        return Err(format!("Gofile upload failed: {}", upload_resp));
-    }
+    // Build the public URL using the VPS hostname
+    let hostname = get_public_hostname().await;
+    let download_url = format!("http://{}:9090/{}", hostname, stored_name);
 
-    let download_page = upload_resp["data"]["downloadPage"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-    let file_id = upload_resp["data"]["fileId"]
-        .as_str()
-        .unwrap_or("")
-        .to_string();
-
-    info!("Gofile upload success! Link: {} | FileID: {}", download_page, file_id);
+    info!("Video saved locally! URL: {}", download_url);
 
     Ok(GcsUploadResult {
         file_name: file_name.to_string(),
-        gcs_link: download_page,
+        gcs_link: download_url,
         size_bytes: file_bytes.len() as u64,
     })
 }
+
+async fn get_public_hostname() -> String {
+    // Try to get internet-facing IP
+    if let Ok(resp) = reqwest::get("https://api.ipify.org").await {
+        if let Ok(ip) = resp.text().await {
+            let ip = ip.trim().to_string();
+            if !ip.is_empty() {
+                return ip;
+            }
+        }
+    }
+    // Fallback to hostname
+    hostname::get()
+        .map(|h| h.to_string_lossy().to_string())
+        .unwrap_or_else(|_| "localhost".to_string())
+}
+
+/// Start a simple HTTP file server for the videos/ directory on port 9090
+pub async fn start_video_file_server() {
+    use tokio::net::TcpListener;
+    use tokio::io::AsyncWriteExt;
+
+    let addr = "0.0.0.0:9090";
+    let listener = match TcpListener::bind(addr).await {
+        Ok(l) => l,
+        Err(e) => {
+            error!("Failed to start video file server on {}: {}", addr, e);
+            return;
+        }
+    };
+    info!("🎬 Video file server running on {}", addr);
+
+    loop {
+        if let Ok((mut stream, _)) = listener.accept().await {
+            tokio::spawn(async move {
+                let mut buf = vec![0u8; 4096];
+                let n = match tokio::io::AsyncReadExt::read(&mut stream, &mut buf).await {
+                    Ok(n) if n > 0 => n,
+                    _ => return,
+                };
+
+                let req = String::from_utf8_lossy(&buf[..n]);
+                let path = req.lines().next()
+                    .and_then(|line| line.split_whitespace().nth(1))
+                    .unwrap_or("/");
+
+                let file_name = path.trim_start_matches('/');
+                if file_name.is_empty() || file_name.contains("..") {
+                    let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found";
+                    let _ = stream.write_all(resp.as_bytes()).await;
+                    return;
+                }
+
+                let file_path = std::path::Path::new("videos").join(file_name);
+                match tokio::fs::read(&file_path).await {
+                    Ok(data) => {
+                        let header = format!(
+                            "HTTP/1.1 200 OK\r\nContent-Type: video/mp4\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccept-Ranges: bytes\r\n\r\n",
+                            data.len()
+                        );
+                        let _ = stream.write_all(header.as_bytes()).await;
+                        let _ = stream.write_all(&data).await;
+                    }
+                    Err(_) => {
+                        let resp = "HTTP/1.1 404 Not Found\r\nContent-Length: 9\r\n\r\nNot Found";
+                        let _ = stream.write_all(resp.as_bytes()).await;
+                    }
+                }
+            });
+        }
+    }
+}
+
+

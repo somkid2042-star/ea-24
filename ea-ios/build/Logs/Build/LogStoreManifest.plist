@@ -1,0 +1,53 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>12</integer>
+	<key>logs</key>
+	<dict>
+		<key>3144A1BD-55CB-4BB2-AE81-04260996EC72</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>3144A1BD-55CB-4BB2-AE81-04260996EC72.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>E</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>2</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>EA24 project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>EA24</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>timeStartedRecording</key>
+			<real>797706965.99841702</real>
+			<key>timeStoppedRecording</key>
+			<real>797706967.45006394</real>
+			<key>title</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>uniqueIdentifier</key>
+			<string>3144A1BD-55CB-4BB2-AE81-04260996EC72</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

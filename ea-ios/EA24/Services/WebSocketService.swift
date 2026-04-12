@@ -297,7 +297,17 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
                                 cloudLink: msg.cloud_link ?? "",
                                 fileId: msg.file_id ?? ""
                             )
-                            // Refresh history
+                            // Add to history immediately
+                            let record = VideoUploadRecord(
+                                job_id: msg.job_id ?? UUID().uuidString,
+                                file_name: msg.file_name ?? "Video",
+                                status: "done",
+                                error: nil,
+                                cloud_link: msg.cloud_link,
+                                timestamp: Date()
+                            )
+                            self.state?.uploadHistory.insert(record, at: 0)
+                            // Also refresh from server
                             self.requestGcsConfig()
                         }
                     }

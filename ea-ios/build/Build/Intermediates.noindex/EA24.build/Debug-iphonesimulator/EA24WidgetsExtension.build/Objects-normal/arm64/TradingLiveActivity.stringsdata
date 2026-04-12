@@ -1,0 +1,152 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/TradingLiveActivity.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "EA-24",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 23
+        }
+      },
+      {
+        "comment": "",
+        "key": "Online",
+        "location": {
+          "startingColumn": 63,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "Offline",
+        "location": {
+          "startingColumn": 74,
+          "startingLine": 31
+        }
+      },
+      {
+        "comment": "",
+        "key": "MT5",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 41
+        }
+      },
+      {
+        "comment": "",
+        "key": "P&L",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 51
+        }
+      },
+      {
+        "comment": "",
+        "key": "Monitoring...",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 82
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 77
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "EA-24 Trading",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 162
+        }
+      },
+      {
+        "comment": "",
+        "key": "MT5",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Online",
+        "location": {
+          "startingColumn": 55,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Offline",
+        "location": {
+          "startingColumn": 73,
+          "startingLine": 171
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 197
+        }
+      },
+      {
+        "comment": "",
+        "key": "P&L",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 208
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld pos",
+        "location": {
+          "startingColumn": 27,
+          "startingLine": 217
+        }
+      },
+      {
+        "comment": "",
+        "key": "Scanning",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 263
+        }
+      },
+      {
+        "comment": "",
+        "key": "AI Confirm",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 269
+        }
+      },
+      {
+        "comment": "",
+        "key": "Ready",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 276
+        }
+      }
+    ]
+  },
+  "version": 1
+}

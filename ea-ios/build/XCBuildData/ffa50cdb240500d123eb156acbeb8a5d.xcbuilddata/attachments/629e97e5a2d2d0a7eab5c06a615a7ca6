@@ -1,0 +1,26 @@
+{
+  "" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-emit-module.dia",
+    "pch" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.swiftdeps"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/EA24WidgetsBundle.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/TradingActivityAttributes.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/TradingLiveActivity.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.o"
+  }
+}

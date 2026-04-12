@@ -1,0 +1,128 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/VideoUploadView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "AURA DROP",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 57
+        }
+      },
+      {
+        "comment": "",
+        "key": "Paste video URL...",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 66
+        }
+      },
+      {
+        "comment": "",
+        "key": "INITIALIZE TRANSFER",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 86
+        }
+      },
+      {
+        "comment": "",
+        "key": "RECENT TRANSFERS",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 186
+        }
+      },
+      {
+        "comment": "",
+        "key": "TRANSFER COMPLETE",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 198
+        }
+      },
+      {
+        "comment": "",
+        "key": "OPEN IN DRIVE",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "NEW DROP",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 215
+        }
+      },
+      {
+        "comment": "",
+        "key": "TRANSFER FAILED",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 231
+        }
+      },
+      {
+        "comment": "",
+        "key": "RETRY",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 242
+        }
+      },
+      {
+        "comment": "",
+        "key": "NODE CONFIGURATION",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 309
+        }
+      },
+      {
+        "comment": "",
+        "key": "SERVICE ACCOUNT JSON",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 326
+        }
+      },
+      {
+        "comment": "",
+        "key": "TARGET FOLDER ID (OPTIONAL)",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 342
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 39,
+          "startingLine": 347
+        }
+      },
+      {
+        "comment": "",
+        "key": "COMMIT CONFIGURATION",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 357
+        }
+      }
+    ]
+  },
+  "version": 1
+}

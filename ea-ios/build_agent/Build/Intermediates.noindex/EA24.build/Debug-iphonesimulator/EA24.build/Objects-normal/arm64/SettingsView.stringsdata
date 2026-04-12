@@ -1,0 +1,104 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/SettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 33
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connected",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 39
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 40
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connecting to ws://%@:%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 42
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current: ws://%@:%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 107
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server IP",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Port",
+        "location": {
+          "startingColumn": 31,
+          "startingLine": 88
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show real-time trading status on Dynamic Island and Lock Screen",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 226
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 28,
+          "startingLine": 210
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dynamic Island",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 203
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear Agent Logs",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 263
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reconnect to Server",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 281
+        }
+      }
+    ]
+  },
+  "version": 1
+}

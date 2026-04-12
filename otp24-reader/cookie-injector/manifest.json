@@ -1,0 +1,15 @@
+{
+  "manifest_version": 3,
+  "name": "OTP24 Cookie Injector",
+  "version": "1.1",
+  "description": "ฉีด Cookie จาก OTP24 API เข้าเบราว์เซอร์",
+  "permissions": ["cookies", "tabs", "activeTab"],
+  "host_permissions": ["<all_urls>"],
+  "action": {
+    "default_popup": "popup.html"
+  },
+  "web_accessible_resources": [{
+    "resources": ["cached_cookies.json"],
+    "matches": ["<all_urls>"]
+  }]
+}

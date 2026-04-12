@@ -1,0 +1,264 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/SettingsView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Settings",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 172
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connected",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 178
+        }
+      },
+      {
+        "comment": "",
+        "key": "Status",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 50
+        }
+      },
+      {
+        "comment": "",
+        "key": "About",
+        "location": {
+          "startingColumn": 25,
+          "startingLine": 122
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server IP",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 17
+        }
+      },
+      {
+        "comment": "",
+        "key": "Port",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 26
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connect",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 38
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Connection",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 43
+        }
+      },
+      {
+        "comment": "",
+        "key": "Current: ws://%@:%@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 45
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 52
+        }
+      },
+      {
+        "comment": "",
+        "key": "Online",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "Offline",
+        "location": {
+          "startingColumn": 65,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "MT5 EA",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 65
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connected",
+        "location": {
+          "startingColumn": 54,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Disconnected",
+        "location": {
+          "startingColumn": 68,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Version",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 79
+        }
+      },
+      {
+        "comment": "",
+        "key": "v%@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 81
+        }
+      },
+      {
+        "comment": "",
+        "key": "EA Version",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 89
+        }
+      },
+      {
+        "comment": "",
+        "key": "v%@",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 91
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dynamic Island",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 104
+        }
+      },
+      {
+        "comment": "",
+        "key": "Live Activity",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 116
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show real-time trading status on Dynamic Island and Lock Screen",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 118
+        }
+      },
+      {
+        "comment": "",
+        "key": "App",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 124
+        }
+      },
+      {
+        "comment": "",
+        "key": "EA-24 iOS",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 126
+        }
+      },
+      {
+        "comment": "",
+        "key": "Version",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 132
+        }
+      },
+      {
+        "comment": "",
+        "key": "1.0.0",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 134
+        }
+      },
+      {
+        "comment": "",
+        "key": "Build",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 140
+        }
+      },
+      {
+        "comment": "",
+        "key": "SwiftUI + ActivityKit",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 142
+        }
+      },
+      {
+        "comment": "",
+        "key": "Clear Agent Logs",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 155
+        }
+      },
+      {
+        "comment": "",
+        "key": "Reconnect to Server",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 166
+        }
+      },
+      {
+        "comment": "",
+        "key": "OK",
+        "location": {
+          "startingColumn": 24,
+          "startingLine": 179
+        }
+      },
+      {
+        "comment": "",
+        "key": "Connecting to ws://%@:%@",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 181
+        }
+      }
+    ]
+  },
+  "version": 1
+}

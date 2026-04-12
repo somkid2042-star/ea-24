@@ -1,0 +1,137 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!DOCTYPE plist PUBLIC "-//Apple//DTD PLIST 1.0//EN" "http://www.apple.com/DTDs/PropertyList-1.0.dtd">
+<plist version="1.0">
+<dict>
+	<key>logFormatVersion</key>
+	<integer>12</integer>
+	<key>logs</key>
+	<dict>
+		<key>15E2062F-2798-48B9-845F-5D9A98E951C1</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>15E2062F-2798-48B9-845F-5D9A98E951C1.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>S</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>0</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>EA24 project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>EA24</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>timeStartedRecording</key>
+			<real>797695433.05420303</real>
+			<key>timeStoppedRecording</key>
+			<real>797695436.18674505</real>
+			<key>title</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>uniqueIdentifier</key>
+			<string>15E2062F-2798-48B9-845F-5D9A98E951C1</string>
+		</dict>
+		<key>3135FA15-8607-4472-9E8D-0ED6F9DFCA58</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>3135FA15-8607-4472-9E8D-0ED6F9DFCA58.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>2</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>EA24 project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>EA24</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>timeStartedRecording</key>
+			<real>797695863.47899795</real>
+			<key>timeStoppedRecording</key>
+			<real>797695877.05218697</real>
+			<key>title</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>uniqueIdentifier</key>
+			<string>3135FA15-8607-4472-9E8D-0ED6F9DFCA58</string>
+		</dict>
+		<key>6ED964FC-203B-43E5-B902-24D7F4B9C180</key>
+		<dict>
+			<key>className</key>
+			<string>IDECommandLineBuildLog</string>
+			<key>documentTypeString</key>
+			<string>&lt;nil&gt;</string>
+			<key>domainType</key>
+			<string>Xcode.IDEActivityLogDomainType.BuildLog</string>
+			<key>fileName</key>
+			<string>6ED964FC-203B-43E5-B902-24D7F4B9C180.xcactivitylog</string>
+			<key>hasPrimaryLog</key>
+			<true/>
+			<key>primaryObservable</key>
+			<dict>
+				<key>highLevelStatus</key>
+				<string>W</string>
+				<key>totalNumberOfAnalyzerIssues</key>
+				<integer>0</integer>
+				<key>totalNumberOfErrors</key>
+				<integer>0</integer>
+				<key>totalNumberOfTestFailures</key>
+				<integer>0</integer>
+				<key>totalNumberOfWarnings</key>
+				<integer>2</integer>
+			</dict>
+			<key>schemeIdentifier-containerName</key>
+			<string>EA24 project</string>
+			<key>schemeIdentifier-schemeName</key>
+			<string>EA24</string>
+			<key>schemeIdentifier-sharedScheme</key>
+			<integer>1</integer>
+			<key>signature</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>timeStartedRecording</key>
+			<real>797695692.64573205</real>
+			<key>timeStoppedRecording</key>
+			<real>797695708.62249196</real>
+			<key>title</key>
+			<string>Building project EA24 with scheme EA24</string>
+			<key>uniqueIdentifier</key>
+			<string>6ED964FC-203B-43E5-B902-24D7F4B9C180</string>
+		</dict>
+	</dict>
+</dict>
+</plist>

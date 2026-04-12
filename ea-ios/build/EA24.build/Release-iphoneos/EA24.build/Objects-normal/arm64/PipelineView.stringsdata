@@ -1,0 +1,88 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PipelineView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "Pipeline",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 44
+        }
+      },
+      {
+        "comment": "",
+        "key": "Agent Logs",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 22
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld",
+        "location": {
+          "startingColumn": 42,
+          "startingLine": 25
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pipeline Idle",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 60
+        }
+      },
+      {
+        "comment": "",
+        "key": "AI Pipeline status will appear here when auto-analyze is active",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 64
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%% confidence",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 136
+        }
+      },
+      {
+        "comment": "",
+        "key": "%@ (%@)",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 141
+        }
+      },
+      {
+        "comment": "",
+        "key": "Top Signals",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 157
+        }
+      },
+      {
+        "comment": "",
+        "key": "#%lld",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 163
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 38,
+          "startingLine": 183
+        }
+      }
+    ]
+  },
+  "version": 1
+}

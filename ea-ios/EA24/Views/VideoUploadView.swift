@@ -33,100 +33,103 @@ struct VideoUploadView: View {
     @State private var urlInput = ""
     @State private var selectedVideo: VideoItem?
     @FocusState private var isInputFocused: Bool
+    @State private var showUploadSheet = false
     
     var body: some View {
         ZStack {
             // Background
             AuraGradients.mainBackground.ignoresSafeArea()
             
-            VStack(spacing: 40) {
-                // Header spacing removed
-                HStack {}
-                
-                Spacer()
-                
-                // Main Content
-                VStack(spacing: 32) {
-                    
-                    // App Branding / Title
-                    VStack(spacing: 8) {
-                        Image(systemName: "paperplane.fill")
-                            .font(.system(size: 48, weight: .light))
-                            .foregroundStyle(AuraGradients.accentGlow)
-                        
+            VStack(spacing: 0) {
+                // Header
+                HStack {
+                    VStack(alignment: .leading, spacing: 4) {
                         Text("AURA DROP")
                             .font(.system(size: 20, weight: .bold, design: .rounded))
-                            .tracking(8)
+                            .tracking(6)
                             .foregroundColor(AuraColors.textPrimary)
-                    }
-                    .padding(.bottom, 20)
-                    
-                    // Input Area
-                    VStack(spacing: 24) {
-                        TextField("Paste video URL...", text: $urlInput)
-                            .padding(.horizontal, 24)
-                            .padding(.vertical, 20)
-                            .background(Color.white.opacity(0.05))
-                            .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                            .overlay(
-                                RoundedRectangle(cornerRadius: 24, style: .continuous)
-                                    .strokeBorder(isInputFocused ? AuraColors.accent : Color.clear, lineWidth: 1)
-                            )
-                            .foregroundColor(.white)
-                            .tint(AuraColors.accent)
-                            .focused($isInputFocused)
-                            .keyboardType(.URL)
-                            .autocapitalization(.none)
-                            .disableAutocorrection(true)
-                            .animation(.easeOut(duration: 0.2), value: isInputFocused)
                         
-                        // Action Button
-                        if case .idle = state.videoUploadStatus {
-                            Button(action: startUpload) {
-                                Text("INITIALIZE TRANSFER")
-                                    .font(.system(size: 14, weight: .bold, design: .rounded))
-                                    .tracking(2)
-                                    .foregroundColor(.black)
-                                    .frame(maxWidth: .infinity)
-                                    .padding(.vertical, 20)
-                                    .background(AuraGradients.accentGlow)
-                                    .clipShape(RoundedRectangle(cornerRadius: 24, style: .continuous))
-                                    .shadow(color: AuraColors.accent.opacity(0.3), radius: 15, x: 0, y: 5)
-                            }
-                            .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
-                            .opacity(urlInput.isEmpty ? 0.5 : 1.0)
-                        } else {
-                            progressView
-                        }
+                        let doneCount = state.uploadHistory.filter { $0.status == "done" }.count
+                        Text("\(doneCount) videos")
+                            .font(.system(size: 12, weight: .medium))
+                            .foregroundColor(AuraColors.textSecondary)
                     }
-                    .padding(.horizontal, 32)
+                    
+                    Spacer()
+                    
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 24, weight: .light))
+                        .foregroundStyle(AuraGradients.accentGlow)
+                }
+                .padding(.horizontal, 24)
+                .padding(.top, 16)
+                .padding(.bottom, 20)
+                
+                // Upload Progress (inline when active)
+                if case .idle = state.videoUploadStatus {
+                    // nothing
+                } else {
+                    progressView
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 16)
                 }
                 
-                Spacer()
-                
-                // History Hint (only if exists)
-                if !state.uploadHistory.isEmpty {
-                    VStack(spacing: 16) {
-                        Text("RECENT TRANSFERS")
-                            .font(.system(size: 11, weight: .bold))
-                            .tracking(4)
-                            .foregroundColor(AuraColors.textSecondary)
+                // Video Gallery
+                if state.uploadHistory.isEmpty {
+                    // Empty State
+                    Spacer()
+                    VStack(spacing: 20) {
+                        Image(systemName: "film.stack")
+                            .font(.system(size: 56, weight: .ultraLight))
+                            .foregroundColor(AuraColors.textSecondary.opacity(0.4))
                         
-                        ScrollView(.horizontal, showsIndicators: false) {
-                            HStack(spacing: 16) {
-                                ForEach(state.uploadHistory.prefix(5)) { record in
-                                    historyCard(record)
-                                }
-                            }
-                            .padding(.horizontal, 32)
-                        }
+                        Text("NO VIDEOS YET")
+                            .font(.system(size: 13, weight: .bold))
+                            .tracking(3)
+                            .foregroundColor(AuraColors.textSecondary.opacity(0.5))
+                        
+                        Text("Tap + to download from Telegram")
+                            .font(.system(size: 13))
+                            .foregroundColor(AuraColors.textSecondary.opacity(0.3))
                     }
-                    .padding(.bottom, 40)
+                    Spacer()
+                } else {
+                    ScrollView(.vertical, showsIndicators: false) {
+                        LazyVStack(spacing: 12) {
+                            ForEach(state.uploadHistory) { record in
+                                videoCard(record)
+                            }
+                        }
+                        .padding(.horizontal, 24)
+                        .padding(.bottom, 100) // space for floating button
+                    }
+                }
+            }
+            
+            // Floating Add Button
+            VStack {
+                Spacer()
+                HStack {
+                    Spacer()
+                    Button(action: { showUploadSheet = true }) {
+                        Image(systemName: "plus")
+                            .font(.system(size: 24, weight: .semibold))
+                            .foregroundColor(.black)
+                            .frame(width: 60, height: 60)
+                            .background(AuraGradients.accentGlow)
+                            .clipShape(Circle())
+                            .shadow(color: AuraColors.accent.opacity(0.4), radius: 15, x: 0, y: 5)
+                    }
+                    .padding(.trailing, 24)
+                    .padding(.bottom, 32)
                 }
             }
         }
         .onAppear {
             state.requestGcsConfig()
+        }
+        .sheet(isPresented: $showUploadSheet) {
+            uploadSheet
         }
         .fullScreenCover(item: $selectedVideo) { item in
             ZStack(alignment: .topTrailing) {
@@ -143,6 +146,75 @@ struct VideoUploadView: View {
                 }
             }
         }
+    }
+    
+    // MARK: - Upload Sheet
+    
+    private var uploadSheet: some View {
+        ZStack {
+            AuraGradients.mainBackground.ignoresSafeArea()
+            
+            VStack(spacing: 32) {
+                // Handle
+                Capsule()
+                    .fill(Color.white.opacity(0.2))
+                    .frame(width: 40, height: 4)
+                    .padding(.top, 12)
+                
+                // Title
+                VStack(spacing: 8) {
+                    Image(systemName: "paperplane.fill")
+                        .font(.system(size: 36, weight: .light))
+                        .foregroundStyle(AuraGradients.accentGlow)
+                    
+                    Text("NEW DROP")
+                        .font(.system(size: 16, weight: .bold, design: .rounded))
+                        .tracking(4)
+                        .foregroundColor(AuraColors.textPrimary)
+                }
+                
+                // Input
+                VStack(spacing: 20) {
+                    TextField("Paste Telegram URL...", text: $urlInput)
+                        .padding(.horizontal, 24)
+                        .padding(.vertical, 18)
+                        .background(Color.white.opacity(0.05))
+                        .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                        .overlay(
+                            RoundedRectangle(cornerRadius: 20, style: .continuous)
+                                .strokeBorder(isInputFocused ? AuraColors.accent : Color.clear, lineWidth: 1)
+                        )
+                        .foregroundColor(.white)
+                        .tint(AuraColors.accent)
+                        .focused($isInputFocused)
+                        .keyboardType(.URL)
+                        .autocapitalization(.none)
+                        .disableAutocorrection(true)
+                    
+                    Button(action: {
+                        startUpload()
+                        showUploadSheet = false
+                    }) {
+                        Text("INITIALIZE TRANSFER")
+                            .font(.system(size: 14, weight: .bold, design: .rounded))
+                            .tracking(2)
+                            .foregroundColor(.black)
+                            .frame(maxWidth: .infinity)
+                            .padding(.vertical, 18)
+                            .background(AuraGradients.accentGlow)
+                            .clipShape(RoundedRectangle(cornerRadius: 20, style: .continuous))
+                            .shadow(color: AuraColors.accent.opacity(0.3), radius: 15, x: 0, y: 5)
+                    }
+                    .disabled(urlInput.trimmingCharacters(in: .whitespacesAndNewlines).isEmpty)
+                    .opacity(urlInput.isEmpty ? 0.5 : 1.0)
+                }
+                .padding(.horizontal, 32)
+                
+                Spacer()
+            }
+        }
+        .presentationDetents([.medium])
+        .presentationDragIndicator(.hidden)
     }
     
     // MARK: - Progress View
@@ -219,7 +291,7 @@ struct VideoUploadView: View {
                 .tracking(2)
                 .foregroundColor(AuraColors.success)
             
-            Button("OPEN IN CLOUD") {
+            Button("PLAY VIDEO") {
                 if let url = URL(string: link) {
                     selectedVideo = VideoItem(url: url)
                 }
@@ -267,39 +339,81 @@ struct VideoUploadView: View {
         }
     }
     
-    // MARK: - History Card
+    // MARK: - Video Card (Full Width)
     
-    private func historyCard(_ record: VideoUploadRecord) -> some View {
+    private func videoCard(_ record: VideoUploadRecord) -> some View {
         Button(action: {
             if record.status == "done", let link = record.cloud_link, let url = URL(string: link) {
                 selectedVideo = VideoItem(url: url)
             }
         }) {
-            VStack(alignment: .leading, spacing: 8) {
-                HStack(spacing: 8) {
-                    Circle()
-                        .fill(record.status == "done" ? AuraColors.success : (record.status == "error" ? AuraColors.error : AuraColors.accent))
-                        .frame(width: 6, height: 6)
+            HStack(spacing: 16) {
+                // Thumbnail icon
+                ZStack {
+                    RoundedRectangle(cornerRadius: 12, style: .continuous)
+                        .fill(
+                            record.status == "done"
+                            ? AuraColors.accent.opacity(0.15)
+                            : (record.status == "error" ? AuraColors.error.opacity(0.15) : Color.white.opacity(0.05))
+                        )
+                        .frame(width: 56, height: 56)
                     
-                    Text(record.file_name.prefix(15) + (record.file_name.count > 15 ? "..." : ""))
-                        .font(.line(13, weight: .medium))
-                        .foregroundColor(.white)
-                        .lineLimit(1)
+                    Image(systemName: record.status == "done" ? "play.circle.fill" : (record.status == "error" ? "xmark.circle" : "arrow.down.circle"))
+                        .font(.system(size: 24))
+                        .foregroundColor(record.status == "done" ? AuraColors.accent : (record.status == "error" ? AuraColors.error : AuraColors.textSecondary))
                 }
                 
-                if let ts = record.timestamp {
-                    Text(ts.formatted(.dateTime.month().day().hour().minute()))
-                        .font(.system(size: 10))
+                // Info
+                VStack(alignment: .leading, spacing: 4) {
+                    Text(record.file_name)
+                        .font(.system(size: 14, weight: .medium, design: .rounded))
+                        .foregroundColor(.white)
+                        .lineLimit(1)
+                    
+                    HStack(spacing: 8) {
+                        if record.status == "done" {
+                            Text("READY")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(1)
+                                .foregroundColor(AuraColors.success)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(AuraColors.success.opacity(0.15))
+                                .clipShape(Capsule())
+                        } else if record.status == "error" {
+                            Text("FAILED")
+                                .font(.system(size: 9, weight: .bold))
+                                .tracking(1)
+                                .foregroundColor(AuraColors.error)
+                                .padding(.horizontal, 8)
+                                .padding(.vertical, 3)
+                                .background(AuraColors.error.opacity(0.15))
+                                .clipShape(Capsule())
+                        }
+                        
+                        if let ts = record.timestamp {
+                            Text(ts.formatted(.dateTime.month().day().hour().minute()))
+                                .font(.system(size: 10))
+                                .foregroundColor(AuraColors.textSecondary)
+                        }
+                    }
+                }
+                
+                Spacer()
+                
+                // Arrow if playable
+                if record.status == "done" {
+                    Image(systemName: "chevron.right")
+                        .font(.system(size: 14, weight: .semibold))
                         .foregroundColor(AuraColors.textSecondary)
                 }
             }
             .padding(16)
-            .frame(width: 160, alignment: .leading)
             .background(Color.white.opacity(0.04))
             .clipShape(RoundedRectangle(cornerRadius: 16, style: .continuous))
             .overlay(
                 RoundedRectangle(cornerRadius: 16, style: .continuous)
-                    .strokeBorder(Color.white.opacity(0.05), lineWidth: 1)
+                    .strokeBorder(Color.white.opacity(0.06), lineWidth: 1)
             )
         }
     }

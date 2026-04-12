@@ -1,0 +1,121 @@
+<!DOCTYPE html>
+<html>
+<head>
+  <meta charset="utf-8">
+  <style>
+    * { margin: 0; padding: 0; box-sizing: border-box; }
+    body {
+      width: 380px; min-height: 520px;
+      font-family: -apple-system, BlinkMacSystemFont, 'Segoe UI', sans-serif;
+      background: #0d0d0d; color: #fff;
+    }
+    .header {
+      background: linear-gradient(135deg, #1a1a2e, #16213e);
+      padding: 20px; text-align: center;
+      border-bottom: 1px solid rgba(255,140,51,0.3);
+    }
+    .header h1 { font-size: 16px; color: #ff8c33; letter-spacing: 2px; }
+    .header p { font-size: 11px; color: #888; margin-top: 5px; }
+    
+    .status-bar {
+      padding: 10px 15px; font-size: 11px;
+      background: #111; border-bottom: 1px solid #222;
+      display: flex; justify-content: space-between;
+    }
+    .status-dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 5px; vertical-align: middle; }
+    .dot-red { background: #ff4444; }
+    .dot-green { background: #2ecc71; }
+    .dot-yellow { background: #f1c40f; }
+
+    .section { padding: 15px; }
+    .section h3 { font-size: 12px; color: #ff8c33; margin-bottom: 10px; letter-spacing: 1px; }
+    
+    .key-row {
+      display: flex; gap: 8px; margin-bottom: 12px;
+    }
+    .key-row input {
+      flex: 1; padding: 8px 10px; border-radius: 8px; border: 1px solid #333;
+      background: #1a1a1a; color: #fff; font-size: 11px; font-family: monospace;
+    }
+    .key-row input::placeholder { color: #555; }
+    .key-row input:focus { border-color: #ff8c33; outline: none; }
+
+    .app-grid {
+      display: grid; grid-template-columns: repeat(3, 1fr);
+      gap: 8px; margin-bottom: 15px;
+    }
+    .app-btn {
+      background: #1a1a1a; border: 1px solid #333; border-radius: 10px;
+      padding: 12px 5px; text-align: center; cursor: pointer;
+      transition: all 0.2s;
+    }
+    .app-btn:hover { border-color: #ff8c33; background: #222; transform: scale(1.03); }
+    .app-btn.active { border-color: #ff8c33; background: rgba(255,140,51,0.1); }
+    .app-btn .icon { font-size: 24px; margin-bottom: 4px; }
+    .app-btn .name { font-size: 9px; color: #aaa; }
+
+    .inject-btn {
+      width: 100%; padding: 14px; border: none; border-radius: 10px;
+      font-size: 14px; font-weight: bold; cursor: pointer;
+      background: linear-gradient(135deg, #ff8c33, #e74c3c);
+      color: white; letter-spacing: 1px;
+      transition: all 0.3s;
+    }
+    .inject-btn:hover { transform: scale(1.02); box-shadow: 0 4px 20px rgba(255,140,51,0.4); }
+    .inject-btn:disabled { opacity: 0.5; cursor: not-allowed; transform: none; }
+
+    #log {
+      background: #0a0a0a; border: 1px solid #222; border-radius: 8px;
+      padding: 10px; margin-top: 12px; max-height: 150px; overflow-y: auto;
+      font-family: 'Menlo', monospace; font-size: 10px; color: #4AF626;
+      line-height: 1.6;
+    }
+    .hint { font-size: 9px; color: #555; margin-bottom: 8px; }
+  </style>
+</head>
+<body>
+  <div class="header">
+    <h1>🍪 COOKIE INJECTOR</h1>
+    <p>OTP24 Premium Account Bypass</p>
+  </div>
+
+  <div class="status-bar">
+    <span><span class="status-dot dot-red" id="status-dot"></span><span id="status-text">Ready</span></span>
+    <span id="quota-text">Quota: -/-</span>
+  </div>
+
+  <div class="section">
+    <h3>LICENSE KEY (ถ้ามี ใส่ได้เลย / ว่างไว้จะสร้างใหม่อัตโนมัติ)</h3>
+    <div class="key-row">
+      <input type="text" id="key-input" placeholder="เช่น DEMO-2840-3DA8-5345">
+    </div>
+
+    <h3>SELECT APP</h3>
+    <div class="app-grid" id="app-grid">
+      <div class="app-btn active" data-app="26" data-name="Netflix">
+        <div class="icon">🎬</div><div class="name">Netflix</div>
+      </div>
+      <div class="app-btn" data-app="51" data-name="YouTube">
+        <div class="icon">▶️</div><div class="name">YouTube</div>
+      </div>
+      <div class="app-btn" data-app="27" data-name="Prime Video">
+        <div class="icon">📦</div><div class="name">Prime Video</div>
+      </div>
+      <div class="app-btn" data-app="57" data-name="HBO Max">
+        <div class="icon">🎭</div><div class="name">HBO Max</div>
+      </div>
+      <div class="app-btn" data-app="29" data-name="Crunchyroll">
+        <div class="icon">🍥</div><div class="name">Crunchyroll</div>
+      </div>
+      <div class="app-btn" data-app="42" data-name="WeTV">
+        <div class="icon">📺</div><div class="name">WeTV</div>
+      </div>
+    </div>
+
+    <button class="inject-btn" id="inject-btn">🚀 INJECT & OPEN</button>
+    <div id="log"></div>
+  </div>
+
+  <script src="popup.js"></script>
+</body>
+</html>

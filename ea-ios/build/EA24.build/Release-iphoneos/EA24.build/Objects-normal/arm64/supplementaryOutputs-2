@@ -1,0 +1,12 @@
+{
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/ContentView.swift" : {
+    "abi-baseline-json" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24.abi.json",
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.dia",
+    "objc-header" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-Swift.h",
+    "swiftdoc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24.swiftdoc",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24.swiftmodule",
+    "swiftsourceinfo" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24.swiftsourceinfo"
+  }
+}

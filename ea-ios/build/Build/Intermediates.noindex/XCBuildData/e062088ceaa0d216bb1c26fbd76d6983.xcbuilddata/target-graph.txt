@@ -1,0 +1,4 @@
+Target dependency graph (2 targets)
+Target 'EA24' in project 'EA24'
+➜ Explicit dependency on target 'EA24WidgetsExtension' in project 'EA24'
+Target 'EA24WidgetsExtension' in project 'EA24' (no dependencies)

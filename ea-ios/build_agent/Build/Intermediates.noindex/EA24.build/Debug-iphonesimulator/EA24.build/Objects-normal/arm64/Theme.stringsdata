@@ -1,0 +1,16 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Theme.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "View all",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 228
+        }
+      }
+    ]
+  },
+  "version": 1
+}

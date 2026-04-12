@@ -1,0 +1,40 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/EA24StatusWidget.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "EA-24 Status",
+        "location": {
+          "startingColumn": 35,
+          "startingLine": 13
+        }
+      },
+      {
+        "comment": "",
+        "key": "Shows EA-24 trading system status",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 14
+        }
+      },
+      {
+        "comment": "",
+        "key": "EA-24",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 47
+        }
+      },
+      {
+        "comment": "",
+        "key": "Trading",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 51
+        }
+      }
+    ]
+  },
+  "version": 1
+}

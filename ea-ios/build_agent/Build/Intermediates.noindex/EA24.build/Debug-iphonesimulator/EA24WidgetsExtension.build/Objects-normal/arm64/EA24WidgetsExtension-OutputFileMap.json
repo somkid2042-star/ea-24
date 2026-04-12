@@ -1,0 +1,49 @@
+{
+  "" : {
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.dia",
+    "emit-module-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-emit-module.dia",
+    "pch" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsExtension-primary.swiftdeps"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/EA24StatusWidget.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24StatusWidget~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/EA24WidgetsBundle.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/EA24WidgetsBundle~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/TradingActivityAttributes.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingActivityAttributes~partial.swiftmodule"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24Widgets/TradingLiveActivity.swift" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.dia",
+    "index-unit-output-path" : "/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.o",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity.swiftdeps",
+    "swiftmodule" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build_agent/Build/Intermediates.noindex/EA24.build/Debug-iphonesimulator/EA24WidgetsExtension.build/Objects-normal/arm64/TradingLiveActivity~partial.swiftmodule"
+  }
+}

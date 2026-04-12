@@ -1,0 +1,168 @@
+{
+  "source": "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/DashboardView.swift",
+  "tables": {
+    "Localizable": [
+      {
+        "comment": "",
+        "key": "EA-24",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 71
+        }
+      },
+      {
+        "comment": "",
+        "key": "Pipeline Status",
+        "location": {
+          "startingColumn": 34,
+          "startingLine": 58
+        }
+      },
+      {
+        "comment": "",
+        "key": "v%@",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 94
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Online",
+        "location": {
+          "startingColumn": 46,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Offline",
+        "location": {
+          "startingColumn": 64,
+          "startingLine": 87
+        }
+      },
+      {
+        "comment": "",
+        "key": "Uptime: %@",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 110
+        }
+      },
+      {
+        "comment": "",
+        "key": "MT5 Connected",
+        "location": {
+          "startingColumn": 50,
+          "startingLine": 104
+        }
+      },
+      {
+        "comment": "",
+        "key": "MT5 Offline",
+        "location": {
+          "startingColumn": 68,
+          "startingLine": 104
+        }
+      },
+      {
+        "comment": "",
+        "key": "Last Signal",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 146
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 30,
+          "startingLine": 167
+        }
+      },
+      {
+        "comment": "",
+        "key": "Server Resources",
+        "location": {
+          "startingColumn": 18,
+          "startingLine": 209
+        }
+      },
+      {
+        "comment": "",
+        "key": "CPU",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 215
+        }
+      },
+      {
+        "comment": "",
+        "key": "RAM",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 225
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld MB",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 228
+        }
+      },
+      {
+        "comment": "",
+        "key": "",
+        "location": {
+          "startingColumn": 20,
+          "startingLine": 259
+        }
+      },
+      {
+        "comment": "",
+        "key": "Dynamic Island",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 249
+        }
+      },
+      {
+        "comment": "",
+        "key": "Show trading status on Dynamic Island",
+        "location": {
+          "startingColumn": 22,
+          "startingLine": 252
+        }
+      },
+      {
+        "comment": "",
+        "key": "%lld%%",
+        "location": {
+          "startingColumn": 26,
+          "startingLine": 302
+        }
+      },
+      {
+        "comment": "",
+        "key": "BUY: %lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 317
+        }
+      },
+      {
+        "comment": "",
+        "key": "SELL: %lld",
+        "location": {
+          "startingColumn": 23,
+          "startingLine": 321
+        }
+      }
+    ]
+  },
+  "version": 1
+}

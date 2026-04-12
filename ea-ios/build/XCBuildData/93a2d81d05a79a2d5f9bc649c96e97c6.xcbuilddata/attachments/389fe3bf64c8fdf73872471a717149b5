@@ -1,0 +1,66 @@
+{
+  "" : {
+    "const-values" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.swiftconstvalues",
+    "dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.d",
+    "diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.dia",
+    "emit-module-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary-emit-module.d",
+    "emit-module-diagnostics" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary-emit-module.dia",
+    "pch" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary-Bridging-header.pch",
+    "swift-dependencies" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24-primary.swiftdeps"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/ContentView.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ContentView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ContentView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ContentView.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/EA24App.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24App.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24App.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/EA24App.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/ServerMessage.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ServerMessage.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ServerMessage.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/ServerMessage.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/TradingActivityAttributes.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingActivityAttributes.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingActivityAttributes.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingActivityAttributes.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Models/TradingState.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingState.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingState.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/TradingState.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Services/LiveActivityManager.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/LiveActivityManager.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/LiveActivityManager.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/LiveActivityManager.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Services/WebSocketService.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/WebSocketService.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/WebSocketService.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/WebSocketService.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/DashboardView.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/DashboardView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/DashboardView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/DashboardView.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PipelineView.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PipelineView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PipelineView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PipelineView.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/PositionsView.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PositionsView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PositionsView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/PositionsView.o"
+  },
+  "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/EA24/Views/SettingsView.swift" : {
+    "index-unit-output-path" : "/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/SettingsView.o",
+    "llvm-bc" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/SettingsView.bc",
+    "object" : "/Users/somkidchaihanid/Desktop/ea-24/ea-ios/build/EA24.build/Release-iphoneos/EA24.build/Objects-normal/arm64/SettingsView.o"
+  }
+}
