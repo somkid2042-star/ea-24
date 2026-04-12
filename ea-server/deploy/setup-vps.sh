@@ -17,6 +17,11 @@ echo "━━━━━━━━━━━━━━━━━━━━━━━━�
 echo "📁 Creating ${INSTALL_DIR}..."
 mkdir -p ${INSTALL_DIR}
 
+echo "📦 Installing Python Telethon globally for the background service..."
+apt-get update -y
+apt-get install -y python3-pip
+pip3 install telethon --break-system-packages || pip3 install telethon
+
 # ── Step 2: Download latest ea-server binary from GitHub Releases ──
 echo "📥 Downloading latest ea-server binary..."
 LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/tags" | grep '"name": "v' | head -n 1 | cut -d '"' -f 4)
