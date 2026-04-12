@@ -151,18 +151,18 @@ struct TrackedSymbolsMessage: Codable {
     let symbols: [String]?
 }
 
-// MARK: - Drive Messages
-struct DriveConfigMessage: Codable {
+// MARK: - GCS Messages
+struct GcsConfigMessage: Codable {
     let type: String
     let has_sa: Bool?
-    let folder_id: String?
+    let bucket_name: String?
     let upload_history: [VideoUploadRecord]?
 }
 
-struct DriveConfigSavedMessage: Codable {
+struct GcsConfigSavedMessage: Codable {
     let type: String
     let has_sa: Bool?
-    let folder_id: String?
+    let bucket_name: String?
 }
 
 struct UploadVideoStatusMessage: Codable {
@@ -173,7 +173,7 @@ struct UploadVideoStatusMessage: Codable {
     let url: String?
     let file_name: String?
     let file_id: String?
-    let drive_link: String?
+    let cloud_link: String?
     let size_bytes: Int?
 }
 

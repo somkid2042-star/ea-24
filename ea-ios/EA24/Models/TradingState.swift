@@ -64,10 +64,10 @@ class TradingState: ObservableObject {
     @AppStorage("serverPort") var serverPort: String = "8080"
     @AppStorage("liveActivityEnabled") var liveActivityEnabled: Bool = true
     
-    // MARK: - Video Upload / Drive
+    // MARK: - Video Upload / GCS
     @Published var videoUploadStatus: VideoUploadStatus = .idle
-    @Published var driveConfigured: Bool = false
-    @Published var driveFolderID: String = ""
+    @Published var gcsConfigured: Bool = false
+    @Published var bucketName: String = ""
     @Published var uploadHistory: [VideoUploadRecord] = []
     
     // MARK: - WebSocket
@@ -115,20 +115,21 @@ class TradingState: ObservableObject {
         }
     }
     
-    // MARK: - Drive Upload Methods
+    // MARK: - GCS Upload Methods
     
     func uploadVideoFromURL(_ url: String) {
         videoUploadStatus = .started
         webSocketService?.uploadVideoFromURL(url: url)
     }
     
-    func saveDriveConfig(serviceAccountJSON: String?, folderID: String?) {
-        webSocketService?.saveDriveConfig(serviceAccountJSON: serviceAccountJSON, folderID: folderID)
+    func saveGcsConfig(serviceAccountJSON: String?, bucketName: String?) {
+        webSocketService?.saveGcsConfig(serviceAccountJSON: serviceAccountJSON, bucketName: bucketName)
     }
     
-    func requestDriveConfig() {
-        webSocketService?.requestDriveConfig()
+    func requestGcsConfig() {
+        webSocketService?.requestGcsConfig()
     }
+}
 
 // MARK: - Supporting Types
 

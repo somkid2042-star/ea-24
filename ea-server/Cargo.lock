@@ -525,6 +525,7 @@ dependencies = [
  "tempfile",
  "tokio",
  "tokio-tungstenite",
+ "urlencoding",
 ]
 
 [[package]]

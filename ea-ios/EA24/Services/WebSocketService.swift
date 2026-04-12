@@ -273,11 +273,11 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
                     }
                 }
                 
-            case "drive_config", "drive_config_saved":
-                if let msg = try? self.decoder.decode(DriveConfigMessage.self, from: data) {
+            case "gcs_config", "gcs_config_saved":
+                if let msg = try? self.decoder.decode(GcsConfigMessage.self, from: data) {
                     DispatchQueue.main.async {
-                        self.state?.driveConfigured = msg.has_sa ?? false
-                        self.state?.driveFolderID = msg.folder_id ?? ""
+                        self.state?.gcsConfigured = msg.has_sa ?? false
+                        self.state?.bucketName = msg.bucket_name ?? ""
                         if let history = msg.upload_history {
                             self.state?.uploadHistory = history
                         }
@@ -294,11 +294,11 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
                         } else if msg.status == "done" {
                             self.state?.videoUploadStatus = .done(
                                 fileName: msg.file_name ?? "Video",
-                                driveLink: msg.drive_link ?? "",
+                                cloudLink: msg.cloud_link ?? "",
                                 fileId: msg.file_id ?? ""
                             )
                             // Refresh history
-                            self.requestDriveConfig()
+                            self.requestGcsConfig()
                         }
                     }
                 }
@@ -390,10 +390,10 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
         }
     }
     
-    func saveDriveConfig(serviceAccountJSON: String?, folderID: String?) {
-        var cmd: [String: String] = ["action": "set_drive_config"]
-        if let sa = serviceAccountJSON { cmd["service_account_json"] = sa }
-        if let fid = folderID { cmd["drive_folder_id"] = fid }
+    func saveGcsConfig(serviceAccountJSON: String?, bucketName: String?) {
+        var cmd: [String: String] = ["action": "set_gcs_config"]
+        if let sa = serviceAccountJSON { cmd["gcs_service_account"] = sa }
+        if let bkt = bucketName { cmd["bucket_name"] = bkt }
         
         if let data = try? JSONSerialization.data(withJSONObject: cmd),
            let str = String(data: data, encoding: .utf8) {
@@ -401,8 +401,8 @@ class WebSocketService: NSObject, URLSessionWebSocketDelegate, @unchecked Sendab
         }
     }
     
-    func requestDriveConfig() {
-        let cmd = ["action": "get_drive_config"]
+    func requestGcsConfig() {
+        let cmd = ["action": "get_gcs_config"]
         if let data = try? JSONSerialization.data(withJSONObject: cmd),
            let str = String(data: data, encoding: .utf8) {
             sendMessage(str)
