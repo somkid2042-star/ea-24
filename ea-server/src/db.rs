@@ -356,8 +356,30 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_signal_time ON strategy_signals(timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_logs_symbol_time ON ai_logs(symbol, timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_training_symbol ON ai_training_data(symbol, timestamp DESC);
+            CREATE TABLE IF NOT EXISTS cashflow_categories (
+                id          BIGSERIAL PRIMARY KEY,
+                name        TEXT NOT NULL,
+                type        TEXT NOT NULL DEFAULT 'expense',
+                icon        TEXT NOT NULL DEFAULT 'circle',
+                color       TEXT NOT NULL DEFAULT '#59D99D',
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS cashflow_transactions (
+                id          BIGSERIAL PRIMARY KEY,
+                amount      DOUBLE PRECISION NOT NULL,
+                type        TEXT NOT NULL DEFAULT 'expense',
+                category_id BIGINT DEFAULT NULL,
+                category    TEXT NOT NULL DEFAULT '',
+                note        TEXT DEFAULT '',
+                date        DATE NOT NULL DEFAULT CURRENT_DATE,
+                created_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
             CREATE INDEX IF NOT EXISTS idx_ai_decisions_symbol ON ai_decisions(symbol, timestamp DESC);
             CREATE INDEX IF NOT EXISTS idx_ai_decisions_outcome ON ai_decisions(outcome);
+            CREATE INDEX IF NOT EXISTS idx_cashflow_date ON cashflow_transactions(date DESC);
+            CREATE INDEX IF NOT EXISTS idx_cashflow_type ON cashflow_transactions(type);
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();
@@ -1117,5 +1139,150 @@ impl Database {
             return if first_outcome == "win" { streak } else { -streak };
         }
         0
+    }
+
+    // ──────────────────────────────────────────
+    //  Cashflow — Income/Expense Tracker
+    // ──────────────────────────────────────────
+
+    /// Seed default cashflow categories if empty
+    pub async fn seed_cashflow_categories(&self) {
+        let count: i64 = sqlx::query_scalar("SELECT COUNT(*) FROM cashflow_categories")
+            .fetch_one(&self.pool).await.unwrap_or(0);
+        if count > 0 { return; }
+
+        let defaults = vec![
+            ("อาหาร", "expense", "fork.knife", "#FF6B6B"),
+            ("เดินทาง", "expense", "car.fill", "#4ECDC4"),
+            ("ช้อปปิ้ง", "expense", "bag.fill", "#FFE66D"),
+            ("บิล/ค่าใช้จ่าย", "expense", "doc.text.fill", "#A8E6CF"),
+            ("บันเทิง", "expense", "gamecontroller.fill", "#FF8A5C"),
+            ("สุขภาพ", "expense", "heart.fill", "#F38181"),
+            ("การศึกษา", "expense", "book.fill", "#AA96DA"),
+            ("อื่นๆ", "expense", "ellipsis.circle.fill", "#95E1D3"),
+            ("เงินเดือน", "income", "banknote.fill", "#59D99D"),
+            ("อาชีพเสริม", "income", "briefcase.fill", "#3498DB"),
+            ("ลงทุน", "income", "chart.line.uptrend.xyaxis", "#F39C12"),
+            ("อื่นๆ", "income", "ellipsis.circle.fill", "#1ABC9C"),
+        ];
+        for (name, t, icon, color) in defaults {
+            let _ = sqlx::query("INSERT INTO cashflow_categories (name, type, icon, color) VALUES ($1, $2, $3, $4)")
+                .bind(name).bind(t).bind(icon).bind(color)
+                .execute(&self.pool).await;
+        }
+        info!("Seeded {} default cashflow categories", defaults.len());
+    }
+
+    /// Get all cashflow categories
+    pub async fn get_cashflow_categories(&self) -> serde_json::Value {
+        let q = "SELECT id, name, type, icon, color FROM cashflow_categories ORDER BY type, id";
+        if let Ok(rows) = sqlx::query_as::<_, (i64, String, String, String, String)>(q)
+            .fetch_all(&self.pool).await
+        {
+            let cats: Vec<_> = rows.into_iter().map(|r| serde_json::json!({
+                "id": r.0, "name": r.1, "type": r.2, "icon": r.3, "color": r.4
+            })).collect();
+            return serde_json::Value::Array(cats);
+        }
+        serde_json::Value::Array(vec![])
+    }
+
+    /// Insert a new cashflow category
+    pub async fn insert_cashflow_category(&self, name: &str, cat_type: &str, icon: &str, color: &str) -> Option<i64> {
+        sqlx::query_scalar("INSERT INTO cashflow_categories (name, type, icon, color) VALUES ($1, $2, $3, $4) RETURNING id")
+            .bind(name).bind(cat_type).bind(icon).bind(color)
+            .fetch_one(&self.pool).await.ok()
+    }
+
+    /// Insert a new cashflow transaction
+    pub async fn insert_cashflow_transaction(&self, amount: f64, t: &str, category: &str, category_id: Option<i64>, note: &str, date: &str) -> Option<i64> {
+        sqlx::query_scalar(
+            "INSERT INTO cashflow_transactions (amount, type, category, category_id, note, date) VALUES ($1, $2, $3, $4, $5, $6::date) RETURNING id"
+        )
+            .bind(amount).bind(t).bind(category).bind(category_id).bind(note).bind(date)
+            .fetch_one(&self.pool).await.ok()
+    }
+
+    /// Get cashflow transactions for a month
+    pub async fn get_cashflow_transactions(&self, month: i32, year: i32) -> serde_json::Value {
+        let q = "SELECT t.id, t.amount, t.type, t.category, t.category_id, t.note, t.date::text, \
+                 COALESCE(c.icon, 'circle') as icon, COALESCE(c.color, '#59D99D') as color \
+                 FROM cashflow_transactions t \
+                 LEFT JOIN cashflow_categories c ON t.category_id = c.id \
+                 WHERE EXTRACT(MONTH FROM t.date) = $1 AND EXTRACT(YEAR FROM t.date) = $2 \
+                 ORDER BY t.date DESC, t.id DESC";
+        if let Ok(rows) = sqlx::query_as::<_, (i64, f64, String, String, Option<i64>, String, String, String, String)>(q)
+            .bind(month).bind(year)
+            .fetch_all(&self.pool).await
+        {
+            let txns: Vec<_> = rows.into_iter().map(|r| serde_json::json!({
+                "id": r.0, "amount": r.1, "type": r.2, "category": r.3,
+                "category_id": r.4, "note": r.5, "date": r.6,
+                "icon": r.7, "color": r.8
+            })).collect();
+            return serde_json::Value::Array(txns);
+        }
+        serde_json::Value::Array(vec![])
+    }
+
+    /// Delete a cashflow transaction
+    pub async fn delete_cashflow_transaction(&self, id: i64) -> bool {
+        if let Ok(res) = sqlx::query("DELETE FROM cashflow_transactions WHERE id = $1")
+            .bind(id).execute(&self.pool).await
+        {
+            return res.rows_affected() > 0;
+        }
+        false
+    }
+
+    /// Get cashflow summary for a month
+    pub async fn get_cashflow_summary(&self, month: i32, year: i32) -> serde_json::Value {
+        let income_q = "SELECT COALESCE(SUM(amount), 0) FROM cashflow_transactions WHERE type = 'income' AND EXTRACT(MONTH FROM date) = $1 AND EXTRACT(YEAR FROM date) = $2";
+        let expense_q = "SELECT COALESCE(SUM(amount), 0) FROM cashflow_transactions WHERE type = 'expense' AND EXTRACT(MONTH FROM date) = $1 AND EXTRACT(YEAR FROM date) = $2";
+        
+        let income: f64 = sqlx::query_scalar(income_q).bind(month).bind(year).fetch_one(&self.pool).await.unwrap_or(0.0);
+        let expense: f64 = sqlx::query_scalar(expense_q).bind(month).bind(year).fetch_one(&self.pool).await.unwrap_or(0.0);
+
+        // Top categories by expense
+        let top_q = "SELECT t.category, COALESCE(c.icon, 'circle') as icon, COALESCE(c.color, '#59D99D') as color, SUM(t.amount) as total \
+                     FROM cashflow_transactions t \
+                     LEFT JOIN cashflow_categories c ON t.category_id = c.id \
+                     WHERE t.type = 'expense' AND EXTRACT(MONTH FROM t.date) = $1 AND EXTRACT(YEAR FROM t.date) = $2 \
+                     GROUP BY t.category, c.icon, c.color \
+                     ORDER BY total DESC LIMIT 6";
+        let mut top_categories = vec![];
+        if let Ok(rows) = sqlx::query_as::<_, (String, String, String, f64)>(top_q)
+            .bind(month).bind(year).fetch_all(&self.pool).await
+        {
+            for r in rows {
+                top_categories.push(serde_json::json!({
+                    "category": r.0, "icon": r.1, "color": r.2, "total": r.3
+                }));
+            }
+        }
+
+        // Daily totals for chart
+        let daily_q = "SELECT date::text, type, SUM(amount) as total \
+                       FROM cashflow_transactions \
+                       WHERE EXTRACT(MONTH FROM date) = $1 AND EXTRACT(YEAR FROM date) = $2 \
+                       GROUP BY date, type ORDER BY date";
+        let mut daily = vec![];
+        if let Ok(rows) = sqlx::query_as::<_, (String, String, f64)>(daily_q)
+            .bind(month).bind(year).fetch_all(&self.pool).await
+        {
+            for r in rows {
+                daily.push(serde_json::json!({ "date": r.0, "type": r.1, "total": r.2 }));
+            }
+        }
+
+        serde_json::json!({
+            "income": income,
+            "expense": expense,
+            "balance": income - expense,
+            "month": month,
+            "year": year,
+            "top_categories": top_categories,
+            "daily": daily
+        })
     }
 }

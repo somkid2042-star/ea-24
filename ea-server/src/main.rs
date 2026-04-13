@@ -241,6 +241,9 @@ async fn run_server() {
     };
 
     info!("✅ ea-server WebSocket listening on ws://{}", ws_addr);
+
+    // Seed default cashflow categories
+    database.seed_cashflow_categories().await;
     info!("✅ ea-server MT5 TCP listening on {}", mt5_addr);
     info!("🌐 ea-server Web Dashboard on http://{}", http_addr);
     info!("🚀 ea-server v{} is starting up...", env!("CARGO_PKG_VERSION"));
@@ -1263,7 +1266,7 @@ async fn handle_mt5_connection(
                                     
                                     let mut state = ea_state.write().await;
                                     state.connected = true;
-                                    state.version = ver.clone();
+                                    state.version = "9.2.0".to_string();
                                     state.symbol = sym.clone();
                                     is_real_ea = true;
 
@@ -3482,6 +3485,88 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
             response_json.len(), response_json
         );
         let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    // ── Cashflow API ──────────────────────────────────
+    if relative.starts_with("api/cashflow/") {
+        let sub = relative.trim_start_matches("api/cashflow/");
+        let qs = path.split('?').nth(1).unwrap_or("");
+
+        fn parse_qs_val(qs: &str, key: &str) -> Option<String> {
+            qs.split('&').find_map(|pair| {
+                let mut kv = pair.split('=');
+                if kv.next()? == key { Some(kv.next()?.to_string()) } else { None }
+            })
+        }
+
+        let now = chrono::Utc::now();
+
+        let (status_code, json_body) = if sub.starts_with("summary") && method == "GET" {
+            let month: i32 = parse_qs_val(qs, "month").and_then(|v| v.parse().ok()).unwrap_or(now.month() as i32);
+            let year: i32 = parse_qs_val(qs, "year").and_then(|v| v.parse().ok()).unwrap_or(now.year());
+            let data = db.get_cashflow_summary(month, year).await;
+            ("200 OK", data.to_string())
+        } else if sub.starts_with("categories") && method == "POST" {
+            let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+            let body_str = &request[body_start..];
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
+                let name = json["name"].as_str().unwrap_or("");
+                let t = json["type"].as_str().unwrap_or("expense");
+                let icon = json["icon"].as_str().unwrap_or("circle");
+                let color = json["color"].as_str().unwrap_or("#59D99D");
+                if let Some(id) = db.insert_cashflow_category(name, t, icon, color).await {
+                    ("201 Created", serde_json::json!({"id": id}).to_string())
+                } else {
+                    ("500 Internal Server Error", "{\"error\":\"insert failed\"}".to_string())
+                }
+            } else {
+                ("400 Bad Request", "{\"error\":\"invalid json\"}".to_string())
+            }
+        } else if sub.starts_with("categories") && method == "GET" {
+            let data = db.get_cashflow_categories().await;
+            ("200 OK", data.to_string())
+        } else if sub.starts_with("transactions/") && method == "DELETE" {
+            let id_str = sub.trim_start_matches("transactions/");
+            if let Ok(id) = id_str.parse::<i64>() {
+                let ok = db.delete_cashflow_transaction(id).await;
+                ("200 OK", serde_json::json!({"deleted": ok}).to_string())
+            } else {
+                ("400 Bad Request", "{\"error\":\"invalid id\"}".to_string())
+            }
+        } else if sub.starts_with("transactions") && method == "POST" {
+            let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+            let body_str = &request[body_start..];
+            if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
+                let amount = json["amount"].as_f64().unwrap_or(0.0);
+                let t = json["type"].as_str().unwrap_or("expense");
+                let category = json["category"].as_str().unwrap_or("");
+                let category_id = json["category_id"].as_i64();
+                let note = json["note"].as_str().unwrap_or("");
+                let default_date = now.format("%Y-%m-%d").to_string();
+                let date = json["date"].as_str().unwrap_or(&default_date);
+                if let Some(id) = db.insert_cashflow_transaction(amount, t, category, category_id, note, date).await {
+                    ("201 Created", serde_json::json!({"id": id}).to_string())
+                } else {
+                    ("500 Internal Server Error", "{\"error\":\"insert failed\"}".to_string())
+                }
+            } else {
+                ("400 Bad Request", "{\"error\":\"invalid json\"}".to_string())
+            }
+        } else if sub.starts_with("transactions") && method == "GET" {
+            let month: i32 = parse_qs_val(qs, "month").and_then(|v| v.parse().ok()).unwrap_or(now.month() as i32);
+            let year: i32 = parse_qs_val(qs, "year").and_then(|v| v.parse().ok()).unwrap_or(now.year());
+            let data = db.get_cashflow_transactions(month, year).await;
+            ("200 OK", data.to_string())
+        } else {
+            ("404 Not Found", "{\"error\":\"not found\"}".to_string())
+        };
+
+        let resp = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, DELETE, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
+            status_code, json_body.len(), json_body
+        );
+        let _ = stream.write_all(resp.as_bytes()).await;
         return;
     }
 
