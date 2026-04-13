@@ -1,0 +1,508 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		009DE894C357CC521AED13A8 /* CamingoCode-Bold.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 565F66295BFB9934EE17B761 /* CamingoCode-Bold.ttf */; };
+		095B21C9741F8DD1AD14420E /* OTP24AppGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3DE58D2C120FC89ED6E9DE6 /* OTP24AppGridView.swift */; };
+		0CCDFF0EE4CA0AC76A36A38A /* OTP24Client.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3D876DAF2D175A49EF98280F /* OTP24Client.swift */; };
+		1CEBC47EAB9738FC0C88D9B3 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 42CD43F15C45C688DE5C4C4E /* APIService.swift */; };
+		26370F6BEFAB03B912CD712B /* TransactionListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 50DFF3DD1CAC5323650DD7F8 /* TransactionListView.swift */; };
+		2648B3F6547FB0118EF34841 /* SettingsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 5DE611FE2583186781577707 /* SettingsView.swift */; };
+		2AB1CB56C8A1D7E42DD19508 /* OTP24State.swift in Sources */ = {isa = PBXBuildFile; fileRef = 77BE00353395395C010E2F77 /* OTP24State.swift */; };
+		32DAFB033C88CEAE039C0157 /* CamingoCode-BoldItalic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 96046E021154A2557276355C /* CamingoCode-BoldItalic.ttf */; };
+		3651E3009E7343FE52A67562 /* OTP24WebBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = BBF32F55C1853D8B030D7C8F /* OTP24WebBrowserView.swift */; };
+		36DA0E974E8E500DF2006B5B /* CookieManager.swift in Sources */ = {isa = PBXBuildFile; fileRef = 6518BE1685FF5B672CD5D571 /* CookieManager.swift */; };
+		3FF6BC34B4F71DF4EB4F9459 /* CamingoCode-Regular.ttf in Resources */ = {isa = PBXBuildFile; fileRef = 5E4D033E0380C358C4B5CDF6 /* CamingoCode-Regular.ttf */; };
+		56DFE62C44E09D433DA96ED6 /* OTP24ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 95E1943F6F6D3979FCF83A81 /* OTP24ServerListView.swift */; };
+		5BCEB5D9DCD9199B4B263E4F /* AnalyticsView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D0CC7E997DCA425240B99407 /* AnalyticsView.swift */; };
+		72F9083AC3849C74BF0857AB /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 41A3843B5FEB553C77A8DE6B /* Assets.xcassets */; };
+		7B920E38C14C792441FE9943 /* OTP24State.swift in Sources */ = {isa = PBXBuildFile; fileRef = E89A30594AB0652F27860B2D /* OTP24State.swift */; };
+		8328C141ADAD2D330F8671CD /* AddTransactionView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D69E1EBB56DA65FDA9DB4428 /* AddTransactionView.swift */; };
+		8C5D2A9E8F54C36977DF69AC /* OTP24Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = 13F43693086D19B09F1A74D9 /* OTP24Models.swift */; };
+		A6BCE34E611CDFEB63E35EE4 /* CashflowApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = 990F14A35F4416EEEFFEDCB1 /* CashflowApp.swift */; };
+		AAF73F65D80E2EB12C1F6813 /* CamingoCode-Italic.ttf in Resources */ = {isa = PBXBuildFile; fileRef = E5A084E5E651DAE70D544143 /* CamingoCode-Italic.ttf */; };
+		C1613DDA9BF63761B5C8C9AC /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 90242D3B4387DA4027245986 /* ContentView.swift */; };
+		C62E2370FB47357CC29FC0DD /* SideMenuView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A89F04CF490637C5142E1C39 /* SideMenuView.swift */; };
+		CE4A47E8B105C180EDA29471 /* Transaction.swift in Sources */ = {isa = PBXBuildFile; fileRef = F1AA0EDEC1904C75A394E9D5 /* Transaction.swift */; };
+		D0EB20AD34B24E3CCCA050A8 /* AuraTheme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 744983C00BE20BD435D82201 /* AuraTheme.swift */; };
+		D7F72DBCC6FB62FC42394C89 /* DashboardView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 419B2202ED42986D794F7EB8 /* DashboardView.swift */; };
+		DFC01A73975F39FB6EFC463C /* AppState.swift in Sources */ = {isa = PBXBuildFile; fileRef = 700E2339FD8E3CEEA3FE1B16 /* AppState.swift */; };
+		E3C94EDD3B506D5677CA84B7 /* OTP24HomeView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D2D6AB956CA3A2292EDEAF6C /* OTP24HomeView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		13F43693086D19B09F1A74D9 /* OTP24Models.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24Models.swift; sourceTree = "<group>"; };
+		3D876DAF2D175A49EF98280F /* OTP24Client.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24Client.swift; sourceTree = "<group>"; };
+		419B2202ED42986D794F7EB8 /* DashboardView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = DashboardView.swift; sourceTree = "<group>"; };
+		41A3843B5FEB553C77A8DE6B /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		42CD43F15C45C688DE5C4C4E /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		50DFF3DD1CAC5323650DD7F8 /* TransactionListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = TransactionListView.swift; sourceTree = "<group>"; };
+		565F66295BFB9934EE17B761 /* CamingoCode-Bold.ttf */ = {isa = PBXFileReference; includeInIndex = 1; path = "CamingoCode-Bold.ttf"; sourceTree = "<group>"; };
+		5DE611FE2583186781577707 /* SettingsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SettingsView.swift; sourceTree = "<group>"; };
+		5E4D033E0380C358C4B5CDF6 /* CamingoCode-Regular.ttf */ = {isa = PBXFileReference; includeInIndex = 1; path = "CamingoCode-Regular.ttf"; sourceTree = "<group>"; };
+		6518BE1685FF5B672CD5D571 /* CookieManager.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = CookieManager.swift; sourceTree = "<group>"; };
+		700E2339FD8E3CEEA3FE1B16 /* AppState.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppState.swift; sourceTree = "<group>"; };
+		744983C00BE20BD435D82201 /* AuraTheme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AuraTheme.swift; sourceTree = "<group>"; };
+		77BE00353395395C010E2F77 /* OTP24State.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24State.swift; sourceTree = "<group>"; };
+		90242D3B4387DA4027245986 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		95E1943F6F6D3979FCF83A81 /* OTP24ServerListView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24ServerListView.swift; sourceTree = "<group>"; };
+		96046E021154A2557276355C /* CamingoCode-BoldItalic.ttf */ = {isa = PBXFileReference; includeInIndex = 1; path = "CamingoCode-BoldItalic.ttf"; sourceTree = "<group>"; };
+		990F14A35F4416EEEFFEDCB1 /* CashflowApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CashflowApp.swift; sourceTree = "<group>"; };
+		A89F04CF490637C5142E1C39 /* SideMenuView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = SideMenuView.swift; sourceTree = "<group>"; };
+		BBF32F55C1853D8B030D7C8F /* OTP24WebBrowserView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24WebBrowserView.swift; sourceTree = "<group>"; };
+		D0CC7E997DCA425240B99407 /* AnalyticsView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AnalyticsView.swift; sourceTree = "<group>"; };
+		D2D6AB956CA3A2292EDEAF6C /* OTP24HomeView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24HomeView.swift; sourceTree = "<group>"; };
+		D3DE58D2C120FC89ED6E9DE6 /* OTP24AppGridView.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24AppGridView.swift; sourceTree = "<group>"; };
+		D69E1EBB56DA65FDA9DB4428 /* AddTransactionView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AddTransactionView.swift; sourceTree = "<group>"; };
+		E5A084E5E651DAE70D544143 /* CamingoCode-Italic.ttf */ = {isa = PBXFileReference; includeInIndex = 1; path = "CamingoCode-Italic.ttf"; sourceTree = "<group>"; };
+		E89A30594AB0652F27860B2D /* OTP24State.swift */ = {isa = PBXFileReference; includeInIndex = 1; lastKnownFileType = sourcecode.swift; path = OTP24State.swift; sourceTree = "<group>"; };
+		ECDF5532177CE790D19F0FD6 /* Cashflow.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = Cashflow.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		F1AA0EDEC1904C75A394E9D5 /* Transaction.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Transaction.swift; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0884033A7DDF9E80727CA4C7 /* SideMenu */ = {
+			isa = PBXGroup;
+			children = (
+				A89F04CF490637C5142E1C39 /* SideMenuView.swift */,
+			);
+			path = SideMenu;
+			sourceTree = "<group>";
+		};
+		0FDE30DB76D8B89919E5D37B /* Cashflow */ = {
+			isa = PBXGroup;
+			children = (
+				41A3843B5FEB553C77A8DE6B /* Assets.xcassets */,
+				990F14A35F4416EEEFFEDCB1 /* CashflowApp.swift */,
+				90242D3B4387DA4027245986 /* ContentView.swift */,
+				1A5A610B0D67C6C6E8A5F8CE /* Models */,
+				DCF1D3A8196D33D3D264D02C /* Services */,
+				FAD14EBCCE7AF9BE5F01AD7D /* Theme */,
+				B10411BF8C8339F542B768A6 /* Views */,
+				5994AE98734226FFCEC5E91E /* Fonts */,
+			);
+			path = Cashflow;
+			sourceTree = "<group>";
+		};
+		103C158CC2735D0D573D57A6 /* OTP24 */ = {
+			isa = PBXGroup;
+			children = (
+				95E1943F6F6D3979FCF83A81 /* OTP24ServerListView.swift */,
+				BBF32F55C1853D8B030D7C8F /* OTP24WebBrowserView.swift */,
+				D2D6AB956CA3A2292EDEAF6C /* OTP24HomeView.swift */,
+				D3DE58D2C120FC89ED6E9DE6 /* OTP24AppGridView.swift */,
+			);
+			name = OTP24;
+			path = OTP24;
+			sourceTree = "<group>";
+		};
+		1A5A610B0D67C6C6E8A5F8CE /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				700E2339FD8E3CEEA3FE1B16 /* AppState.swift */,
+				F1AA0EDEC1904C75A394E9D5 /* Transaction.swift */,
+				E89A30594AB0652F27860B2D /* OTP24State.swift */,
+				77BE00353395395C010E2F77 /* OTP24State.swift */,
+				13F43693086D19B09F1A74D9 /* OTP24Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		28BEB597322DA9EF72465E7D = {
+			isa = PBXGroup;
+			children = (
+				0FDE30DB76D8B89919E5D37B /* Cashflow */,
+				DE4A8094F1525C941FA47320 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		5994AE98734226FFCEC5E91E /* Fonts */ = {
+			isa = PBXGroup;
+			children = (
+				5E4D033E0380C358C4B5CDF6 /* CamingoCode-Regular.ttf */,
+				565F66295BFB9934EE17B761 /* CamingoCode-Bold.ttf */,
+				E5A084E5E651DAE70D544143 /* CamingoCode-Italic.ttf */,
+				96046E021154A2557276355C /* CamingoCode-BoldItalic.ttf */,
+			);
+			name = Fonts;
+			path = Fonts;
+			sourceTree = "<group>";
+		};
+		5AA77D390225C83002CB7F4C /* Dashboard */ = {
+			isa = PBXGroup;
+			children = (
+				419B2202ED42986D794F7EB8 /* DashboardView.swift */,
+			);
+			path = Dashboard;
+			sourceTree = "<group>";
+		};
+		9AF52F483D95FB525BDCF448 /* Transactions */ = {
+			isa = PBXGroup;
+			children = (
+				D69E1EBB56DA65FDA9DB4428 /* AddTransactionView.swift */,
+				50DFF3DD1CAC5323650DD7F8 /* TransactionListView.swift */,
+			);
+			path = Transactions;
+			sourceTree = "<group>";
+		};
+		A8CFE27F5EF24201ED092C46 /* Settings */ = {
+			isa = PBXGroup;
+			children = (
+				5DE611FE2583186781577707 /* SettingsView.swift */,
+			);
+			path = Settings;
+			sourceTree = "<group>";
+		};
+		B10411BF8C8339F542B768A6 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D38F71F04AC884DB52654004 /* Analytics */,
+				5AA77D390225C83002CB7F4C /* Dashboard */,
+				A8CFE27F5EF24201ED092C46 /* Settings */,
+				0884033A7DDF9E80727CA4C7 /* SideMenu */,
+				9AF52F483D95FB525BDCF448 /* Transactions */,
+				103C158CC2735D0D573D57A6 /* OTP24 */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		D38F71F04AC884DB52654004 /* Analytics */ = {
+			isa = PBXGroup;
+			children = (
+				D0CC7E997DCA425240B99407 /* AnalyticsView.swift */,
+			);
+			path = Analytics;
+			sourceTree = "<group>";
+		};
+		DCF1D3A8196D33D3D264D02C /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				42CD43F15C45C688DE5C4C4E /* APIService.swift */,
+				3D876DAF2D175A49EF98280F /* OTP24Client.swift */,
+				6518BE1685FF5B672CD5D571 /* CookieManager.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+		DE4A8094F1525C941FA47320 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				ECDF5532177CE790D19F0FD6 /* Cashflow.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		FAD14EBCCE7AF9BE5F01AD7D /* Theme */ = {
+			isa = PBXGroup;
+			children = (
+				744983C00BE20BD435D82201 /* AuraTheme.swift */,
+			);
+			path = Theme;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		DE28C2C2443C047CEE312DFE /* Cashflow */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 13674C119DEBEA13BF50188D /* Build configuration list for PBXNativeTarget "Cashflow" */;
+			buildPhases = (
+				1CC9013D0808B5CFE8E3B4F1 /* Sources */,
+				5964A805B89DD9FDBC33C3DD /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = Cashflow;
+			productName = Cashflow;
+			productReference = ECDF5532177CE790D19F0FD6 /* Cashflow.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		A4B94D12FDB98D083E0570A0 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					DE28C2C2443C047CEE312DFE = {
+						DevelopmentTeam = YN46A3R8WU;
+					};
+				};
+			};
+			buildConfigurationList = C6A6DC4EDBC39E3817EACFBA /* Build configuration list for PBXProject "Cashflow" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 28BEB597322DA9EF72465E7D;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = DE4A8094F1525C941FA47320 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				DE28C2C2443C047CEE312DFE /* Cashflow */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		5964A805B89DD9FDBC33C3DD /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				72F9083AC3849C74BF0857AB /* Assets.xcassets in Resources */,
+				3FF6BC34B4F71DF4EB4F9459 /* CamingoCode-Regular.ttf in Resources */,
+				009DE894C357CC521AED13A8 /* CamingoCode-Bold.ttf in Resources */,
+				AAF73F65D80E2EB12C1F6813 /* CamingoCode-Italic.ttf in Resources */,
+				32DAFB033C88CEAE039C0157 /* CamingoCode-BoldItalic.ttf in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		1CC9013D0808B5CFE8E3B4F1 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				1CEBC47EAB9738FC0C88D9B3 /* APIService.swift in Sources */,
+				8328C141ADAD2D330F8671CD /* AddTransactionView.swift in Sources */,
+				5BCEB5D9DCD9199B4B263E4F /* AnalyticsView.swift in Sources */,
+				DFC01A73975F39FB6EFC463C /* AppState.swift in Sources */,
+				D0EB20AD34B24E3CCCA050A8 /* AuraTheme.swift in Sources */,
+				A6BCE34E611CDFEB63E35EE4 /* CashflowApp.swift in Sources */,
+				C1613DDA9BF63761B5C8C9AC /* ContentView.swift in Sources */,
+				D7F72DBCC6FB62FC42394C89 /* DashboardView.swift in Sources */,
+				2648B3F6547FB0118EF34841 /* SettingsView.swift in Sources */,
+				C62E2370FB47357CC29FC0DD /* SideMenuView.swift in Sources */,
+				CE4A47E8B105C180EDA29471 /* Transaction.swift in Sources */,
+				26370F6BEFAB03B912CD712B /* TransactionListView.swift in Sources */,
+				56DFE62C44E09D433DA96ED6 /* OTP24ServerListView.swift in Sources */,
+				3651E3009E7343FE52A67562 /* OTP24WebBrowserView.swift in Sources */,
+				E3C94EDD3B506D5677CA84B7 /* OTP24HomeView.swift in Sources */,
+				095B21C9741F8DD1AD14420E /* OTP24AppGridView.swift in Sources */,
+				7B920E38C14C792441FE9943 /* OTP24State.swift in Sources */,
+				2AB1CB56C8A1D7E42DD19508 /* OTP24State.swift in Sources */,
+				8C5D2A9E8F54C36977DF69AC /* OTP24Models.swift in Sources */,
+				0CCDFF0EE4CA0AC76A36A38A /* OTP24Client.swift in Sources */,
+				36DA0E974E8E500DF2006B5B /* CookieManager.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		1B8FA9CBDFD6713435A4EDF7 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YN46A3R8WU;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		42D63775258F48943F42106F /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YN46A3R8WU;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+		9A9194FD850F022B2F3A5C52 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Cashflow/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ea24.cashflow;
+				PRODUCT_NAME = Cashflow;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		D668948B561D2D47C3AF264B /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = Cashflow/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.ea24.cashflow;
+				PRODUCT_NAME = Cashflow;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		13674C119DEBEA13BF50188D /* Build configuration list for PBXNativeTarget "Cashflow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				9A9194FD850F022B2F3A5C52 /* Debug */,
+				D668948B561D2D47C3AF264B /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+		C6A6DC4EDBC39E3817EACFBA /* Build configuration list for PBXProject "Cashflow" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				1B8FA9CBDFD6713435A4EDF7 /* Debug */,
+				42D63775258F48943F42106F /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Debug;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = A4B94D12FDB98D083E0570A0 /* Project object */;
+}

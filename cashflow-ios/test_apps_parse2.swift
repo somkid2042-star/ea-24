@@ -1,0 +1,28 @@
+import Foundation
+
+let result = """
+{"success":true,"payload":"MzE7ISttfXlycndlbnw8ISx1cHJiNyk+eGBkNjV6cmVhe2VnaHNkYiA7NyRTeHlsYWJmfTk5Z21sOTYnbXllcHxjcjkmfDsyIDomZWNgbXhgZHN4ZnwhNjcxUks0DSo5YXJ0bXtsaGx0eSowOjUlRV4nLDw2ZmxvdyQvIiUmW2suPzsze21udHBicjMvOyE2S2snMTg6cn1iY2N2PS4rLjNXaz4oLyYmdnxgYz41Jic9V2soNi8nci1qZ392bSZ/cGJlbgIAZGpwbm1ie2hhY3ZqYn9mNURBKiQjNyYpeHBubWJ/ZnNuZHtyEgRyYWpiZzckIiIyQUUtODsmd21iYGBubWJ/ZnNuZHtyAAN2bHV2IzQ8PTEmV2soPCcnYH9lcWN2Ny0tLjdXRjQpeHlsYWJmfTY3dms0NTo4NyMreGBkdj8yNykpS2s1KiR9am9wd21iYDs9ITNTeHlsYWJmfSkzJio7RlYpOTshNntvYHZvYi09NC0mW2soNy8ldXZidjwgKCklQUYkMTs+YWJkZy0rIz4LVWs5PCQnYWpwb3Z9eGxsbnxjdiUoKSpTRC86LSFwb2h4cGZidms6Mi4mU2oKOCQxIzshO2F6cXR2JDEmLVdpNywnJy1qZ2V1YGYgJiIxV2g1Kisncz1oYndwbTInLTVXaDEhIT07b2B2bGR0Oy8wV3J2NUpEISAxCiY+JDdtbmdxZH1ifQIAZWN8dXJsand/bnB1dmN2PFtXLTw7MB00NSttbmcHEQIbfQAMfGJlZgYeaH96Z3F2dmN2JUFRLEQ4KiA/KjByCEA6Jy15YC01Izo9NyY5KjokEA5qFzA2LiojOzkxZz4JY3Y1SkQhIDEKJj4kN21uZ3FkfWJ9AgBlY3x1cmxqZ39ucHV2Y3Y8W1ctPDswHTQ1K21uZwcRAht9AAx8YmVmBh5of3pncXZ2Y3YlQVEsDTw6Jj4pcHVhaWEwLj08S2skOyU8Nn1qZ2N2NSI3JDU3V2s8KzgwYGVyNio5KmF4bSckU0A9IWpvYD4zJiYiIGF4bTAxRlVqaDN3KztyaHxidm92Iz0zV1o7Nxc+JyZyaG0QAA4bYmZoBgRlYQwUenJlYXthZ292PzUzWVUvNxc8Jn1qY2N2ISYiJjc1bV0scHJ3Fm4CAykRdCsNfzglVnMeIS4RKmc0BXo/HxQOPzY9ZF8uFg1gDzUSZgIABHcZBywSUGMeKykCDDccYno4IXJtFTZjeEYuFR4gDgkGBm14ZzAgLiAlQRZycCk2NjYmN214ZyAmKjUkV1AXMzx3eH1iYn1iaHNgYmVjEgR7aHxjeGxncGN2JCAgJiIxRlEsDSkhYGVyYH9mc25ke3lhARR4YXJgcmVlZG14ZyYsPz0iS2ssMzwwYGVyYH9mc25ke3lhBhR4YXJgcmVlZG14Zy07OzFyCBYMFwUabxYAcnVmdXNldTZkAgRyN3xlcmVoZndifyVteWRqAAN4Y3I0JDtmaHdjdHV2Y3YzQUYuDTw6KTo+cHV2dCYxdm1jVgdwMXBtI2hkZHlhJ3BleGFkUwJ+Z3kxJj1hMSoxd3FhKm1iVwcrNntjJ2lnYX9mdHYyLGQxU1Ypa2p5YC8xMSQ1IiYLOy0gVxZycCwwLzByfm0wJCo4Ngs8W1khJmpvdyIt","target_url":"false","expiry_date":false,"message":"Success"}
+"""
+
+guard let json = try? JSONSerialization.jsonObject(with: result.data(using: .utf8)!) as? [String: Any],
+      let payload = json["payload"] as? String else { exit(1) }
+
+let secretKey = "OTP24HRHUB_PROTECT"
+guard let data = Data(base64Encoded: payload) else { exit(1) }
+let keyBytes = Array(secretKey.utf8)
+var decoded = [UInt8]()
+for (i, byte) in data.enumerated() {
+    decoded.append(byte ^ keyBytes[i % keyBytes.count])
+}
+let decodedStr = String(bytes: decoded, encoding: .utf8) ?? ""
+print(decodedStr)
+
+let dData = decodedStr.data(using: .utf8)!
+if let d = try? JSONSerialization.jsonObject(with: dData) as? [String: Any] {
+    print("KEYS:", d.keys)
+    if let apps = d["apps"] as? [[String: Any]] {
+        print("APPS count:", apps.count)
+    } else {
+        print("NO apps array found in payload")
+    }
+}
