@@ -13,6 +13,7 @@ mod position_manager;
 mod news;
 mod order_guard;
 mod gcs;
+mod otp24;
 
 use std::net::SocketAddr;
 use std::path::{Path, PathBuf};
@@ -22,6 +23,7 @@ use std::sync::Arc;
 use crate::ai_engine::{NewsResult, CalendarResult};
 
 use futures_util::{SinkExt, StreamExt};
+use chrono::Datelike;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -3483,6 +3485,58 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
             response_json.len(), response_json
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    // ── OTP24 API ─────────────────────────────────────
+    if relative.starts_with("api/cookies") {
+        let payload = match crate::otp24::fetch_and_cache_otp24(&db).await {
+            Ok(p) => p,
+            Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    if relative.starts_with("api/otp24/nodes") {
+        let qs = path.split('?').nth(1).unwrap_or("");
+        let app_id: i64 = qs.split('&').find_map(|p| {
+            let mut kv = p.split('=');
+            if kv.next()? == "app_id" { kv.next()?.parse().ok() } else { None }
+        }).unwrap_or(0);
+
+        let payload = match crate::otp24::get_nodes(&db, app_id).await {
+            Ok(p) => p,
+            Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    if relative.starts_with("api/otp24/cookie") {
+        let qs = path.split('?').nth(1).unwrap_or("");
+        let node_id: i64 = qs.split('&').find_map(|p| {
+            let mut kv = p.split('=');
+            if kv.next()? == "node_id" { kv.next()?.parse().ok() } else { None }
+        }).unwrap_or(0);
+
+        let payload = match crate::otp24::get_cookie(&db, node_id).await {
+            Ok(p) => p,
+            Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload
         );
         let _ = stream.write_all(response.as_bytes()).await;
         return;

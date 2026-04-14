@@ -35,3 +35,7 @@ ea-ios/EA24/SecretConfig.swift
 *.session
 test_ws*.py
 videos/
+
+10/
+ott/
+ea-server/compile_errors.txt

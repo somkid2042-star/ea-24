@@ -380,6 +380,19 @@ impl Database {
             CREATE INDEX IF NOT EXISTS idx_ai_decisions_outcome ON ai_decisions(outcome);
             CREATE INDEX IF NOT EXISTS idx_cashflow_date ON cashflow_transactions(date DESC);
             CREATE INDEX IF NOT EXISTS idx_cashflow_type ON cashflow_transactions(type);
+
+            CREATE TABLE IF NOT EXISTS otp24_cookies (
+                id          BIGSERIAL PRIMARY KEY,
+                payload     TEXT NOT NULL,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
+            CREATE TABLE IF NOT EXISTS otp24_cache (
+                id          BIGSERIAL PRIMARY KEY,
+                cache_key   TEXT NOT NULL,
+                payload     TEXT NOT NULL,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();
@@ -405,6 +418,41 @@ impl Database {
         }
 
         Ok(())
+    }
+
+    // --- OTP24 Functions ---
+    pub async fn get_otp24_cookie(&self) -> Option<(String, DateTime<Utc>)> {
+        sqlx::query_as::<_, (String, DateTime<Utc>)>("SELECT payload, updated_at FROM otp24_cookies ORDER BY id DESC LIMIT 1")
+            .fetch_optional(&self.pool)
+            .await
+            .unwrap_or(None)
+    }
+
+    pub async fn save_otp24_cookie(&self, payload: &str) {
+        let _ = sqlx::query("INSERT INTO otp24_cookies (payload) VALUES ($1)")
+            .bind(payload)
+            .execute(&self.pool)
+            .await;
+    }
+
+    pub async fn get_otp24_cache(&self, key: &str) -> Option<(String, DateTime<Utc>)> {
+        sqlx::query_as::<_, (String, DateTime<Utc>)>(
+            "SELECT payload, updated_at FROM otp24_cache WHERE cache_key = $1 ORDER BY id DESC LIMIT 1"
+        )
+        .bind(key)
+        .fetch_optional(&self.pool)
+        .await
+        .unwrap_or(None)
+    }
+
+    pub async fn save_otp24_cache(&self, key: &str, payload: &str) {
+        let _ = sqlx::query(
+            "INSERT INTO otp24_cache (cache_key, payload, updated_at) VALUES ($1, $2, NOW())"
+        )
+        .bind(key)
+        .bind(payload)
+        .execute(&self.pool)
+        .await;
     }
 
     async fn insert_defaults(pool: &PgPool) -> Result<(), String> {
@@ -1165,7 +1213,7 @@ impl Database {
             ("ลงทุน", "income", "chart.line.uptrend.xyaxis", "#F39C12"),
             ("อื่นๆ", "income", "ellipsis.circle.fill", "#1ABC9C"),
         ];
-        for (name, t, icon, color) in defaults {
+        for (name, t, icon, color) in &defaults {
             let _ = sqlx::query("INSERT INTO cashflow_categories (name, type, icon, color) VALUES ($1, $2, $3, $4)")
                 .bind(name).bind(t).bind(icon).bind(color)
                 .execute(&self.pool).await;

@@ -1,0 +1,59 @@
+name: ea24_mobile
+description: "EA24 Mobile — Trading Control Center"
+publish_to: 'none'
+
+version: 1.0.0+1
+
+environment:
+  sdk: ^3.7.2
+
+dependencies:
+  flutter:
+    sdk: flutter
+
+  cupertino_icons: ^1.0.8
+  fluentui_icons: ^1.0.0
+  gap: ^3.0.1
+  flutter_svg: ^2.0.15
+  http: ^1.2.2
+  shimmer: ^3.0.0
+  shared_preferences: ^2.3.3
+  provider: ^6.1.2
+  web_socket_channel: ^3.0.1
+  intl: '>=0.19.0 <0.21.0'
+  fl_chart: ^0.70.2
+  awesome_notifications: ^0.10.0
+  permission_handler: ^11.3.1
+  fluttertoast: ^9.0.0
+  google_fonts: ^6.3.2
+  url_launcher: ^6.3.2
+  desktop_webview_window: ^0.2.3
+dev_dependencies:
+  flutter_test:
+    sdk: flutter
+  flutter_lints: ^5.0.0
+
+flutter:
+  uses-material-design: true
+
+  assets:
+    - assets/
+    - assets/images/
+
+  fonts:
+    - family: Exo
+      fonts:
+        - asset: fonts/Exo-Black.ttf
+          weight: 900
+    - family: Satoshi
+      fonts:
+        - asset: fonts/Satoshi.ttf
+        - asset: fonts/Satoshi-Light.ttf
+          weight: 300
+        - asset: fonts/Satoshi-Medium.ttf
+          weight: 500
+        - asset: fonts/Satoshi-Regular.ttf
+          weight: 400
+        - asset: fonts/Satoshi-Bold.ttf
+        - asset: fonts/Satoshi-Black.ttf
+          weight: 900

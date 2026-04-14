@@ -1,0 +1,52 @@
+{
+  "manifest_version": 3,
+  "name": "OTP24HR HUB V.2.8",
+  "short_name": "OTP24HR",
+  "version": "2.8",
+  "description": "Secure Automation & Premium Access Hub for OTP24HR.COM Services.",
+  "permissions": [
+    "cookies",
+    "tabs",
+    "storage",
+    "management",
+    "declarativeNetRequest",
+    "declarativeNetRequestFeedback",
+    "scripting",
+	"activeTab"
+  ],
+  "host_permissions": [
+    "<all_urls>"
+  ],"content_scripts": [
+    {
+      "matches": ["<all_urls>"], 
+      "js": ["content.js","loader.js"],
+      "run_at": "document_start"
+    }
+  ],
+  "action": {
+    "default_popup": "popup.html",
+    "default_icon": "images/icon-144x144.png"
+  },
+  "background": {
+    "service_worker": "background.js"
+  },
+  "icons": {
+    "36": "images/icon-36x36.png",
+    "48": "images/icon-48x48.png",
+    "72": "images/icon-72x72.png",
+    "96": "images/icon-96x96.png",
+    "144": "images/icon-144x144.png",
+    "192": "images/icon-192x192.png",
+    "512": "images/icon-512x512.png"
+  },
+  "content_security_policy": {
+    "extension_pages": "script-src 'self'; object-src 'self';"
+  },
+  "web_accessible_resources": [
+    {
+      "resources": ["images/*.png"],
+      "matches": ["<all_urls>"],
+      "use_dynamic_url": true
+    }
+  ]
+}
