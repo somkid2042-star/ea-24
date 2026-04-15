@@ -79,6 +79,7 @@ pub enum Signal {
     Buy,
     Sell,
     None,
+    OneUsdFeed,
 }
 
 /// Strategy evaluation result with confidence score
@@ -158,7 +159,7 @@ fn generate_indicator_summary(ind: &Indicators) -> String {
 pub const ALL_STRATEGIES: &[&str] = &[
     "SMC", "ICT", "Session Sniper", "Fibonacci", "Trend Rider",
     "Pullback Sniper", "Bollinger Squeeze", "Momentum Surge",
-    "Reversal Catcher", "Fractal Breakout"
+    "Reversal Catcher", "Fractal Breakout", "1usd"
 ];
 // Note: "Scalper Pro" and "Grid Master" are specialized strategies.
 // They are NOT in ALL_STRATEGIES — they only run when explicitly selected in a Trade Setup.
@@ -457,8 +458,20 @@ pub fn evaluate_strategy(strategy: &str, ind: &Indicators) -> StrategyResult {
         "Reversal Catcher" => eval_reversal_catcher(ind),
         "Golden Cross"     => eval_golden_cross(ind),
         "Fractal Breakout" => eval_fractal_breakout(ind),
+        "1usd"             => eval_1usd(ind),
         "Auto"             => eval_auto(ind),
         _ => StrategyResult::none(),
+    }
+}
+
+fn eval_1usd(ind: &Indicators) -> StrategyResult {
+    StrategyResult {
+        signal: Signal::OneUsdFeed,
+        reason: "1USD Net Feeding (OCO)".to_string(),
+        confidence: 100.0,
+        indicator_summary: generate_indicator_summary(ind),
+        suggested_sl_atr: ind.atr * 1.5,
+        suggested_tp_atr: ind.atr * 2.5,
     }
 }
 
@@ -1358,7 +1371,7 @@ fn eval_auto(ind: &Indicators) -> StrategyResult {
                         *best_s = Some(res);
                     }
                 }
-                Signal::None => {}
+                Signal::None | Signal::OneUsdFeed => {}
             }
         }
     };
@@ -1755,7 +1768,7 @@ pub async fn run_strategy_engine(
             }
 
             let direction = match result.signal {
-                Signal::Buy => "BUY", Signal::Sell => "SELL", Signal::None => unreachable!(),
+                Signal::Buy => "BUY", Signal::Sell => "SELL", Signal::OneUsdFeed => "1USD", Signal::None => unreachable!(),
             };
 
             let price = indicators.current_close;

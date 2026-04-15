@@ -15,6 +15,9 @@ struct OTP24WebBrowserView: View {
     @State private var injectedCount = 0
     @State private var webViewRef: WKWebView?
     
+    @State private var showingExtractedCookies = false
+    @State private var extractedCookiesText = ""
+    
     var body: some View {
         ZStack {
             Color.black.ignoresSafeArea()
@@ -45,6 +48,44 @@ struct OTP24WebBrowserView: View {
                     }
                     
                     Spacer()
+                    
+                    // Extract Cookies Button
+                    Button(action: {
+                        guard let webView = webViewRef else { return }
+                        let cookieStore = webView.configuration.websiteDataStore.httpCookieStore
+                        cookieStore.getAllCookies { activeCookies in
+                            var exportedCookies: [[String: Any]] = []
+                            for cookie in activeCookies {
+                                var dict: [String: Any] = [
+                                    "name": cookie.name,
+                                    "value": cookie.value,
+                                    "domain": cookie.domain,
+                                    "path": cookie.path,
+                                    "secure": cookie.isSecure,
+                                    "httpOnly": cookie.isHTTPOnly
+                                ]
+                                if let expires = cookie.expiresDate {
+                                    dict["expirationDate"] = expires.timeIntervalSince1970
+                                }
+                                exportedCookies.append(dict)
+                            }
+                            
+                            if let data = try? JSONSerialization.data(withJSONObject: exportedCookies, options: .prettyPrinted),
+                               let jsonString = String(data: data, encoding: .utf8) {
+                                UIPasteboard.general.string = jsonString
+                                extractedCookiesText = jsonString
+                                showingExtractedCookies = true
+                                print("🍪 Extracted \(activeCookies.count) Cookies to Clipboard!")
+                            }
+                        }
+                    }) {
+                        Image(systemName: "doc.on.clipboard")
+                            .font(.system(size: 14, weight: .semibold))
+                            .foregroundColor(.white)
+                            .frame(width: 30, height: 30)
+                            .background(.blue.opacity(0.7))
+                            .clipShape(Circle())
+                    }
                     
                     // Cookie count badge
                     if injectedCount > 0 {
@@ -78,6 +119,25 @@ struct OTP24WebBrowserView: View {
             }
         }
         .statusBarHidden(false)
+        .sheet(isPresented: $showingExtractedCookies) {
+            NavigationView {
+                ScrollView {
+                    Text(extractedCookiesText)
+                        .font(.system(size: 11, design: .monospaced))
+                        .frame(maxWidth: .infinity, alignment: .leading)
+                        .padding()
+                }
+                .navigationTitle("Extracted Cookies")
+                .navigationBarTitleDisplayMode(.inline)
+                .toolbar {
+                    ToolbarItem(placement: .navigationBarTrailing) {
+                        Button("Close") {
+                            showingExtractedCookies = false
+                        }
+                    }
+                }
+            }
+        }
     }
 }
 

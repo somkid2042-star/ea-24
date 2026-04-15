@@ -1517,6 +1517,7 @@ pub async fn run_all_agents_multi_tf(
             let sig_str = match result.signal {
                 crate::strategy::Signal::Buy => "BUY",
                 crate::strategy::Signal::Sell => "SELL",
+                crate::strategy::Signal::OneUsdFeed => "1USD",
                 crate::strategy::Signal::None => "HOLD",
             };
             if result.signal != crate::strategy::Signal::None {

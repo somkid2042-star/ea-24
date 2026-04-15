@@ -29,6 +29,13 @@ struct QueuedRequest {
 };
 QueuedRequest candleQueue[];
 
+struct OCOTracker {
+   string symbol;
+   ulong ticket_buy;
+   ulong ticket_sell;
+};
+OCOTracker activeOCO[];
+
 struct SymbolRisk {
    string symbol;
    string risk_mode;
@@ -259,6 +266,38 @@ void OnTick()
   }
 
 //+------------------------------------------------------------------+
+//| Check OCO pending orders                                         |
+//+------------------------------------------------------------------+
+void CheckOCO()
+  {
+   for(int i = ArraySize(activeOCO) - 1; i >= 0; i--)
+     {
+      ulong tb = activeOCO[i].ticket_buy;
+      ulong ts = activeOCO[i].ticket_sell;
+      
+      bool b_pending = OrderSelect(tb);
+      bool s_pending = OrderSelect(ts);
+      
+      if(!b_pending && s_pending)
+        {
+         trade.OrderDelete(ts);
+         Print("OCO: Buy Hit! Deleting SellStop #", ts);
+         ArrayRemove(activeOCO, i, 1);
+        }
+      else if(!s_pending && b_pending)
+        {
+         trade.OrderDelete(tb);
+         Print("OCO: Sell Hit! Deleting BuyStop #", tb);
+         ArrayRemove(activeOCO, i, 1);
+        }
+      else if(!b_pending && !s_pending)
+        {
+         ArrayRemove(activeOCO, i, 1);
+        }
+     }
+  }
+
+//+------------------------------------------------------------------+
 //| Timer function                                                   |
 //+------------------------------------------------------------------+
 void OnTimer()
@@ -307,6 +346,9 @@ void OnTimer()
      
    // Run Advanced Risk Management globally (every 500ms since OnTimer triggers)
    HandleAdvancedRiskManagement();
+   
+   // Check OCO feeding strategy pairs
+   CheckOCO();
    
    // Read commands from server
    uint len = SocketIsReadable(socket);
@@ -439,7 +481,38 @@ void HandleOpenTrade(const string msg)
    
    bool result = false;
    
-   if(dir == "BUY")
+   if(dir == "1USD")
+     {
+      double min_stop = SymbolInfoInteger(sym, SYMBOL_TRADE_STOPS_LEVEL) * point * 1.5;
+      if(min_stop == 0) min_stop = (ask - bid) * 1.5; // fallback to 1.5x spread
+      
+      double buy_price = NormalizeDouble(ask + min_stop, digits);
+      double sell_price = NormalizeDouble(bid - min_stop, digits);
+      
+      ulong tb = 0;
+      ulong ts = 0;
+      
+      if(trade.BuyStop(lot, buy_price, sym, sl, tp, ORDER_TIME_GTC, 0, cmt)) tb = trade.ResultOrder();
+      if(trade.SellStop(lot, sell_price, sym, sl, tp, ORDER_TIME_GTC, 0, cmt)) ts = trade.ResultOrder();
+      
+      if(tb > 0 && ts > 0)
+        {
+         int idx = ArraySize(activeOCO);
+         ArrayResize(activeOCO, idx + 1);
+         activeOCO[idx].symbol = sym;
+         activeOCO[idx].ticket_buy = tb;
+         activeOCO[idx].ticket_sell = ts;
+         Print("1USD Feeding Placed: BuyStop #", tb, " SellStop #", ts);
+         result = true;
+        }
+      else
+        {
+         if(tb > 0) trade.OrderDelete(tb);
+         if(ts > 0) trade.OrderDelete(ts);
+         Print("1USD Feeding Failed.");
+        }
+     }
+   else if(dir == "BUY")
      {
       result = trade.Buy(lot, sym, ask, sl, tp, cmt);
      }

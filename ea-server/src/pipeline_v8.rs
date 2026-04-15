@@ -697,6 +697,7 @@ async fn server_strategy_scan(
             let dir = match result.signal {
                 strategy::Signal::Buy => { buy_count += 1; "BUY" }
                 strategy::Signal::Sell => { sell_count += 1; "SELL" }
+                strategy::Signal::OneUsdFeed => { "1USD" }
                 strategy::Signal::None => {
                     all_scan_details.push(format!("{}/{}: HOLD", tf_name, strat_name));
                     continue;
