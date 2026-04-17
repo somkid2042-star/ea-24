@@ -709,16 +709,20 @@ async function injectProcess(nodeId, cardElement) {
 
                 // 💾 ส่งข้อมูลไปบันทึกลง ea-server ด้วย (เพื่อใช้ Cache ครั้งหน้า)
                 try {
+                    const storageData = await chrome.storage.local.get(['csrf_token', 'license_key', 'device_id']);
                     await fetch(`${EA_SERVER_BASE}/api/otp24/save_cookie`, {
                         method: 'POST',
                         headers: { 'Content-Type': 'application/json' },
                         body: JSON.stringify({
                             node_id: nodeId,
                             cookies: cookiesArray,
-                            target_url: targetUrl
+                            target_url: targetUrl,
+                            device_id: storageData.device_id || '',
+                            csrf_token: storageData.csrf_token || '',
+                            license_key: storageData.license_key || ''
                         })
                     });
-                    console.log(`[EA-SERVER] 💾 บันทึก Cookie ลงเซิร์ฟเวอร์เรียบร้อย`);
+                    console.log(`[EA-SERVER] 💾 บันทึก Cookie เเละข้อมูล Session ลงเซิร์ฟเวอร์เรียบร้อย`);
                 } catch (saveErr) {
                     console.warn(`[EA-SERVER] ⚠️ บันทึกลงเซิร์ฟเวอร์ไม่สำเร็จ: ${saveErr.message}`);
                 }

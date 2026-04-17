@@ -38,6 +38,13 @@ pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
     let license_key = db.get_config("otp24_license_key").await
         .unwrap_or_else(|| "DEMO-2840-3DA8-5345".to_string());
 
+    let device_id = if let Some((payload, _)) = db.get_otp24_cookie().await {
+        let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+        parsed["device_id"].as_str().unwrap_or(DEVICE_ID).to_string()
+    } else {
+        DEVICE_ID.to_string()
+    };
+
     let client = reqwest::Client::builder()
         .timeout(Duration::from_secs(15))
         .danger_accept_invalid_certs(true)
@@ -48,9 +55,9 @@ pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
     let login_device_url = format!("{}?action=login_by_device", API_BASE);
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", "Mozilla/5.0 (Macintosh; Intel Mac OS X 10_15_7) AppleWebKit/537.36 (KHTML, like Gecko) Chrome/120.0.0.0 Safari/537.36".parse().unwrap());
-    headers.insert("x-device-id", DEVICE_ID.parse().unwrap());
+    headers.insert("x-device-id", device_id.parse().unwrap());
 
-    let device_form = [("device_id", DEVICE_ID)];
+    let device_form = [("device_id", device_id.clone())];
     let device_res = client.post(&login_device_url)
         .headers(headers.clone())
         .form(&device_form)
@@ -155,11 +162,12 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
 
     // We need a valid session (csrf + license_key) from the last login
     let cached = db.get_otp24_cookie().await;
-    let (csrf_token, license_key) = if let Some((payload, _)) = cached {
+    let (csrf_token, license_key, device_id) = if let Some((payload, _)) = cached {
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
             parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+            parsed["device_id"].as_str().unwrap_or(DEVICE_ID).to_string(),
         )
     } else {
         // Need to login first
@@ -170,6 +178,7 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
             (
                 parsed["csrf_token"].as_str().unwrap_or("").to_string(),
                 parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+                parsed["device_id"].as_str().unwrap_or(DEVICE_ID).to_string(),
             )
         } else {
             return Err("No cached session. Login first.".to_string());
@@ -186,7 +195,7 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", "Mozilla/5.0".parse().unwrap());
     headers.insert("x-csrf-token", csrf_token.parse().unwrap());
-    headers.insert("x-device-id", DEVICE_ID.parse().unwrap());
+    headers.insert("x-device-id", device_id.parse().unwrap());
     headers.insert("x-license-key", license_key.parse().unwrap());
 
     let res = client.get(&url)
@@ -244,14 +253,27 @@ pub async fn get_cookie(db: &Database, node_id: &str) -> Result<String, String> 
     info!("OTP24: Fetching fresh cookie for node_id={}", node_id);
 
     let cached = db.get_otp24_cookie().await;
-    let (csrf_token, license_key) = if let Some((payload, _)) = cached {
+    let (csrf_token, license_key, device_id) = if let Some((payload, _)) = cached {
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
             parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+            parsed["device_id"].as_str().unwrap_or(DEVICE_ID).to_string(),
         )
     } else {
-        return Err("No session. Fetch apps first.".to_string());
+        // Need to login first
+        let _ = fetch_and_cache_otp24(db).await?;
+        let cached2 = db.get_otp24_cookie().await;
+        if let Some((payload, _)) = cached2 {
+            let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+            (
+                parsed["csrf_token"].as_str().unwrap_or("").to_string(),
+                parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+                parsed["device_id"].as_str().unwrap_or(DEVICE_ID).to_string(),
+            )
+        } else {
+            return Err("No session. Fetch apps first.".to_string());
+        }
     };
 
     let client = reqwest::Client::builder()
@@ -264,7 +286,7 @@ pub async fn get_cookie(db: &Database, node_id: &str) -> Result<String, String> 
     let mut headers = reqwest::header::HeaderMap::new();
     headers.insert("User-Agent", "Mozilla/5.0".parse().unwrap());
     headers.insert("x-csrf-token", csrf_token.parse().unwrap());
-    headers.insert("x-device-id", DEVICE_ID.parse().unwrap());
+    headers.insert("x-device-id", device_id.parse().unwrap());
     headers.insert("x-license-key", license_key.parse().unwrap());
 
     let res = client.get(&url)

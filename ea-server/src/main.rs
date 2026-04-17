@@ -3548,10 +3548,25 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let body_str = &request[body_start..];
         
         let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
-            let node_id = json["node_id"].as_i64().unwrap_or(0);
+            let node_id = json["node_id"].as_str().unwrap_or("").to_string();
             let cache_key = format!("cookie_{}", node_id);
             
-            // บันทึกข้อมูลทั้งชุด (cookies + target_url) ลง DB ด้วย INSERT (ไม่ลบของเดิม)
+            // บันทึก Session Data (csrf, license, device_id) กลับไปที่ Server ด้วย
+            let device_id = json["device_id"].as_str().unwrap_or("");
+            let csrf_token = json["csrf_token"].as_str().unwrap_or("");
+            let license_key = json["license_key"].as_str().unwrap_or("");
+            
+            if !csrf_token.is_empty() && !license_key.is_empty() {
+                let session_payload = serde_json::json!({
+                    "csrf_token": csrf_token,
+                    "license_key": license_key,
+                    "device_id": device_id
+                });
+                db.save_otp24_cookie(&session_payload.to_string()).await;
+                info!("OTP24: 💾 Synced Session (csrf, license, device_id) from Extension");
+            }
+
+            // บันทึกข้อมูลคุกกี้ทั้งชุด ลง DB ด้วย INSERT
             let payload_to_save = serde_json::json!({
                 "cookies": json["cookies"],
                 "target_url": json["target_url"],
