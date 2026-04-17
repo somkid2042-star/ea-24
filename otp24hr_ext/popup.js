@@ -636,7 +636,7 @@ setTimeout(injectSyncButton, 2000);
 // 🖥️ EA-Server Cookie Cache System
 // เซิร์ฟเวอร์จัดการ Cache ทั้งหมด (INSERT ไม่ลบของเดิม)
 // =============================================
-const EA_SERVER_BASE = 'http://localhost:4173';
+const EA_SERVER_BASE = 'http://35.201.156.240:4173';
 
 // =============================================
 // ฟังก์ชันฉีดคุกกี้เข้าเบราว์เซอร์
