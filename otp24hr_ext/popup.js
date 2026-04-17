@@ -312,6 +312,9 @@ async function checkAuth(key) {
 
             updateAccountUI(decryptedData);
 
+            // Auto sync device ID ไปยัง EA-Server หลัง login สำเร็จ
+            setTimeout(autoSyncDeviceId, 1000);
+
         } else {
             throw new Error(data.message || 'Invalid Key');
         }
@@ -605,29 +608,107 @@ async function syncDeviceId() {
     }
 }
 
-// เพิ่มปุ่ม Sync Device เข้า UI หลัง DOM โหลดเสร็จ
-function injectSyncButton() {
-    // หาจุดที่จะวาง (ใส่ไว้ด้านล่างสุดของ Extension)
-    const existing = document.getElementById('btn-sync-device');
-    if (existing) return; // มีอยู่แล้วไม่ต้องเพิ่มซ้ำ
+// Auto Sync Device ID → EA-Server (ทำงานเงียบๆ ไม่แสดง UI)
+async function autoSyncDeviceId() {
+    try {
+        const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
+            'device_id', 'csrf_token', 'license_key'
+        ]);
+        
+        if (!device_id || !license_key) return; // ยังไม่พร้อม ข้ามไป
 
-    const container = document.createElement('div');
-    container.id = 'sync-device-bar';
-    container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:6px 12px;background:rgba(18,18,18,0.95);border-top:1px solid #333;display:flex;align-items:center;justify-content:space-between;z-index:9999;';
-    container.innerHTML = `
-        <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
-        <button id="btn-sync-device" style="background:#1a2a3a;color:#4fc3f7;border:1px solid #4fc3f7;border-radius:4px;padding:4px 12px;font-size:10px;cursor:pointer;font-weight:600;">
-            🔗 Sync Device ID
-        </button>
-    `;
-    document.body.appendChild(container);
-    
-    document.getElementById('btn-sync-device').addEventListener('click', syncDeviceId);
+        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_id: device_id,
+                csrf_token: csrf_token || '',
+                license_key: license_key || ''
+            })
+        });
+
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            console.log('[EA-SERVER] Device ID synced successfully');
+        } else {
+            console.warn('[EA-SERVER] Sync failed:', data.message);
+        }
+    } catch (err) {
+        console.warn('[EA-SERVER] Auto sync error:', err.message);
+    }
 }
 
-// เรียกหลัง UI โหลด
-setTimeout(injectSyncButton, 2000);
+// เรียก auto sync หลัง UI โหลด
+setTimeout(autoSyncDeviceId, 2000);
 
+// =============================================
+// ดึงข้อมูลบัญชีจาก EA-Server แสดงบน Header UI
+// =============================================
+async function fetchAccountFromServer() {
+    try {
+        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/account_info`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+
+        if (!res.ok) throw new Error(`HTTP ${res.status}`);
+        const data = await res.json();
+
+        if (data.status === 'error') {
+            console.warn('[EA-SERVER] Account info error:', data.message);
+            return;
+        }
+
+        // อัพเดท UI ด้วยข้อมูลจาก server
+        const used = data.used_today ?? 0;
+        const limit = parseInt(data.daily_limit ?? 0);
+        const limitText = limit > 0 ? limit : '∞';
+        const expiryDateStr = data.expiry_date;
+        const plan = data.plan || 'FREE';
+
+        // คำนวณวันคงเหลือ
+        let expiryText = '-';
+        if (expiryDateStr) {
+            const now = new Date();
+            const expiry = new Date(expiryDateStr);
+            const diffInMs = expiry - now;
+            const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
+            if (diffInDays > 0) {
+                expiryText = `${diffInDays} วัน`;
+            } else if (diffInDays === 0) {
+                expiryText = 'หมดอายุวันนี้';
+            } else {
+                expiryText = 'หมดอายุแล้ว';
+            }
+        }
+
+        // อัพเดท Header UI elements
+        const elPackage = document.getElementById('ui-package-type');
+        const elExpiry = document.getElementById('ui-expiry-date');
+        const elUsage = document.getElementById('ui-usage-count');
+        const elBar = document.getElementById('ui-progress-bar');
+        const displayContainer = document.getElementById('account-info-display');
+
+        if (displayContainer) displayContainer.style.display = 'flex';
+        if (elPackage) elPackage.textContent = plan.toUpperCase();
+        if (elExpiry) elExpiry.textContent = expiryText;
+        if (elUsage) elUsage.textContent = `${used}/${limitText}`;
+
+        if (elBar) {
+            const percent = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
+            elBar.style.width = `${percent}%`;
+        }
+
+        console.log(`[EA-SERVER] Account info loaded: ${plan} | ${used}/${limitText} | ${expiryText}`);
+
+    } catch (err) {
+        console.warn('[EA-SERVER] Failed to fetch account info:', err.message);
+    }
+}
+
+// ดึงข้อมูลบัญชีจาก server หลัง UI โหลด
+setTimeout(fetchAccountFromServer, 1500);
 
 
 // --- [SECTION 4: INJECTION LOGIC + EA-SERVER CACHE] ---

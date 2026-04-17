@@ -3490,6 +3490,26 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         return;
     }
 
+    // ── OTP24 Account Info (GET — ส่งข้อมูลบัญชีกลับ Extension) ──
+    if relative.starts_with("api/otp24/account_info") {
+        let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {
+            // มี cache อยู่แล้ว ส่งกลับเลย
+            cached_payload
+        } else {
+            // ไม่มี cache → ดึงใหม่จาก OTP24HR
+            match crate::otp24::fetch_and_cache_otp24(&db).await {
+                Ok(p) => p,
+                Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+            }
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
     // ── OTP24 API ─────────────────────────────────────
     if relative.starts_with("api/cookies") {
         let payload = match crate::otp24::fetch_and_cache_otp24(&db).await {
@@ -3503,6 +3523,7 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
+
 
     if relative.starts_with("api/otp24/nodes") {
         let qs = path.split('?').nth(1).unwrap_or("");
