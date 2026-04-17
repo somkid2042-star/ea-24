@@ -3540,6 +3540,26 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         return;
     }
 
+    // ── OTP24 Get License (GET — iOS ดึง key ที่ Extension sync ไว้) ──
+    if relative.starts_with("api/otp24/get_license") {
+        let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {
+            if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&cached_payload) {
+                let key = parsed["license_key"].as_str().unwrap_or("");
+                serde_json::json!({"status": "success", "license_key": key}).to_string()
+            } else {
+                serde_json::json!({"status": "error", "message": "No session data"}).to_string()
+            }
+        } else {
+            serde_json::json!({"status": "error", "message": "No synced device"}).to_string()
+        };
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            payload.len(), payload
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
     // ── OTP24 Account Info (GET — ส่งข้อมูลบัญชีกลับ Extension) ──
     if relative.starts_with("api/otp24/account_info") {
         let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {

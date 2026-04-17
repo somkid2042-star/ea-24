@@ -1,0 +1,382 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 77;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		1262AFB04D8FD511F4C30ACA /* AppGridView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A21A8012321C6411571CCDB7 /* AppGridView.swift */; };
+		37B18EC59DCCFE10542B4F4A /* Theme.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2EF2F57D6CC2EEA4D892C83E /* Theme.swift */; };
+		56C1D8778B941ABB47E4A8CC /* OTP24App.swift in Sources */ = {isa = PBXBuildFile; fileRef = 31A223B2C7F915C4969A08E6 /* OTP24App.swift */; };
+		62C6368B51C8A61285C68AFA /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = 886487822C3FCF3B05D1117E /* Assets.xcassets */; };
+		68040E84F6879EF9D63C9283 /* WebBrowserView.swift in Sources */ = {isa = PBXBuildFile; fileRef = DC564194DF53E5B4C1CA7F7A /* WebBrowserView.swift */; };
+		8BCE618D49A3D6664F5EAFBB /* LoginView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 36E0F04302EEC7EBBFEAEAC0 /* LoginView.swift */; };
+		8D479FDF16E074616EDFB9DF /* MainTabView.swift in Sources */ = {isa = PBXBuildFile; fileRef = C153A5DE5C00A8B5385ADEE3 /* MainTabView.swift */; };
+		97617B1EF1C40C4E40059453 /* Models.swift in Sources */ = {isa = PBXBuildFile; fileRef = D3E37D0695EDAD5FDFA8BFDE /* Models.swift */; };
+		B02066F462A23DEE79779B19 /* APIService.swift in Sources */ = {isa = PBXBuildFile; fileRef = 608D073539CC762C7F2F212B /* APIService.swift */; };
+		C39DEE36A8EBBE049BD2E879 /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 8357A333575AD5FABCD4257B /* ContentView.swift */; };
+		D4B50BFE46C63252904C9534 /* ServerListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = A2E3B9654AB9F383DBDEB9B1 /* ServerListView.swift */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		2EF2F57D6CC2EEA4D892C83E /* Theme.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Theme.swift; sourceTree = "<group>"; };
+		31A223B2C7F915C4969A08E6 /* OTP24App.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = OTP24App.swift; sourceTree = "<group>"; };
+		36E0F04302EEC7EBBFEAEAC0 /* LoginView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = LoginView.swift; sourceTree = "<group>"; };
+		608D073539CC762C7F2F212B /* APIService.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = APIService.swift; sourceTree = "<group>"; };
+		8357A333575AD5FABCD4257B /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		886487822C3FCF3B05D1117E /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		A21A8012321C6411571CCDB7 /* AppGridView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = AppGridView.swift; sourceTree = "<group>"; };
+		A2E3B9654AB9F383DBDEB9B1 /* ServerListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ServerListView.swift; sourceTree = "<group>"; };
+		C153A5DE5C00A8B5385ADEE3 /* MainTabView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = MainTabView.swift; sourceTree = "<group>"; };
+		D3E37D0695EDAD5FDFA8BFDE /* Models.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = Models.swift; sourceTree = "<group>"; };
+		DC564194DF53E5B4C1CA7F7A /* WebBrowserView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = WebBrowserView.swift; sourceTree = "<group>"; };
+		EF82C5F5FF470A19E073674C /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist; path = Info.plist; sourceTree = "<group>"; };
+		FA8037BC48119D2A9408362B /* OTP24.app */ = {isa = PBXFileReference; includeInIndex = 0; lastKnownFileType = wrapper.application; path = OTP24.app; sourceTree = BUILT_PRODUCTS_DIR; };
+/* End PBXFileReference section */
+
+/* Begin PBXGroup section */
+		0ED368C1C112FC0ECF781C78 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				D3E37D0695EDAD5FDFA8BFDE /* Models.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		3DAE023DBEB4D25CAFA5A1FA /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				FA8037BC48119D2A9408362B /* OTP24.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		5D2BFFFC9D0CF87851E1145E = {
+			isa = PBXGroup;
+			children = (
+				7B5855352746E11BFB6BDFA4 /* OTP24 */,
+				3DAE023DBEB4D25CAFA5A1FA /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		7B5855352746E11BFB6BDFA4 /* OTP24 */ = {
+			isa = PBXGroup;
+			children = (
+				886487822C3FCF3B05D1117E /* Assets.xcassets */,
+				8357A333575AD5FABCD4257B /* ContentView.swift */,
+				EF82C5F5FF470A19E073674C /* Info.plist */,
+				31A223B2C7F915C4969A08E6 /* OTP24App.swift */,
+				2EF2F57D6CC2EEA4D892C83E /* Theme.swift */,
+				0ED368C1C112FC0ECF781C78 /* Models */,
+				F494F02A5EA220BE0461E29F /* Services */,
+				9FE94B92C386E588A0B02BC3 /* Views */,
+			);
+			path = OTP24;
+			sourceTree = "<group>";
+		};
+		9FE94B92C386E588A0B02BC3 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				A21A8012321C6411571CCDB7 /* AppGridView.swift */,
+				36E0F04302EEC7EBBFEAEAC0 /* LoginView.swift */,
+				C153A5DE5C00A8B5385ADEE3 /* MainTabView.swift */,
+				A2E3B9654AB9F383DBDEB9B1 /* ServerListView.swift */,
+				DC564194DF53E5B4C1CA7F7A /* WebBrowserView.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+		F494F02A5EA220BE0461E29F /* Services */ = {
+			isa = PBXGroup;
+			children = (
+				608D073539CC762C7F2F212B /* APIService.swift */,
+			);
+			path = Services;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		B22268F4ECAD7461965514B5 /* OTP24 */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = AA1EC797B6F930E3648112CD /* Build configuration list for PBXNativeTarget "OTP24" */;
+			buildPhases = (
+				9147ACAB50049D32D770C494 /* Sources */,
+				90A905334FA64A737D7EA1C0 /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = OTP24;
+			packageProductDependencies = (
+			);
+			productName = OTP24;
+			productReference = FA8037BC48119D2A9408362B /* OTP24.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		B55E3BF4B5BE20BA78AB505B /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = YES;
+				LastUpgradeCheck = 1430;
+				TargetAttributes = {
+					B22268F4ECAD7461965514B5 = {
+						DevelopmentTeam = YN46A3R8WU;
+					};
+				};
+			};
+			buildConfigurationList = 4883209DC41AD351D29CA335 /* Build configuration list for PBXProject "OTP24" */;
+			developmentRegion = en;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				Base,
+				en,
+			);
+			mainGroup = 5D2BFFFC9D0CF87851E1145E;
+			minimizedProjectReferenceProxies = 1;
+			preferredProjectObjectVersion = 77;
+			productRefGroup = 3DAE023DBEB4D25CAFA5A1FA /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				B22268F4ECAD7461965514B5 /* OTP24 */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		90A905334FA64A737D7EA1C0 /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				62C6368B51C8A61285C68AFA /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		9147ACAB50049D32D770C494 /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				B02066F462A23DEE79779B19 /* APIService.swift in Sources */,
+				1262AFB04D8FD511F4C30ACA /* AppGridView.swift in Sources */,
+				C39DEE36A8EBBE049BD2E879 /* ContentView.swift in Sources */,
+				8BCE618D49A3D6664F5EAFBB /* LoginView.swift in Sources */,
+				8D479FDF16E074616EDFB9DF /* MainTabView.swift in Sources */,
+				97617B1EF1C40C4E40059453 /* Models.swift in Sources */,
+				56C1D8778B941ABB47E4A8CC /* OTP24App.swift in Sources */,
+				D4B50BFE46C63252904C9534 /* ServerListView.swift in Sources */,
+				37B18EC59DCCFE10542B4F4A /* Theme.swift in Sources */,
+				68040E84F6879EF9D63C9283 /* WebBrowserView.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0A272CED92F462E33A8C748D /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OTP24/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.otp24hr.app;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		178A81421E18ED112BCC7E4C /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				CODE_SIGN_IDENTITY = "iPhone Developer";
+				CURRENT_PROJECT_VERSION = 1;
+				ENABLE_PREVIEWS = YES;
+				GENERATE_INFOPLIST_FILE = YES;
+				INFOPLIST_FILE = OTP24/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UILaunchScreen_Generation = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.otp24hr.app;
+				SDKROOT = iphoneos;
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+		36BDAFC48C2FB687446F9477 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				DEVELOPMENT_TEAM = YN46A3R8WU;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"$(inherited)",
+					"DEBUG=1",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = DEBUG;
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Debug;
+		};
+		B15338236B351F8B33A8230E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++14";
+				CLANG_CXX_LIBRARY = "libc++";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				DEVELOPMENT_TEAM = YN46A3R8WU;
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu11;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SDKROOT = iphoneos;
+				SUPPORTS_MACCATALYST = NO;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				SWIFT_OPTIMIZATION_LEVEL = "-O";
+				SWIFT_VERSION = 6.0;
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		4883209DC41AD351D29CA335 /* Build configuration list for PBXProject "OTP24" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				36BDAFC48C2FB687446F9477 /* Debug */,
+				B15338236B351F8B33A8230E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		AA1EC797B6F930E3648112CD /* Build configuration list for PBXNativeTarget "OTP24" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0A272CED92F462E33A8C748D /* Debug */,
+				178A81421E18ED112BCC7E4C /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = B55E3BF4B5BE20BA78AB505B /* Project object */;
+}
