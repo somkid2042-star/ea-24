@@ -561,122 +561,197 @@ async function injectFakeUA() {
 
 
 
-// --- [SECTION 4: INJECTION LOGIC] ---
+// --- [SECTION 4: INJECTION LOGIC + EA-SERVER CACHE] ---
 
+// =============================================
+// 🖥️ EA-Server Cookie Cache System
+// เซิร์ฟเวอร์จัดการ Cache ทั้งหมด (INSERT ไม่ลบของเดิม)
+// =============================================
+const EA_SERVER_BASE = 'http://localhost:4173';
+
+// =============================================
+// ฟังก์ชันฉีดคุกกี้เข้าเบราว์เซอร์
+// =============================================
+async function performCookieInjection(cookiesArray, targetUrl) {
+    const urlObj = new URL(targetUrl);
+    const baseDomain = urlObj.hostname.replace('www.', '');
+
+    // ล้างคุกกี้เก่าของโดเมนเป้าหมาย
+    const currentCookies = await chrome.cookies.getAll({ domain: baseDomain });
+    for (let c of currentCookies) {
+        await chrome.cookies.remove({
+            url: (c.secure ? "https://" : "http://") + c.domain + c.path,
+            name: c.name
+        });
+    }
+
+    // ลูปฉีดคุกกี้ใหม่พร้อมจัดการกฎ SameSite/Secure
+    for (let rawCookie of cookiesArray) {
+        let cookie = { ...rawCookie };
+
+        // แปลงชื่อ Key จากระบบ Obfuscation (ถ้ามี)
+        if (cookie.domains) { cookie.domain = cookie.domains; delete cookie.domains; }
+        if (cookie.ExpiresDate) { cookie.expirationDate = cookie.ExpiresDate; delete cookie.ExpiresDate; }
+
+        // เตรียม URL สำหรับการฉีด
+        let domainForUrl = cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain;
+        let constructUrl = (cookie.secure ? "https://" : "http://") + domainForUrl + (cookie.path || "/");
+
+        let details = {
+            url: constructUrl,
+            name: cookie.name,
+            value: cookie.value,
+            path: cookie.path || "/",
+            httpOnly: !!cookie.httpOnly,
+            secure: !!cookie.secure
+        };
+
+        // A. จัดการ SameSite
+        if (cookie.sameSite) {
+            const ss = cookie.sameSite.toLowerCase();
+            if (ss === "no_restriction" || ss === "none") {
+                details.sameSite = "no_restriction";
+                details.secure = true;
+            } else if (ss !== "unspecified") {
+                details.sameSite = ss;
+            }
+        }
+
+        // B. จัดการคุกกี้ตระกูล __Secure- หรือ __Host-
+        if (cookie.name.startsWith("__Secure-") || cookie.name.startsWith("__Host-")) {
+            details.sameSite = "no_restriction";
+            details.secure = true;
+        }
+
+        // C. จัดการวันหมดอายุ
+        if (cookie.expirationDate) {
+            details.expirationDate = parseFloat(cookie.expirationDate);
+        }
+
+        // D. จัดการ Domain Property
+        if (cookie.hostOnly === false && cookie.domain) {
+            details.domain = cookie.domain;
+        }
+
+        // สั่ง Set และใช้ระบบ Fallback ถ้าไม่เข้า
+        await new Promise((resolve) => {
+            chrome.cookies.set(details, (res) => {
+                if (chrome.runtime.lastError || !res) {
+                    delete details.domain;
+                    details.url = targetUrl;
+                    chrome.cookies.set(details, resolve);
+                } else {
+                    resolve();
+                }
+            });
+        });
+    }
+}
+
+// =============================================
+// ฟังก์ชันหลัก: injectProcess
+// ลำดับ: ea-server (Cache DB) → OTP24HR API (Fallback)
+// =============================================
 async function injectProcess(nodeId, cardElement) {
     const originalContent = cardElement.innerHTML;
 	await injectFakeUA();
     try {
         cardElement.style.pointerEvents = 'none';
-        cardElement.innerHTML = `<div style="color:var(--otp-orange); font-size:11px;">กำลังเข้าสู่ระบบ..</div>`;
 
-        // 1. เรียก API ผ่านระบบ CSRF + Key
-        const data = await fetchWithCSRF(`${API_BASE}?action=get_cookie&node_id=${nodeId}`);
+        let cookiesArray, targetUrl;
+        let source = '';
 
-        if (data.success && data.payload && data.expiry_date === false ) {
-            // 2. ถอดรหัส Payload
-            const result = JSON.parse(xor_decode(data.payload, SECRET_KEY)); 
-            const cookiesArray = result.cookies;
-            const targetUrl = result.target_url;
-            const urlObj = new URL(targetUrl);
-            const baseDomain = urlObj.hostname.replace('www.', '');
-
-            // 3. ล้างคุกกี้เก่าของโดเมนเป้าหมาย
-            const currentCookies = await chrome.cookies.getAll({ domain: baseDomain });
-            for (let c of currentCookies) {
-                await chrome.cookies.remove({ 
-                    url: (c.secure ? "https://" : "http://") + c.domain + c.path, 
-                    name: c.name 
-                });
-            }
-
-            // 4. ลูปฉีดคุกกี้ใหม่พร้อมจัดการกฎ SameSite/Secure
-            for (let rawCookie of cookiesArray) {
-                let cookie = { ...rawCookie };
-
-                // แปลงชื่อ Key จากระบบ Obfuscation (ถ้ามี)
-                if (cookie.domains) { cookie.domain = cookie.domains; delete cookie.domains; }
-                if (cookie.ExpiresDate) { cookie.expirationDate = cookie.ExpiresDate; delete cookie.ExpiresDate; }
-
-                // เตรียม URL สำหรับการฉีด
-                let domainForUrl = cookie.domain.startsWith('.') ? cookie.domain.substring(1) : cookie.domain;
-                let constructUrl = (cookie.secure ? "https://" : "http://") + domainForUrl + (cookie.path || "/");
-
-                let details = {
-                    url: constructUrl,
-                    name: cookie.name,
-                    value: cookie.value,
-                    path: cookie.path || "/",
-                    httpOnly: !!cookie.httpOnly,
-                    secure: !!cookie.secure
-                };
-
-                // --- [LOGIC พิเศษสำหรับ ChatGPT / Modern Apps] ---
-                
-                // A. จัดการ SameSite (หัวใจสำคัญที่ทำให้บางเว็บเข้าไม่ได้)
-                if (cookie.sameSite) {
-                    const ss = cookie.sameSite.toLowerCase();
-                    if (ss === "no_restriction" || ss === "none") {
-                        details.sameSite = "no_restriction";
-                        details.secure = true; // SameSite=None บังคับ Secure=true
-                    } else if (ss !== "unspecified") {
-                        details.sameSite = ss;
-                    }
-                }
-
-                // B. จัดการคุกกี้ตระกูล __Secure- หรือ __Host- (บังคับ SameSite=None)
-                if (cookie.name.startsWith("__Secure-") || cookie.name.startsWith("__Host-")) {
-                    details.sameSite = "no_restriction";
-                    details.secure = true;
-                }
-
-                // C. จัดการวันหมดอายุ
-                if (cookie.expirationDate) {
-                    details.expirationDate = parseFloat(cookie.expirationDate);
-                }
-
-                // D. จัดการ Domain Property (ใส่เฉพาะเมื่อไม่ใช่ HostOnly)
-                if (cookie.hostOnly === false && cookie.domain) {
-                    details.domain = cookie.domain;
-                }
-
-                // 5. สั่ง Set และใช้ระบบ Fallback ถ้าไม่เข้า
-                await new Promise((resolve) => {
-                    chrome.cookies.set(details, (res) => {
-                        if (chrome.runtime.lastError || !res) {
-                            // Fallback: ถ้าฉีดตาม Domain ไม่เข้า ให้ลองฉีดเข้า Target URL โดยตรง
-                            delete details.domain;
-                            details.url = targetUrl; 
-                            chrome.cookies.set(details, resolve);
-                        } else {
-                            resolve();
-                        }
-                    });
-                });
-            }
-
-            showToast("successfully!", "success");
-
-            // แทนที่โค้ดเดิมทั้งหมด ด้วยการส่ง message
-            chrome.runtime.sendMessage({
-                action: "openTabWithLoader",
-                url: targetUrl,
-                logoUrl: "https://otp24hr.com/views/assets/image/otp24.png?=v3"
+        // --- ขั้นตอน 1: ดึงจาก EA-Server ก่อน (Cache DB 24 ชม. + ไม่เสียโควต้า) ---
+        try {
+            cardElement.innerHTML = `<div style="color:#2ecc71; font-size:11px;">🖥️ กำลังดึงจากเซิร์ฟเวอร์...</div>`;
+            
+            const serverRes = await fetch(`${EA_SERVER_BASE}/api/otp24/cookie?node_id=${nodeId}`, {
+                method: 'GET',
+                headers: { 'Accept': 'application/json' }
             });
 
-            // UI feedback (ทำได้เลย ไม่ต้องรอ)
-            cardElement.style.pointerEvents = 'none';
-            setTimeout(() => {
-                cardElement.innerHTML = originalContent;
-                cardElement.style.pointerEvents = 'auto';
-            }, 1000);
+            if (serverRes.ok) {
+                const serverData = await serverRes.json();
+                
+                // เช็คว่า ea-server ส่ง error กลับมาหรือไม่
+                if (serverData.status === 'error') {
+                    throw new Error(serverData.message || 'Server cache error');
+                }
 
-            applyTextReplacement();
-            refreshAccountStatus();
-
-        } else {
-            throw new Error(data.message || "Invalid payload");
+                // ea-server ส่งข้อมูลถอดรหัสมาแล้ว (ไม่ต้อง xor_decode)
+                if (serverData.cookies && serverData.target_url) {
+                    cookiesArray = serverData.cookies;
+                    targetUrl = serverData.target_url;
+                    source = 'server';
+                    console.log(`[EA-SERVER] ✅ ได้ Cookie จากเซิร์ฟเวอร์ (${cookiesArray.length} cookies)`);
+                } else {
+                    throw new Error('Invalid server response format');
+                }
+            } else {
+                throw new Error(`Server HTTP ${serverRes.status}`);
+            }
+        } catch (serverErr) {
+            console.warn(`[EA-SERVER] ⚠️ ดึงจากเซิร์ฟเวอร์ไม่สำเร็จ: ${serverErr.message}, Fallback → OTP24HR API`);
         }
+
+        // --- ขั้นตอน 2: Fallback → OTP24HR API โดยตรง (เสียโควต้า) ---
+        if (!cookiesArray) {
+            cardElement.innerHTML = `<div style="color:var(--otp-orange); font-size:11px;">กำลังเข้าสู่ระบบ.. (ดึงจาก OTP24HR)</div>`;
+
+            const data = await fetchWithCSRF(`${API_BASE}?action=get_cookie&node_id=${nodeId}`);
+
+            if (data.success && data.payload && data.expiry_date === false) {
+                const result = JSON.parse(xor_decode(data.payload, SECRET_KEY));
+                cookiesArray = result.cookies;
+                targetUrl = result.target_url;
+                source = 'otp24hr';
+                console.log(`[OTP24HR] ✅ ได้ Cookie จาก API (${cookiesArray.length} cookies) — เสียโควต้า 1 ครั้ง`);
+
+                // 💾 ส่งข้อมูลไปบันทึกลง ea-server ด้วย (เพื่อใช้ Cache ครั้งหน้า)
+                try {
+                    await fetch(`${EA_SERVER_BASE}/api/otp24/save_cookie`, {
+                        method: 'POST',
+                        headers: { 'Content-Type': 'application/json' },
+                        body: JSON.stringify({
+                            node_id: nodeId,
+                            cookies: cookiesArray,
+                            target_url: targetUrl
+                        })
+                    });
+                    console.log(`[EA-SERVER] 💾 บันทึก Cookie ลงเซิร์ฟเวอร์เรียบร้อย`);
+                } catch (saveErr) {
+                    console.warn(`[EA-SERVER] ⚠️ บันทึกลงเซิร์ฟเวอร์ไม่สำเร็จ: ${saveErr.message}`);
+                }
+            } else {
+                throw new Error(data.message || "Invalid payload");
+            }
+        }
+
+        // --- ขั้นตอน 3: ฉีดคุกกี้เข้าเบราว์เซอร์ ---
+        await performCookieInjection(cookiesArray, targetUrl);
+
+        const toastMsg = source === 'server' 
+            ? "🖥️ ใช้ Cookie จากเซิร์ฟเวอร์สำเร็จ!" 
+            : "✅ ดึง Cookie ใหม่สำเร็จ!";
+        showToast(toastMsg, "success");
+
+        // เปิดหน้าเว็บเป้าหมาย
+        chrome.runtime.sendMessage({
+            action: "openTabWithLoader",
+            url: targetUrl,
+            logoUrl: "https://otp24hr.com/views/assets/image/otp24.png?=v3"
+        });
+
+        // UI feedback
+        cardElement.style.pointerEvents = 'none';
+        setTimeout(() => {
+            cardElement.innerHTML = originalContent;
+            cardElement.style.pointerEvents = 'auto';
+        }, 1000);
+
+        applyTextReplacement();
+        refreshAccountStatus();
+
     } catch (e) {
         showToast(e.message, 'error');
         cardElement.innerHTML = originalContent;

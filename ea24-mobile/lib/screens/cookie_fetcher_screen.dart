@@ -4,8 +4,8 @@ import 'package:flutter/services.dart';
 import 'package:provider/provider.dart';
 import 'package:desktop_webview_window/desktop_webview_window.dart';
 import '../notifier/trading_provider.dart';
-import '../utils/app_style.dart';
-import '../utils/color_utils.dart';
+import '../my_theme.dart';
+
 
 class CookieFetcherScreen extends StatefulWidget {
   const CookieFetcherScreen({super.key});
@@ -96,20 +96,20 @@ class _CookieFetcherScreenState extends State<CookieFetcherScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ColorUtils.getBackGround(context),
+      backgroundColor: MyTheme.white,
       appBar: AppBar(
-        backgroundColor: ColorUtils.getBackGround(context),
+        backgroundColor: MyTheme.white,
         surfaceTintColor: Colors.transparent, elevation: 0,
         title: Row(mainAxisSize: MainAxisSize.min, children: [
           Container(padding: const EdgeInsets.all(6),
-            decoration: BoxDecoration(color: Styles.primaryColor.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
-            child: Icon(Icons.apps, color: Styles.primaryColor, size: 22)),
+            decoration: BoxDecoration(color: MyTheme.accent_color.withOpacity(0.15), borderRadius: BorderRadius.circular(8)),
+            child: Icon(Icons.apps, color: MyTheme.accent_color, size: 22)),
           const SizedBox(width: 10),
-          Text('เครื่องมือ', style: Styles.textStyle.copyWith(fontSize: 22, color: ColorUtils.getPrimaryText(context), fontWeight: FontWeight.bold)),
+          Text('เครื่องมือ', style: TextStyle((fontSize: 22, color: Colors.black87, fontWeight: FontWeight.bold)),
         ]),
         centerTitle: true,
       ),
-      body: RefreshIndicator(onRefresh: _fetchApps, color: Styles.primaryColor, child: _buildBody()),
+      body: RefreshIndicator(onRefresh: _fetchApps, color: MyTheme.accent_color, child: _buildBody()),
     );
   }
 
@@ -170,7 +170,7 @@ class _CookieFetcherScreenState extends State<CookieFetcherScreen> {
       padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
       decoration: BoxDecoration(color: c.withOpacity(0.08), borderRadius: BorderRadius.circular(10)),
       child: Row(children: [
-        Text(dn, style: Styles.textStyle.copyWith(fontSize: 14, fontWeight: FontWeight.w600, color: ColorUtils.getPrimaryText(context))),
+        Text(dn, style: TextStyle((fontSize: 14, fontWeight: FontWeight.w600, color: Colors.black87)),
         const SizedBox(width: 8),
         Container(padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
           decoration: BoxDecoration(color: c.withOpacity(0.15), borderRadius: BorderRadius.circular(10)),
@@ -194,14 +194,14 @@ class _CookieFetcherScreenState extends State<CookieFetcherScreen> {
         child: Opacity(opacity: locked ? 0.5 : 1, child: Column(mainAxisSize: MainAxisSize.min, children: [
           Stack(children: [
             Container(width: 56, height: 56,
-              decoration: BoxDecoration(color: ColorUtils.getCardColor(context), borderRadius: BorderRadius.circular(14),
+              decoration: BoxDecoration(color: MyTheme.white, borderRadius: BorderRadius.circular(14),
                 boxShadow: [BoxShadow(color: Colors.black12, blurRadius: 6, offset: const Offset(0, 2))]),
               clipBehavior: Clip.antiAlias,
               child: icon.isNotEmpty ? Image.network(icon, width: 56, height: 56, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const Icon(Icons.apps, size: 28, color: Colors.grey)) : const Icon(Icons.apps, size: 28, color: Colors.grey)),
             if (locked) Positioned(right: 0, top: 0, child: Container(padding: const EdgeInsets.all(2), decoration: const BoxDecoration(color: Colors.orange, shape: BoxShape.circle), child: const Icon(Icons.lock, size: 10, color: Colors.white))),
           ]),
           const SizedBox(height: 6),
-          Text(name, style: Styles.textStyle.copyWith(fontSize: 10, color: ColorUtils.getPrimaryText(context)), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
+          Text(name, style: TextStyle((fontSize: 10, color: Colors.black87), maxLines: 1, overflow: TextOverflow.ellipsis, textAlign: TextAlign.center),
         ])),
       );
     },
@@ -210,12 +210,12 @@ class _CookieFetcherScreenState extends State<CookieFetcherScreen> {
   Widget _buildError() => Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
     Icon(Icons.cloud_off, size: 64, color: Colors.grey[400]),
     const SizedBox(height: 16),
-    Text('ไม่สามารถเชื่อมต่อ OTP24 ได้', style: Styles.textStyle.copyWith(fontSize: 18, fontWeight: FontWeight.bold, color: ColorUtils.getPrimaryText(context))),
+    Text('ไม่สามารถเชื่อมต่อ OTP24 ได้', style: TextStyle((fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
     const SizedBox(height: 8),
     Text(_errorMessage ?? '', style: TextStyle(fontSize: 13, color: Colors.grey[500]), textAlign: TextAlign.center),
     const SizedBox(height: 24),
     ElevatedButton.icon(onPressed: _fetchApps, icon: const Icon(Icons.refresh), label: const Text('ลองอีกครั้ง'),
-      style: ElevatedButton.styleFrom(backgroundColor: Styles.primaryColor, foregroundColor: Colors.white,
+      style: ElevatedButton.styleFrom(backgroundColor: MyTheme.accent_color, foregroundColor: Colors.white,
         padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
   ])));
 }
@@ -353,7 +353,7 @@ class _InAppWebViewPageState extends State<_InAppWebViewPage> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: ColorUtils.getBackGround(context),
+      backgroundColor: MyTheme.white,
       appBar: AppBar(
         backgroundColor: const Color(0xFF1BA0E1),
         elevation: 0,
@@ -392,7 +392,7 @@ class _InAppWebViewPageState extends State<_InAppWebViewPage> {
               if (widget.appIconUrl.isNotEmpty)
                 Padding(padding: const EdgeInsets.only(bottom: 16), child: ClipRRect(borderRadius: BorderRadius.circular(16),
                   child: Image.network(widget.appIconUrl, width: 64, height: 64, fit: BoxFit.cover, errorBuilder: (_, __, ___) => const SizedBox()))),
-              Text(widget.appName, style: Styles.textStyle.copyWith(fontSize: 20, fontWeight: FontWeight.bold, color: ColorUtils.getPrimaryText(context))),
+              Text(widget.appName, style: TextStyle((fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
               const SizedBox(height: 12),
               Text(_status, style: const TextStyle(color: Colors.grey, fontSize: 14)),
             ]))
@@ -400,12 +400,12 @@ class _InAppWebViewPageState extends State<_InAppWebViewPage> {
               ? Center(child: Padding(padding: const EdgeInsets.all(32), child: Column(mainAxisSize: MainAxisSize.min, children: [
                   Icon(Icons.error_outline, size: 56, color: Colors.red[300]),
                   const SizedBox(height: 14),
-                  Text('เปิด ${widget.appName} ไม่สำเร็จ', style: Styles.textStyle.copyWith(fontSize: 18, fontWeight: FontWeight.bold, color: ColorUtils.getPrimaryText(context))),
+                  Text('เปิด ${widget.appName} ไม่สำเร็จ', style: TextStyle((fontSize: 18, fontWeight: FontWeight.bold, color: Colors.black87)),
                   const SizedBox(height: 8),
                   Text(_error!, style: TextStyle(fontSize: 13, color: Colors.grey[500]), textAlign: TextAlign.center),
                   const SizedBox(height: 20),
                   ElevatedButton.icon(onPressed: _autoFetch, icon: const Icon(Icons.refresh), label: const Text('ลองอีกครั้ง'),
-                    style: ElevatedButton.styleFrom(backgroundColor: Styles.primaryColor, foregroundColor: Colors.white,
+                    style: ElevatedButton.styleFrom(backgroundColor: MyTheme.accent_color, foregroundColor: Colors.white,
                       padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32), shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)))),
                 ])))
               // WebView is open in separate window — show info panel
@@ -414,9 +414,9 @@ class _InAppWebViewPageState extends State<_InAppWebViewPage> {
                   child: Column(
                     mainAxisAlignment: MainAxisAlignment.center,
                     children: [
-                      Icon(Icons.open_in_new, size: 64, color: Styles.primaryColor.withOpacity(0.5)),
+                      Icon(Icons.open_in_new, size: 64, color: MyTheme.accent_color.withOpacity(0.5)),
                       const SizedBox(height: 20),
-                      Text('${widget.appName} กำลังแสดงอยู่', style: Styles.textStyle.copyWith(fontSize: 20, fontWeight: FontWeight.bold, color: ColorUtils.getPrimaryText(context))),
+                      Text('${widget.appName} กำลังแสดงอยู่', style: TextStyle((fontSize: 20, fontWeight: FontWeight.bold, color: Colors.black87)),
                       const SizedBox(height: 8),
                       Text('สลับไปที่หน้าต่าง ${widget.appName} เพื่อใช้งาน\nปิดหน้าต่างเพื่อกลับมาที่นี่', style: TextStyle(fontSize: 14, color: Colors.grey[500]), textAlign: TextAlign.center),
                       const SizedBox(height: 24),

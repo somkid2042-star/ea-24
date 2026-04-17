@@ -24,7 +24,6 @@ use chrono::Datelike;
 use crate::ai_engine::{NewsResult, CalendarResult};
 
 use futures_util::{SinkExt, StreamExt};
-use chrono::Datelike;
 use log::{error, info, warn};
 use serde::{Deserialize, Serialize};
 use tokio::io::{AsyncBufReadExt, AsyncWriteExt, BufReader};
@@ -3538,6 +3537,39 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
             payload.len(), payload
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    // ── OTP24 Save Cookie (POST from Extension) ──────────
+    if relative.starts_with("api/otp24/save_cookie") && method == "POST" {
+        let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+        let body_str = &request[body_start..];
+        
+        let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
+            let node_id = json["node_id"].as_i64().unwrap_or(0);
+            let cache_key = format!("cookie_{}", node_id);
+            
+            // บันทึกข้อมูลทั้งชุด (cookies + target_url) ลง DB ด้วย INSERT (ไม่ลบของเดิม)
+            let payload_to_save = serde_json::json!({
+                "cookies": json["cookies"],
+                "target_url": json["target_url"],
+                "source": "extension_push",
+                "saved_at": chrono::Utc::now().to_rfc3339()
+            });
+            
+            db.save_otp24_cache(&cache_key, &payload_to_save.to_string()).await;
+            info!("OTP24: 💾 Saved cookie cache from Extension for node_id={}", node_id);
+            
+            ("200 OK", serde_json::json!({"status": "success", "message": "Cookie saved to server cache"}).to_string())
+        } else {
+            ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
+        };
+        
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
+            status_code, json_body.len(), json_body
         );
         let _ = stream.write_all(response.as_bytes()).await;
         return;

@@ -1,0 +1,29 @@
+{
+  "project_info": {
+    "project_number": "693085482006",
+    "project_id": "activeecommerce-46c57",
+    "storage_bucket": "activeecommerce-46c57.firebasestorage.app"
+  },
+  "client": [
+    {
+      "client_info": {
+        "mobilesdk_app_id": "1:693085482006:android:f3bc268da177642c615937",
+        "android_client_info": {
+          "package_name": "com.activeitzone.activeecommercecmsdemoapp"
+        }
+      },
+      "oauth_client": [],
+      "api_key": [
+        {
+          "current_key": "AIzaSyB59PXmZntxH7eRbgAnhJIZ5fOAz8bB4TY"
+        }
+      ],
+      "services": {
+        "appinvite_service": {
+          "other_platform_oauth_client": []
+        }
+      }
+    }
+  ],
+  "configuration_version": "1"
+}
