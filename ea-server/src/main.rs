@@ -3525,12 +3525,12 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
 
     if relative.starts_with("api/otp24/cookie") {
         let qs = path.split('?').nth(1).unwrap_or("");
-        let node_id: i64 = qs.split('&').find_map(|p| {
+        let node_id: String = qs.split('&').find_map(|p| {
             let mut kv = p.split('=');
-            if kv.next()? == "node_id" { kv.next()?.parse().ok() } else { None }
-        }).unwrap_or(0);
+            if kv.next()? == "node_id" { Some(kv.next()?.to_string()) } else { None }
+        }).unwrap_or_default();
 
-        let payload = match crate::otp24::get_cookie(&db, node_id).await {
+        let payload = match crate::otp24::get_cookie(&db, &node_id).await {
             Ok(p) => p,
             Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
         };

@@ -230,7 +230,7 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
 }
 
 /// Fetch cookie for a specific node (CACHED 24h)
-pub async fn get_cookie(db: &Database, node_id: i64) -> Result<String, String> {
+pub async fn get_cookie(db: &Database, node_id: &str) -> Result<String, String> {
     // Check cache first
     let cache_key = format!("cookie_{}", node_id);
     if let Some((payload, updated_at)) = db.get_otp24_cache(&cache_key).await {
