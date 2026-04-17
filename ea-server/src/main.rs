@@ -3436,16 +3436,65 @@ use rust_embed::RustEmbed;
 #[folder = "../ea-client/dist/"]
 struct WebAssets;
 
+/// Find the position of \r\n\r\n in the buffer (end of HTTP headers)
+fn find_header_end(buf: &[u8]) -> Option<usize> {
+    buf.windows(4).position(|w| w == b"\r\n\r\n")
+}
+
 async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: std::sync::Arc<db::Database>) {
     use tokio::io::{AsyncReadExt, AsyncWriteExt};
 
-    let mut buf = vec![0u8; 4096];
-    let n = match stream.read(&mut buf).await {
-        Ok(n) if n > 0 => n,
-        _ => return,
-    };
+    // ── Read full HTTP request (headers + body) ──
+    // Step 1: Read initial chunk (enough for headers)
+    let mut raw = vec![0u8; 65536]; // 64KB initial buffer
+    let mut total_read = 0;
 
-    let request = String::from_utf8_lossy(&buf[..n]);
+    // Read until we find \r\n\r\n (end of headers) or buffer is full
+    loop {
+        let n = match stream.read(&mut raw[total_read..]).await {
+            Ok(n) if n > 0 => n,
+            _ => {
+                if total_read == 0 { return; }
+                break;
+            }
+        };
+        total_read += n;
+
+        // Check if we have the full headers
+        if let Some(_) = find_header_end(&raw[..total_read]) {
+            break;
+        }
+        if total_read >= raw.len() { break; }
+    }
+
+    // Step 2: Parse Content-Length and read remaining body if needed
+    let header_end_pos = find_header_end(&raw[..total_read]).unwrap_or(total_read);
+    let body_start = header_end_pos + 4; // skip \r\n\r\n
+
+    let headers_str = String::from_utf8_lossy(&raw[..header_end_pos]);
+    let content_length: usize = headers_str.lines()
+        .find(|line| line.to_lowercase().starts_with("content-length:"))
+        .and_then(|line| line.split(':').nth(1)?.trim().parse().ok())
+        .unwrap_or(0);
+
+    // If we haven't received the full body yet, keep reading
+    let expected_total = body_start + content_length;
+    if expected_total > raw.len() {
+        raw.resize(expected_total, 0);
+    }
+    while total_read < expected_total {
+        let n = match tokio::time::timeout(
+            std::time::Duration::from_secs(5),
+            stream.read(&mut raw[total_read..expected_total])
+        ).await {
+            Ok(Ok(n)) if n > 0 => n,
+            _ => break,
+        };
+        total_read += n;
+    }
+
+    let n = total_read;
+    let request = String::from_utf8_lossy(&raw[..n]).to_string();
 
     let mut lines = request.lines();
     let first_line = lines.next().unwrap_or("");
