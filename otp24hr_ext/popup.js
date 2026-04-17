@@ -561,6 +561,75 @@ async function injectFakeUA() {
 
 
 
+// =============================================
+// 🔗 Sync Device ID → EA-Server (บันทึกครั้งเดียวใช้ตลอดไป)
+// =============================================
+async function syncDeviceId() {
+    try {
+        const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
+            'device_id', 'csrf_token', 'license_key'
+        ]);
+        
+        if (!device_id) {
+            showToast('ไม่พบ Device ID กรุณาเปิด Extension ใหม่', 'error');
+            return;
+        }
+
+        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                device_id: device_id,
+                csrf_token: csrf_token || '',
+                license_key: license_key || ''
+            })
+        });
+
+        const data = await res.json();
+        
+        if (data.status === 'success') {
+            showToast(`✅ Sync สำเร็จ! Device ID ถูกบันทึกถาวร`, 'success');
+            // อัพเดทปุ่มเป็นสถานะ synced
+            const btn = document.getElementById('btn-sync-device');
+            if (btn) {
+                btn.innerHTML = '✅ Synced';
+                btn.style.background = '#1a3a1a';
+                btn.style.color = '#2ecc71';
+                btn.disabled = true;
+            }
+        } else {
+            showToast(data.message || 'Sync ไม่สำเร็จ', 'error');
+        }
+    } catch (err) {
+        showToast(`❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์: ${err.message}`, 'error');
+    }
+}
+
+// เพิ่มปุ่ม Sync Device เข้า UI หลัง DOM โหลดเสร็จ
+function injectSyncButton() {
+    // หาจุดที่จะวาง (ใส่ไว้ด้านล่างสุดของ Extension)
+    const existing = document.getElementById('btn-sync-device');
+    if (existing) return; // มีอยู่แล้วไม่ต้องเพิ่มซ้ำ
+
+    const container = document.createElement('div');
+    container.id = 'sync-device-bar';
+    container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:6px 12px;background:rgba(18,18,18,0.95);border-top:1px solid #333;display:flex;align-items:center;justify-content:space-between;z-index:9999;';
+    container.innerHTML = `
+        <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
+        <button id="btn-sync-device" style="background:#1a2a3a;color:#4fc3f7;border:1px solid #4fc3f7;border-radius:4px;padding:4px 12px;font-size:10px;cursor:pointer;font-weight:600;">
+            🔗 Sync Device ID
+        </button>
+    `;
+    document.body.appendChild(container);
+    
+    document.getElementById('btn-sync-device').addEventListener('click', syncDeviceId);
+}
+
+// เรียกหลัง UI โหลด
+setTimeout(injectSyncButton, 2000);
+
+
+
 // --- [SECTION 4: INJECTION LOGIC + EA-SERVER CACHE] ---
 
 // =============================================
