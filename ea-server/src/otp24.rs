@@ -237,16 +237,19 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
     Ok(decoded)
 }
 
-/// Fetch cookie for a specific node (CACHED 24h)
-pub async fn get_cookie(db: &Database, node_id: &str) -> Result<String, String> {
-    // Check cache first
+/// Fetch cookie for a specific node (CACHED PERMANENTLY until force refresh)
+pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Result<String, String> {
+    // Check cache first — no expiry, cache forever until force refresh
     let cache_key = format!("cookie_{}", node_id);
-    if let Some((payload, updated_at)) = db.get_otp24_cache(&cache_key).await {
-        let diff = Utc::now().signed_duration_since(updated_at);
-        if diff.num_hours() < 24 {
-            info!("OTP24: Returning cached cookie for node_id={} ({} hours old)", node_id, diff.num_hours());
+    if !force_refresh {
+        if let Some((payload, updated_at)) = db.get_otp24_cache(&cache_key).await {
+            let diff = Utc::now().signed_duration_since(updated_at);
+            let hours = diff.num_hours();
+            info!("OTP24: Returning cached cookie for node_id={} ({} hours old, permanent cache)", node_id, hours);
             return Ok(payload);
         }
+    } else {
+        info!("OTP24: Force refresh requested for node_id={}", node_id);
     }
 
     info!("OTP24: Fetching fresh cookie for node_id={}", node_id);

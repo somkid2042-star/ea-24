@@ -3551,7 +3551,12 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
             if kv.next()? == "node_id" { Some(kv.next()?.to_string()) } else { None }
         }).unwrap_or_default();
 
-        let payload = match crate::otp24::get_cookie(&db, &node_id).await {
+        let force_refresh: bool = qs.split('&').any(|p| {
+            let mut kv = p.split('=');
+            kv.next() == Some("force") && kv.next() == Some("true")
+        });
+
+        let payload = match crate::otp24::get_cookie(&db, &node_id, force_refresh).await {
             Ok(p) => p,
             Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
         };

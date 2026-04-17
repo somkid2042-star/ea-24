@@ -2021,3 +2021,195 @@
     color: #fff; border: none; padding: 8px 20px;
     border-radius: 10px; cursor: pointer;
 }
+
+/* =============================================
+   Device ID Panel + EA-Server Account Bar
+   ============================================= */
+
+.device-id-panel {
+    display: flex;
+    align-items: center;
+}
+
+/* ปุ่ม Sync Device ID */
+.btn-sync-device {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    padding: 10px 20px;
+    border-radius: 14px;
+    background: rgba(255, 94, 0, 0.08);
+    border: 1px solid rgba(255, 94, 0, 0.3);
+    color: var(--otp-orange);
+    font-size: 13px;
+    font-weight: 700;
+    cursor: pointer;
+    transition: all 0.3s cubic-bezier(0.175, 0.885, 0.32, 1.275);
+    letter-spacing: 0.5px;
+    font-family: 'Outfit', 'Kanit', sans-serif;
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-sync-device::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(120deg, transparent, rgba(255, 94, 0, 0.15), transparent);
+    animation: sync-shimmer 2.5s infinite;
+}
+
+@keyframes sync-shimmer {
+    0%   { left: -100%; }
+    100% { left: 100%; }
+}
+
+.btn-sync-device:hover {
+    background: rgba(255, 94, 0, 0.15);
+    border-color: var(--otp-orange);
+    transform: translateY(-2px);
+    box-shadow: 0 4px 15px rgba(255, 94, 0, 0.2);
+}
+
+.btn-sync-device:active {
+    transform: scale(0.97);
+}
+
+.btn-sync-device:disabled {
+    cursor: not-allowed;
+    animation: none;
+}
+
+.btn-sync-device:disabled::before {
+    animation: none;
+}
+
+.btn-sync-device i {
+    font-size: 16px;
+}
+
+/* Server Account Bar (แสดงหลัง Sync สำเร็จ) */
+.server-account-bar {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+    padding: 8px 18px;
+    border-radius: 14px;
+    background: rgba(46, 204, 113, 0.05);
+    border: 1px solid rgba(46, 204, 113, 0.2);
+    backdrop-filter: blur(10px);
+    transition: all 0.4s ease;
+    animation: sa-fadeIn 0.5s ease;
+}
+
+.server-account-bar.disconnected {
+    background: rgba(255, 77, 77, 0.05);
+    border-color: rgba(255, 77, 77, 0.2);
+}
+
+@keyframes sa-fadeIn {
+    from { opacity: 0; transform: translateY(-5px); }
+    to   { opacity: 1; transform: translateY(0); }
+}
+
+.sa-dot {
+    width: 8px;
+    height: 8px;
+    border-radius: 50%;
+    flex-shrink: 0;
+}
+
+.sa-dot.status-dot-online {
+    background: #2ecc71;
+    box-shadow: 0 0 6px #2ecc71, 0 0 12px rgba(46, 204, 113, 0.4);
+    animation: sa-pulse-green 2s infinite;
+}
+
+.sa-dot.status-dot-offline {
+    background: #ff4d4d;
+    box-shadow: 0 0 6px #ff4d4d;
+    animation: sa-pulse-red 1.5s infinite;
+}
+
+@keyframes sa-pulse-green {
+    0%   { box-shadow: 0 0 4px #2ecc71; opacity: 1; }
+    50%  { box-shadow: 0 0 10px #2ecc71, 0 0 18px rgba(46, 204, 113, 0.3); opacity: 0.8; }
+    100% { box-shadow: 0 0 4px #2ecc71; opacity: 1; }
+}
+
+@keyframes sa-pulse-red {
+    0%   { box-shadow: 0 0 4px #ff4d4d; opacity: 1; }
+    50%  { box-shadow: 0 0 8px #ff4d4d, 0 0 14px rgba(255, 77, 77, 0.3); opacity: 0.6; }
+    100% { box-shadow: 0 0 4px #ff4d4d; opacity: 1; }
+}
+
+.sa-items {
+    display: flex;
+    align-items: center;
+    gap: 12px;
+}
+
+.sa-item {
+    display: flex;
+    flex-direction: column;
+    line-height: 1.2;
+}
+
+.sa-label {
+    font-size: 8px;
+    font-weight: 700;
+    letter-spacing: 1.5px;
+    color: rgba(255, 255, 255, 0.4);
+    text-transform: uppercase;
+}
+
+.sa-value {
+    font-size: 12px;
+    font-weight: 700;
+    color: rgba(255, 255, 255, 0.85);
+    letter-spacing: 0.5px;
+}
+
+.sa-value.sa-plan {
+    color: var(--otp-orange);
+    font-size: 13px;
+    font-weight: 800;
+}
+
+.sa-divider {
+    width: 1px;
+    height: 22px;
+    background: rgba(255, 255, 255, 0.1);
+}
+
+/* Node Card Refresh Button */
+.btn-node-refresh {
+    display: flex;
+    align-items: center;
+    justify-content: center;
+    width: 28px;
+    height: 28px;
+    border: 1px solid rgba(255, 255, 255, 0.1);
+    border-radius: 8px;
+    background: rgba(255, 255, 255, 0.04);
+    color: rgba(255, 255, 255, 0.4);
+    font-size: 13px;
+    cursor: pointer;
+    transition: all 0.3s ease;
+    padding: 0;
+}
+
+.btn-node-refresh:hover {
+    background: rgba(255, 94, 0, 0.12);
+    border-color: rgba(255, 94, 0, 0.4);
+    color: var(--otp-orange);
+    transform: rotate(90deg);
+}
+
+.btn-node-refresh:active {
+    transform: rotate(180deg) scale(0.9);
+}
+

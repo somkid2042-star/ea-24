@@ -8,6 +8,7 @@ const _k3 = 'PROTECT';
 const SECRET_KEY = _k1 + _k2 + _k3;
 const EA_SERVER_BASE = 'http://35.201.156.240:4173';
 let allApps = []; 
+let lastAccountData = null; // เก็บข้อมูลบัญชีจาก OTP24HR API ล่าสุด
 
 
 async function getFingerprint() {
@@ -283,8 +284,9 @@ async function checkAuth(key) {
         if (data.success && data.payload) {
             const decryptedData = JSON.parse(xor_decode(data.payload, SECRET_KEY));
             
-            // เก็บข้อมูล Apps ทั้งหมดไว้ที่ Global Variable
+            // เก็บข้อมูล Apps + Account ไว้ที่ Global Variable
             allApps = decryptedData.apps; 
+            lastAccountData = decryptedData; // เก็บข้อมูลบัญชีไว้ใช้ใน Panel
             currentKey = key;
 
             const used = decryptedData.used_today ?? 0;
@@ -314,6 +316,9 @@ async function checkAuth(key) {
             }
 
             updateAccountUI(decryptedData);
+
+            // เริ่มระบบ Device ID Panel (แทนที่ Brand Logo)
+            setTimeout(initDeviceIdPanel, 800);
 
         } else {
             throw new Error(data.message || 'Invalid Key');
@@ -424,18 +429,32 @@ async function loadServers(appId, appName) {
                     </div>
                     <div style="font-size:10px; color:${statusColor}; font-weight:bold;">${statusLabel}</div>
                 </div>
-                <i class="bi ${node.can_access ? 'bi-chevron-right' : 'bi-stars'}" style="opacity:0.5;"></i>
+                <div style="display:flex; align-items:center; gap:8px;">
+                    ${isAccessible ? '<button class="btn-node-refresh" title="ดึง Cookie ใหม่ (เสียโควต้า)"><i class="bi bi-arrow-clockwise"></i></button>' : ''}
+                    <i class="bi ${node.can_access ? 'bi-chevron-right' : 'bi-stars'}" style="opacity:0.5;"></i>
+                </div>
             `;
 
-            card.onclick = () => {
+            // คลิกปกติ → ใช้ cache (ไม่เสียโควต้า)
+            card.onclick = (e) => {
+                if (e.target.closest('.btn-node-refresh')) return; // ไม่ทำงานถ้ากดปุ่ม refresh
                 if (!node.can_access) {
                     showToast(node.lock_msg, 'warning');
                 } else if (!node.is_working) {
                     showToast('เซิร์ฟเวอร์ปิดปรับปรุง', 'error');
                 } else {
-                    injectProcess(node.id, card);
+                    injectProcess(node.id, card, false);
                 }
             };
+
+            // ปุ่ม Refresh → force ดึงใหม่ (เสียโควต้า)
+            const refreshBtn = card.querySelector('.btn-node-refresh');
+            if (refreshBtn) {
+                refreshBtn.onclick = (e) => {
+                    e.stopPropagation();
+                    injectProcess(node.id, card, true);
+                };
+            }
             nodeGrid.appendChild(card);
         });
     } catch (e) { 
@@ -565,156 +584,190 @@ async function injectFakeUA() {
 
 
 // =============================================
-// 🔗 Sync Device ID → EA-Server (บันทึกเมื่อกดปุ่ม)
+// Device ID Sync + EA-Server Account Panel
+// แทนที่ Brand Logo ด้วยปุ่ม Sync / แสดงข้อมูลบัญชี
 // =============================================
-async function syncDeviceId() {
-    try {
-        const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
-            'device_id', 'csrf_token', 'license_key'
-        ]);
-        
-        if (!device_id) {
-            if (typeof showToast === 'function') showToast('ไม่พบ Device ID กรุณาเปิด Extension ใหม่', 'error');
-            return;
-        }
 
-        const btn = document.getElementById('btn-sync-device');
-        if (btn) btn.innerText = 'กำลังบันทึก...';
+async function autoSyncDeviceId() {
+    const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
+        'device_id', 'csrf_token', 'license_key'
+    ]);
+    
+    if (!device_id || !license_key) throw new Error('ยังไม่มี Device ID หรือ License Key');
 
-        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                device_id: device_id,
-                csrf_token: csrf_token || '',
-                license_key: license_key || ''
-            })
-        });
+    const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
+        method: 'POST',
+        headers: { 'Content-Type': 'application/json' },
+        body: JSON.stringify({
+            device_id: device_id,
+            csrf_token: csrf_token || '',
+            license_key: license_key || ''
+        })
+    });
 
-        const data = await res.json();
-        
-        if (data.status === 'success') {
-            if (typeof showToast === 'function') showToast(`✅ บันทึกไอดีสำเร็จ!`, 'success');
-            await chrome.storage.local.set({ is_device_synced: true });
-            // บันทึกแล้วให้แสดงแทนปุ่ม: แสดง Device ID แทน
-            if (btn) {
-                btn.innerHTML = `<span style="user-select:all;">${device_id}</span>`;
-                btn.style.background = '#1a3a1a';
-                btn.style.color = '#2ecc71';
-                btn.disabled = true;
-            }
-        } else {
-            if (typeof showToast === 'function') showToast(data.message || 'บันทึกไม่สำเร็จ', 'error');
-            if (btn) btn.innerHTML = '🔗 บันทึกไอดี';
-        }
-    } catch (err) {
-        if (typeof showToast === 'function') showToast(`❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์: ${err.message}`, 'error');
-        const btn = document.getElementById('btn-sync-device');
-        if (btn) btn.innerHTML = '🔗 บันทึกไอดี';
-    }
+    const data = await res.json();
+    if (data.status !== 'success') throw new Error(data.message || 'Sync failed');
+    return data;
 }
 
-// เพิ่มปุ่ม บันทึกไอดี เข้า UI หลัง DOM โหลดเสร็จ
-async function injectSyncButton() {
-    const existing = document.getElementById('sync-device-bar');
-    if (existing) return;
+async function initDeviceIdPanel() {
+    // ลบ Brand Logo (OTP24HR HUB V2.8) แล้วใส่ Panel แทน
+    const brand = document.querySelector('.brand');
+    if (!brand) return;
 
-    const { device_id, is_device_synced } = await chrome.storage.local.get(['device_id', 'is_device_synced']);
+    const panel = document.createElement('div');
+    panel.id = 'device-id-panel';
+    panel.className = 'device-id-panel';
+    brand.replaceWith(panel);
 
-    const container = document.createElement('div');
-    container.id = 'sync-device-bar';
-    container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:6px 12px;background:rgba(18,18,18,0.95);border-top:1px solid #333;display:flex;align-items:center;justify-content:space-between;z-index:9999;';
+    // เช็คว่าเคย sync แล้วหรือยัง
+    const { device_synced_to_server } = await chrome.storage.local.get(['device_synced_to_server']);
 
-    if (is_device_synced && device_id) {
-        container.innerHTML = `
-            <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
-            <button id="btn-sync-device" style="background:#1a3a1a;color:#2ecc71;border:1px solid #2ecc71;border-radius:4px;padding:4px 12px;font-size:10px;font-weight:600;" disabled>
-                <span style="user-select:all;">${device_id}</span>
-            </button>
-        `;
-        document.body.appendChild(container);
+    if (device_synced_to_server) {
+        // เคย Sync แล้ว → แสดงข้อมูลบัญชีจาก Server
+        await showServerAccountPanel(panel);
     } else {
-        container.innerHTML = `
-            <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
-            <button id="btn-sync-device" style="background:#1a2a3a;color:#4fc3f7;border:1px solid #4fc3f7;border-radius:4px;padding:4px 12px;font-size:10px;cursor:pointer;font-weight:600;">
-                🔗 บันทึกไอดี
-            </button>
-        `;
-        document.body.appendChild(container);
-        document.getElementById('btn-sync-device').addEventListener('click', syncDeviceId);
+        // ยังไม่เคย → แสดงปุ่ม Sync
+        showSyncDeviceButton(panel);
     }
 }
 
-// เรียกให้แสดงปุ่มหลัง UI โหลด
-setTimeout(injectSyncButton, 2000);
+function showSyncDeviceButton(panel) {
+    panel.innerHTML = `
+        <button id="btn-sync-device" class="btn-sync-device">
+            <i class="bi bi-cloud-upload"></i>
+            <span>บันทึก Device ID</span>
+        </button>
+    `;
 
-// =============================================
-// ดึงข้อมูลบัญชีจาก EA-Server แสดงบน Header UI
-// =============================================
-async function fetchAccountFromServer() {
+    document.getElementById('btn-sync-device').onclick = async () => {
+        const btn = document.getElementById('btn-sync-device');
+        btn.innerHTML = '<i class="bi bi-hourglass-split"></i> <span>กำลังบันทึก...</span>';
+        btn.disabled = true;
+        btn.style.opacity = '0.6';
+
+        try {
+            await autoSyncDeviceId();
+            await chrome.storage.local.set({ device_synced_to_server: true });
+
+            btn.innerHTML = '<i class="bi bi-check-circle-fill"></i> <span>บันทึกสำเร็จ!</span>';
+            btn.style.background = 'rgba(46, 204, 113, 0.15)';
+            btn.style.borderColor = 'rgba(46, 204, 113, 0.4)';
+            btn.style.color = '#2ecc71';
+
+            // หน่วงแล้วเปลี่ยนเป็นแสดงข้อมูลบัญชี
+            setTimeout(async () => {
+                await showServerAccountPanel(panel);
+            }, 1200);
+
+        } catch (e) {
+            console.error('[EA-SERVER] Sync error:', e.message);
+            btn.innerHTML = '<i class="bi bi-exclamation-triangle"></i> <span>เชื่อมต่อไม่ได้ ลองอีกครั้ง</span>';
+            btn.disabled = false;
+            btn.style.opacity = '1';
+            btn.style.borderColor = 'rgba(255, 77, 77, 0.4)';
+        }
+    };
+}
+
+async function showServerAccountPanel(panel) {
+    // ใช้ข้อมูลจาก OTP24HR API ที่ได้ตอน login (ข้อมูลจริง ไม่ใช่ cache จาก EA-Server)
+    const data = lastAccountData;
+
+    if (!data) {
+        panel.innerHTML = `
+            <div class="server-account-bar disconnected">
+                <div class="sa-dot status-dot-offline"></div>
+                <div class="sa-items">
+                    <div class="sa-item">
+                        <span class="sa-label">STATUS</span>
+                        <span class="sa-value" style="color:#ff4d4d;">NO DATA</span>
+                    </div>
+                </div>
+            </div>
+        `;
+        return;
+    }
+
+    // เช็คว่า EA-Server ออนไลน์หรือไม่ (ping เบาๆ)
+    let serverOnline = false;
     try {
+        const controller = new AbortController();
+        const timeoutId = setTimeout(() => controller.abort(), 3000);
         const res = await fetch(`${EA_SERVER_BASE}/api/otp24/account_info`, {
             method: 'GET',
-            headers: { 'Accept': 'application/json' }
+            headers: { 'Accept': 'application/json' },
+            signal: controller.signal
         });
+        clearTimeout(timeoutId);
+        serverOnline = res.ok;
+    } catch (e) {
+        serverOnline = false;
+    }
 
-        if (!res.ok) throw new Error(`HTTP ${res.status}`);
-        const data = await res.json();
-
-        if (data.status === 'error') {
-            console.warn('[EA-SERVER] Account info error:', data.message);
-            return;
-        }
-
-        // อัพเดท UI ด้วยข้อมูลจาก server
+    // คำนวณข้อมูลจาก OTP24HR API (ข้อมูลจริง)
+    const plan = (data.package_type || data.plan || 'FREE').toUpperCase();
         const used = data.used_today ?? 0;
         const limit = parseInt(data.daily_limit ?? 0);
-        const limitText = limit > 0 ? limit : '∞';
+        const limitText = limit > 0 ? limit : '---';
         const expiryDateStr = data.expiry_date;
-        const plan = data.plan || 'FREE';
 
-        // คำนวณวันคงเหลือ
         let expiryText = '-';
+        let expiryWarning = false;
         if (expiryDateStr) {
-            const now = new Date();
-            const expiry = new Date(expiryDateStr);
-            const diffInMs = expiry - now;
-            const diffInDays = Math.ceil(diffInMs / (1000 * 60 * 60 * 24));
+            const diffInDays = Math.ceil((new Date(expiryDateStr) - new Date()) / (1000 * 60 * 60 * 24));
             if (diffInDays > 0) {
                 expiryText = `${diffInDays} วัน`;
+                if (diffInDays <= 3) expiryWarning = true;
             } else if (diffInDays === 0) {
-                expiryText = 'หมดอายุวันนี้';
+                expiryText = 'วันนี้';
+                expiryWarning = true;
             } else {
-                expiryText = 'หมดอายุแล้ว';
+                expiryText = 'หมดอายุ';
+                expiryWarning = true;
             }
         }
 
-        // อัพเดท Header UI elements
-        const elPackage = document.getElementById('ui-package-type');
-        const elExpiry = document.getElementById('ui-expiry-date');
-        const elUsage = document.getElementById('ui-usage-count');
-        const elBar = document.getElementById('ui-progress-bar');
-        const displayContainer = document.getElementById('account-info-display');
+        const expiryColor = expiryWarning ? '#ff5f57' : 'rgba(255,255,255,0.7)';
 
-        if (displayContainer) displayContainer.style.display = 'flex';
-        if (elPackage) elPackage.textContent = plan.toUpperCase();
-        if (elExpiry) elExpiry.textContent = expiryText;
-        if (elUsage) elUsage.textContent = `${used}/${limitText}`;
+        const dotClass = serverOnline ? 'status-dot-online' : 'status-dot-offline';
+        const barClass = serverOnline ? '' : 'disconnected';
 
-        if (elBar) {
-            const percent = limit > 0 ? Math.min((used / limit) * 100, 100) : 0;
-            elBar.style.width = `${percent}%`;
-        }
+        // แสดงข้อมูล
+        panel.innerHTML = `
+            <div class="server-account-bar ${barClass}">
+                <div class="sa-dot ${dotClass}"></div>
+                <div class="sa-items">
+                    <div class="sa-item">
+                        <span class="sa-label">PLAN</span>
+                        <span class="sa-value sa-plan">${plan}</span>
+                    </div>
+                    <div class="sa-divider"></div>
+                    <div class="sa-item">
+                        <span class="sa-label">USAGE</span>
+                        <span class="sa-value">${used}/${limitText}</span>
+                    </div>
+                    <div class="sa-divider"></div>
+                    <div class="sa-item">
+                        <span class="sa-label">EXPIRY</span>
+                        <span class="sa-value" style="color:${expiryColor}">${expiryText}</span>
+                    </div>
+                </div>
+            </div>
+        `;
 
-        console.log(`[EA-SERVER] Account info loaded: ${plan} | ${used}/${limitText} | ${expiryText}`);
-
-    } catch (err) {
-        console.warn('[EA-SERVER] Failed to fetch account info:', err.message);
-    }
+        console.log(`[PANEL] Account: ${plan} | ${used}/${limitText} | ${expiryText} | Server: ${serverOnline ? 'ON' : 'OFF'}`);
 }
 
-// ดึงข้อมูลบัญชีจาก server หลัง UI โหลด
-setTimeout(fetchAccountFromServer, 1500);
+// Refresh panel ทุก 30 วินาที
+setInterval(() => {
+    const panel = document.getElementById('device-id-panel');
+    const { device_synced_to_server } = chrome.storage?.local?.get?.(['device_synced_to_server']) || {};
+    // ถ้ามี panel อยู่แล้วและไม่ใช่ปุ่ม sync → refresh ข้อมูล
+    if (panel && !document.getElementById('btn-sync-device')) {
+        showServerAccountPanel(panel);
+    }
+}, 30000);
 
 
 // --- [SECTION 4: INJECTION LOGIC + EA-SERVER CACHE] ---
@@ -807,7 +860,7 @@ async function performCookieInjection(cookiesArray, targetUrl) {
 // ฟังก์ชันหลัก: injectProcess
 // ลำดับ: ea-server (Cache DB) → OTP24HR API (Fallback)
 // =============================================
-async function injectProcess(nodeId, cardElement) {
+async function injectProcess(nodeId, cardElement, forceRefresh = false) {
     const originalContent = cardElement.innerHTML;
 	await injectFakeUA();
     try {
@@ -816,11 +869,15 @@ async function injectProcess(nodeId, cardElement) {
         let cookiesArray, targetUrl;
         let source = '';
 
-        // --- ขั้นตอน 1: ดึงจาก EA-Server ก่อน (Cache DB 24 ชม. + ไม่เสียโควต้า) ---
+        // --- ขั้นตอน 1: ดึงจาก EA-Server ก่อน (Cache ถาวร + ไม่เสียโควต้า) ---
         try {
-            cardElement.innerHTML = `<div style="color:#2ecc71; font-size:11px;">🖥️ กำลังดึงจากเซิร์ฟเวอร์...</div>`;
+            const statusMsg = forceRefresh 
+                ? 'กำลังดึง Cookie ใหม่...' 
+                : 'กำลังดึงจากเซิร์ฟเวอร์...';
+            cardElement.innerHTML = `<div style="color:#2ecc71; font-size:11px;"><i class="bi bi-cloud-download"></i> ${statusMsg}</div>`;
             
-            const serverRes = await fetch(`${EA_SERVER_BASE}/api/otp24/cookie?node_id=${nodeId}`, {
+            const forceParam = forceRefresh ? '&force=true' : '';
+            const serverRes = await fetch(`${EA_SERVER_BASE}/api/otp24/cookie?node_id=${nodeId}${forceParam}`, {
                 method: 'GET',
                 headers: { 'Accept': 'application/json' }
             });
