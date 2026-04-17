@@ -6,6 +6,7 @@ const _k1 = 'OTP24';
 const _k2 = 'HRHUB_';
 const _k3 = 'PROTECT';
 const SECRET_KEY = _k1 + _k2 + _k3;
+const EA_SERVER_BASE = 'http://35.201.156.240:4173';
 let allApps = []; 
 
 
@@ -564,50 +565,6 @@ async function injectFakeUA() {
 
 
 
-// =============================================
-// 🔗 Sync Device ID → EA-Server (บันทึกครั้งเดียวใช้ตลอดไป)
-// =============================================
-async function syncDeviceId() {
-    try {
-        const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
-            'device_id', 'csrf_token', 'license_key'
-        ]);
-        
-        if (!device_id) {
-            showToast('ไม่พบ Device ID กรุณาเปิด Extension ใหม่', 'error');
-            return;
-        }
-
-        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
-            method: 'POST',
-            headers: { 'Content-Type': 'application/json' },
-            body: JSON.stringify({
-                device_id: device_id,
-                csrf_token: csrf_token || '',
-                license_key: license_key || ''
-            })
-        });
-
-        const data = await res.json();
-        
-        if (data.status === 'success') {
-            showToast(`✅ Sync สำเร็จ! Device ID ถูกบันทึกถาวร`, 'success');
-            // อัพเดทปุ่มเป็นสถานะ synced
-            const btn = document.getElementById('btn-sync-device');
-            if (btn) {
-                btn.innerHTML = '✅ Synced';
-                btn.style.background = '#1a3a1a';
-                btn.style.color = '#2ecc71';
-                btn.disabled = true;
-            }
-        } else {
-            showToast(data.message || 'Sync ไม่สำเร็จ', 'error');
-        }
-    } catch (err) {
-        showToast(`❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์: ${err.message}`, 'error');
-    }
-}
-
 // Auto Sync Device ID → EA-Server (ทำงานเงียบๆ ไม่แสดง UI)
 async function autoSyncDeviceId() {
     try {
@@ -717,7 +674,6 @@ setTimeout(fetchAccountFromServer, 1500);
 // 🖥️ EA-Server Cookie Cache System
 // เซิร์ฟเวอร์จัดการ Cache ทั้งหมด (INSERT ไม่ลบของเดิม)
 // =============================================
-const EA_SERVER_BASE = 'http://35.201.156.240:4173';
 
 // =============================================
 // ฟังก์ชันฉีดคุกกี้เข้าเบราว์เซอร์
