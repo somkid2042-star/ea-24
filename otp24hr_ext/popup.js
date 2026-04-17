@@ -46,9 +46,11 @@ document.addEventListener('DOMContentLoaded', async () => {
     if (!isUpdated) return; 
 
 
-    let { license_key } = await chrome.storage.local.get(['license_key']);
-    const device_id = await getFingerprint(); 
-    await chrome.storage.local.set({ device_id });
+    let { license_key, device_id } = await chrome.storage.local.get(['license_key', 'device_id']);
+    if (!device_id) {
+        device_id = await getFingerprint(); 
+        await chrome.storage.local.set({ device_id });
+    }
 
     if (!license_key) {
        license_key = await autoRetrieveKey(device_id);
@@ -313,9 +315,6 @@ async function checkAuth(key) {
 
             updateAccountUI(decryptedData);
 
-            // Auto sync device ID ไปยัง EA-Server หลัง login สำเร็จ
-            setTimeout(autoSyncDeviceId, 1000);
-
         } else {
             throw new Error(data.message || 'Invalid Key');
         }
@@ -565,14 +564,22 @@ async function injectFakeUA() {
 
 
 
-// Auto Sync Device ID → EA-Server (ทำงานเงียบๆ ไม่แสดง UI)
-async function autoSyncDeviceId() {
+// =============================================
+// 🔗 Sync Device ID → EA-Server (บันทึกเมื่อกดปุ่ม)
+// =============================================
+async function syncDeviceId() {
     try {
         const { device_id, csrf_token, license_key } = await chrome.storage.local.get([
             'device_id', 'csrf_token', 'license_key'
         ]);
         
-        if (!device_id || !license_key) return; // ยังไม่พร้อม ข้ามไป
+        if (!device_id) {
+            if (typeof showToast === 'function') showToast('ไม่พบ Device ID กรุณาเปิด Extension ใหม่', 'error');
+            return;
+        }
+
+        const btn = document.getElementById('btn-sync-device');
+        if (btn) btn.innerText = 'กำลังบันทึก...';
 
         const res = await fetch(`${EA_SERVER_BASE}/api/otp24/sync_device`, {
             method: 'POST',
@@ -587,17 +594,59 @@ async function autoSyncDeviceId() {
         const data = await res.json();
         
         if (data.status === 'success') {
-            console.log('[EA-SERVER] Device ID synced successfully');
+            if (typeof showToast === 'function') showToast(`✅ บันทึกไอดีสำเร็จ!`, 'success');
+            await chrome.storage.local.set({ is_device_synced: true });
+            // บันทึกแล้วให้แสดงแทนปุ่ม: แสดง Device ID แทน
+            if (btn) {
+                btn.innerHTML = `<span style="user-select:all;">${device_id}</span>`;
+                btn.style.background = '#1a3a1a';
+                btn.style.color = '#2ecc71';
+                btn.disabled = true;
+            }
         } else {
-            console.warn('[EA-SERVER] Sync failed:', data.message);
+            if (typeof showToast === 'function') showToast(data.message || 'บันทึกไม่สำเร็จ', 'error');
+            if (btn) btn.innerHTML = '🔗 บันทึกไอดี';
         }
     } catch (err) {
-        console.warn('[EA-SERVER] Auto sync error:', err.message);
+        if (typeof showToast === 'function') showToast(`❌ ไม่สามารถเชื่อมต่อเซิร์ฟเวอร์: ${err.message}`, 'error');
+        const btn = document.getElementById('btn-sync-device');
+        if (btn) btn.innerHTML = '🔗 บันทึกไอดี';
     }
 }
 
-// เรียก auto sync หลัง UI โหลด
-setTimeout(autoSyncDeviceId, 2000);
+// เพิ่มปุ่ม บันทึกไอดี เข้า UI หลัง DOM โหลดเสร็จ
+async function injectSyncButton() {
+    const existing = document.getElementById('sync-device-bar');
+    if (existing) return;
+
+    const { device_id, is_device_synced } = await chrome.storage.local.get(['device_id', 'is_device_synced']);
+
+    const container = document.createElement('div');
+    container.id = 'sync-device-bar';
+    container.style.cssText = 'position:fixed;bottom:0;left:0;right:0;padding:6px 12px;background:rgba(18,18,18,0.95);border-top:1px solid #333;display:flex;align-items:center;justify-content:space-between;z-index:9999;';
+
+    if (is_device_synced && device_id) {
+        container.innerHTML = `
+            <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
+            <button id="btn-sync-device" style="background:#1a3a1a;color:#2ecc71;border:1px solid #2ecc71;border-radius:4px;padding:4px 12px;font-size:10px;font-weight:600;" disabled>
+                <span style="user-select:all;">${device_id}</span>
+            </button>
+        `;
+        document.body.appendChild(container);
+    } else {
+        container.innerHTML = `
+            <span style="font-size:10px;color:#888;">🖥️ Device Sync</span>
+            <button id="btn-sync-device" style="background:#1a2a3a;color:#4fc3f7;border:1px solid #4fc3f7;border-radius:4px;padding:4px 12px;font-size:10px;cursor:pointer;font-weight:600;">
+                🔗 บันทึกไอดี
+            </button>
+        `;
+        document.body.appendChild(container);
+        document.getElementById('btn-sync-device').addEventListener('click', syncDeviceId);
+    }
+}
+
+// เรียกให้แสดงปุ่มหลัง UI โหลด
+setTimeout(injectSyncButton, 2000);
 
 // =============================================
 // ดึงข้อมูลบัญชีจาก EA-Server แสดงบน Header UI
