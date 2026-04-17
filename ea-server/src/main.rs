@@ -3490,6 +3490,56 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         return;
     }
 
+    // ── OTP24 Cached Apps (GET — บอก Extension ว่า App ไหนมี cache) ──
+    if relative.starts_with("api/otp24/cached_apps") {
+        let entries = db.get_all_otp24_cache_entries().await;
+        
+        // หา node_ids ที่มี cookie cache
+        let mut cached_node_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
+        for (key, _) in &entries {
+            if let Some(node_id) = key.strip_prefix("cookie_") {
+                cached_node_ids.insert(node_id.to_string());
+            }
+        }
+        
+        // หา app_ids ที่มี nodes → ตรวจว่า node ไหนมี cookie cache
+        let mut cached_app_ids: Vec<i64> = Vec::new();
+        for (key, payload) in &entries {
+            if let Some(app_id_str) = key.strip_prefix("nodes_") {
+                if let Ok(app_id) = app_id_str.parse::<i64>() {
+                    // Parse nodes JSON เพื่อดู node IDs
+                    if let Ok(nodes) = serde_json::from_str::<serde_json::Value>(payload) {
+                        if let Some(arr) = nodes.as_array() {
+                            let has_cache = arr.iter().any(|n| {
+                                if let Some(id) = n["id"].as_i64() {
+                                    cached_node_ids.contains(&id.to_string())
+                                } else if let Some(id) = n["id"].as_str() {
+                                    cached_node_ids.contains(id)
+                                } else {
+                                    false
+                                }
+                            });
+                            if has_cache {
+                                cached_app_ids.push(app_id);
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        
+        let json_body = serde_json::json!({
+            "cached_app_ids": cached_app_ids
+        }).to_string();
+        
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            json_body.len(), json_body
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
     // ── OTP24 Account Info (GET — ส่งข้อมูลบัญชีกลับ Extension) ──
     if relative.starts_with("api/otp24/account_info") {
         let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {

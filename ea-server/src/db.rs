@@ -455,6 +455,15 @@ impl Database {
         .await;
     }
 
+    /// Get all cache keys and payloads (for cross-referencing cached apps)
+    pub async fn get_all_otp24_cache_entries(&self) -> Vec<(String, String)> {
+        let q = "SELECT DISTINCT ON (cache_key) cache_key, payload FROM otp24_cache ORDER BY cache_key, id DESC";
+        sqlx::query_as::<_, (String, String)>(q)
+            .fetch_all(&self.pool)
+            .await
+            .unwrap_or_default()
+    }
+
     async fn insert_defaults(pool: &PgPool) -> Result<(), String> {
         let defaults = vec![
             ("ws_port", "8080"),

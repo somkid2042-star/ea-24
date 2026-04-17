@@ -377,6 +377,31 @@ function renderAppGrid(apps) {
         };
         grid.appendChild(item);
     });
+
+    // เช็ค App ไหนมี cache บน EA-Server แล้วใส่ขอบสีเขียว
+    markCachedApps(apps);
+}
+
+async function markCachedApps(apps) {
+    try {
+        const res = await fetch(`${EA_SERVER_BASE}/api/otp24/cached_apps`, {
+            method: 'GET',
+            headers: { 'Accept': 'application/json' }
+        });
+        if (!res.ok) return;
+        const data = await res.json();
+        const cachedIds = new Set(data.cached_app_ids || []);
+
+        // หาทุก tool-item ใน grid แล้วใส่ class has-cache
+        const items = document.querySelectorAll('.tool-item');
+        items.forEach((item, index) => {
+            if (apps[index] && cachedIds.has(apps[index].id)) {
+                item.classList.add('has-cache');
+            }
+        });
+    } catch (e) {
+        // ไม่มี server → ไม่ต้องแสดง
+    }
 }
 
 async function loadServers(appId, appName) {
