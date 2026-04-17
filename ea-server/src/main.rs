@@ -3556,6 +3556,15 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
             let csrf_token = json["csrf_token"].as_str().unwrap_or("");
             let license_key = json["license_key"].as_str().unwrap_or("");
             
+            // 🔒 บันทึก device_id ลง config ครั้งเดียว ใช้ค่านี้ตลอดไป
+            if !device_id.is_empty() {
+                let existing = db.get_config("otp24_device_id").await;
+                if existing.is_none() || existing.as_deref() == Some("") {
+                    db.set_config("otp24_device_id", device_id).await;
+                    info!("OTP24: 🔒 Locked device_id permanently: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]);
+                }
+            }
+            
             if !csrf_token.is_empty() && !license_key.is_empty() {
                 let session_payload = serde_json::json!({
                     "csrf_token": csrf_token,
@@ -3563,7 +3572,7 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
                     "device_id": device_id
                 });
                 db.save_otp24_cookie(&session_payload.to_string()).await;
-                info!("OTP24: 💾 Synced Session (csrf, license, device_id) from Extension");
+                info!("OTP24: 💾 Synced Session (csrf, license) from Extension");
             }
 
             // บันทึกข้อมูลคุกกี้ทั้งชุด ลง DB ด้วย INSERT
