@@ -3651,7 +3651,12 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
             if kv.next()? == "app_id" { kv.next()?.parse().ok() } else { None }
         }).unwrap_or(0);
 
-        let payload = match crate::otp24::get_nodes(&db, app_id).await {
+        let force_refresh: bool = qs.split('&').any(|p| {
+            let mut kv = p.split('=');
+            kv.next() == Some("force") && kv.next() == Some("true")
+        });
+
+        let payload = match crate::otp24::get_nodes(&db, app_id, force_refresh).await {
             Ok(p) => p,
             Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
         };

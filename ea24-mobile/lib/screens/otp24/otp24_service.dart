@@ -5,7 +5,7 @@ import 'package:shared_preferences/shared_preferences.dart';
 
 /// OTP24 Service — handles all communication with EA-Server for OTP24 features
 class OTP24Service {
-  static const String _defaultServerBase = 'http://localhost:4173';
+  static const String _defaultServerBase = 'http://35.201.156.240:4173';
   static const String _secretKey = 'OTP24HRHUB_PROTECT';
   static const String _serverIpKey = 'otp24_server_ip';
 

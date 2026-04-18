@@ -30,6 +30,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
   String? _error;
   Map<String, dynamic>? _selectedNode;
   Map<String, dynamic>? _cookieData;
+  bool _usedCached = false;
 
   late AnimationController _pulseController;
 
@@ -55,7 +56,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
     super.dispose();
   }
 
-  Future<void> _autoFetch() async {
+  Future<void> _autoFetch({bool forceRefresh = false}) async {
     setState(() {
       _isLoading = true;
       _error = null;
@@ -63,6 +64,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
     });
 
     try {
+      // ── Step 1: Fetch nodes (always needed to find node_id, server caches this)
       final nodesResult = await OTP24Service.fetchNodes(widget.appId);
       List<Map<String, dynamic>> nodes = [];
 
@@ -81,13 +83,14 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
 
       if (okNodes.isEmpty) throw Exception('No available servers found');
 
+      final nodeId = (okNodes.first['id'] as num?)?.toInt() ?? 0;
       setState(() {
         _selectedNode = okNodes.first;
-        _status = 'Fetching cookie...';
+        _status = forceRefresh ? 'Fetching fresh cookie (1 quota)...' : 'Fetching cookie...';
       });
 
-      final nodeId = (okNodes.first['id'] as num?)?.toInt() ?? 0;
-      final cookieResult = await OTP24Service.fetchCookie(nodeId);
+      // ── Step 2: Fetch cookie using node_id (server will use cache if not force)
+      final cookieResult = await OTP24Service.fetchCookie(nodeId, force: forceRefresh);
 
       if (cookieResult is Map<String, dynamic>) {
         if (cookieResult['status'] == 'error') {
@@ -96,6 +99,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
         setState(() {
           _cookieData = cookieResult;
           _isLoading = false;
+          _usedCached = !forceRefresh;
         });
       }
     } catch (e) {
@@ -155,7 +159,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
             Padding(
               padding: const EdgeInsets.only(right: 12),
               child: GestureDetector(
-                onTap: _autoFetch,
+                onTap: () => _autoFetch(forceRefresh: true),
                 child: Container(
                   width: 38,
                   height: 38,
@@ -361,6 +365,22 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
                   style: GoogleFonts.nunito(
                     color: _textColor.withOpacity(0.4),
                     fontSize: 13,
+                  ),
+                ),
+                const SizedBox(height: 8),
+                Container(
+                  padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 4),
+                  decoration: BoxDecoration(
+                    color: _usedCached ? _successColor.withOpacity(0.1) : Colors.orange.withOpacity(0.1),
+                    borderRadius: BorderRadius.circular(8),
+                  ),
+                  child: Text(
+                    _usedCached ? '✓ From Cache (no quota used)' : '⚡ Fresh fetch (1 quota used)',
+                    style: GoogleFonts.nunito(
+                      color: _usedCached ? _successColor : Colors.orange[700],
+                      fontSize: 11,
+                      fontWeight: FontWeight.w700,
+                    ),
                   ),
                 ),
               ],

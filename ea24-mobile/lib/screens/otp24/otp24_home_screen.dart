@@ -571,7 +571,7 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
             color: _cardColor,
             borderRadius: BorderRadius.circular(14),
             border: hasCachedCookie
-                ? Border.all(color: _successColor.withOpacity(0.3))
+                ? Border.all(color: _successColor, width: 2)
                 : null,
             boxShadow: [
               BoxShadow(
