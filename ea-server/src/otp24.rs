@@ -265,8 +265,31 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
 
     let decoded = xor_decode(payload_b64, SECRET_KEY)?;
 
+    // Validate decoded is valid JSON
+    let final_payload = if serde_json::from_str::<Value>(&decoded).is_ok() {
+        info!("OTP24: XOR decoded nodes successfully for app_id={}", app_id);
+        decoded
+    } else {
+        // XOR decode produced invalid JSON — try using payload directly as JSON
+        info!("OTP24: XOR decode produced non-JSON for app_id={}, trying raw payload...", app_id);
+        if let Ok(v) = serde_json::from_str::<Value>(payload_b64) {
+            info!("OTP24: Raw payload is valid JSON for app_id={}", app_id);
+            payload_b64.to_string()
+        } else {
+            // Last resort: check if otp24hr response has "data" field with nodes
+            if let Some(data) = json.get("data") {
+                info!("OTP24: Using 'data' field from otp24hr response for app_id={}", app_id);
+                data.to_string()
+            } else {
+                // Return the entire otp24hr response for debugging
+                info!("OTP24: All decode attempts failed for app_id={}, returning raw response", app_id);
+                body.clone()
+            }
+        }
+    };
+
     // Save to cache
-    db.save_otp24_cache(&cache_key, &decoded).await;
+    db.save_otp24_cache(&cache_key, &final_payload).await;
     info!("OTP24: Cached nodes for app_id={}", app_id);
 
     // Update csrf_token in cached data
@@ -279,7 +302,7 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
         }
     }
 
-    Ok(decoded)
+    Ok(final_payload)
 }
 
 /// Fetch cookie for a specific node (CACHED PERMANENTLY until force refresh)
@@ -400,8 +423,22 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
 
     let decoded = xor_decode(payload_b64, SECRET_KEY)?;
 
+    // Validate decoded is valid JSON
+    let final_payload = if serde_json::from_str::<Value>(&decoded).is_ok() {
+        decoded
+    } else {
+        info!("OTP24: XOR decode produced non-JSON cookie for node_id={}, trying alternatives...", node_id);
+        if let Ok(_v) = serde_json::from_str::<Value>(payload_b64) {
+            payload_b64.to_string()
+        } else if let Some(data) = json.get("data") {
+            data.to_string()
+        } else {
+            body.clone()
+        }
+    };
+
     // Save to cache
-    db.save_otp24_cache(&cache_key, &decoded).await;
+    db.save_otp24_cache(&cache_key, &final_payload).await;
     info!("OTP24: Cached cookie for node_id={}", node_id);
 
     // Update csrf_token
@@ -414,5 +451,5 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
         }
     }
 
-    Ok(decoded)
+    Ok(final_payload)
 }

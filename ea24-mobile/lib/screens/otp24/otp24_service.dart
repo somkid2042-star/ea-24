@@ -159,15 +159,41 @@ class OTP24Service {
     }
   }
 
+  // ─── XOR Decode Helper (matches server SECRET_KEY) ──
+  static String _xorDecode(String encoded) {
+    const key = 'OTP24HRHUB_PROTECT';
+    final bytes = base64.decode(encoded);
+    final keyBytes = utf8.encode(key);
+    final decoded = List<int>.generate(
+      bytes.length,
+      (i) => bytes[i] ^ keyBytes[i % keyBytes.length],
+    );
+    return utf8.decode(decoded);
+  }
+
+  static dynamic _safeJsonDecode(String body) {
+    try {
+      return jsonDecode(body);
+    } catch (_) {
+      // Body might be XOR-encoded from old server cache
+      try {
+        final decoded = _xorDecode(body.trim());
+        return jsonDecode(decoded);
+      } catch (e2) {
+        throw FormatException('Cannot parse response: ${body.substring(0, body.length.clamp(0, 50))}');
+      }
+    }
+  }
+
   // ─── Fetch Nodes for an App ────────────────────────
   static Future<dynamic> fetchNodes(int appId) async {
     final serverBase = await getServerBase();
     try {
       final res = await http.get(
-        Uri.parse('$serverBase/api/otp24/nodes?app_id=$appId'),
+        Uri.parse('$serverBase/api/otp24/nodes?app_id=$appId&force=true'),
         headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 10));
-      return jsonDecode(res.body);
+      ).timeout(const Duration(seconds: 15));
+      return _safeJsonDecode(res.body);
     } catch (e) {
       debugPrint('OTP24 fetchNodes error: $e');
       return {'status': 'error', 'message': e.toString()};
@@ -183,7 +209,7 @@ class OTP24Service {
         Uri.parse(url),
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 15));
-      return jsonDecode(res.body);
+      return _safeJsonDecode(res.body);
     } catch (e) {
       debugPrint('OTP24 fetchCookie error: $e');
       return {'status': 'error', 'message': e.toString()};
