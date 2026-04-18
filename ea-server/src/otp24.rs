@@ -219,17 +219,37 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
     let body = res.text().await.map_err(|e| e.to_string())?;
     let json: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
 
-    // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง
+    // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง (inline, no recursion)
     let payload_b64 = json["payload"].as_str().unwrap_or("");
     if payload_b64.is_empty() {
         let msg = json["message"].as_str().unwrap_or("").to_lowercase();
         if msg.contains("authentication") || msg.contains("csrf") || msg.contains("invalid") {
             info!("OTP24: CSRF expired for get_nodes, re-login and retry...");
-            // Clear cache to force fresh login
             db.save_otp24_cookie("").await;
             let _ = fetch_and_cache_otp24(db).await?;
-            // Recursive retry (once)
-            return get_nodes(db, app_id).await;
+
+            // Inline retry — get fresh session and redo request
+            let cached_retry = db.get_otp24_cookie().await;
+            let (csrf2, key2) = if let Some((p, _)) = cached_retry {
+                let pr: Value = serde_json::from_str(&p).unwrap_or_default();
+                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string())
+            } else { return Err("Re-login failed".to_string()); };
+
+            let url2 = format!("{}?action=get_nodes&app_id={}&key={}", API_BASE, app_id, key2);
+            let mut h2 = reqwest::header::HeaderMap::new();
+            h2.insert("User-Agent", "Mozilla/5.0".parse().unwrap());
+            h2.insert("x-csrf-token", csrf2.parse().unwrap());
+            h2.insert("x-device-id", device_id.parse().unwrap());
+            h2.insert("x-license-key", key2.parse().unwrap());
+
+            let res2 = client.get(&url2).headers(h2).send().await.map_err(|e| e.to_string())?;
+            let body2 = res2.text().await.map_err(|e| e.to_string())?;
+            let json2: Value = serde_json::from_str(&body2).map_err(|e| e.to_string())?;
+            let p2 = json2["payload"].as_str().unwrap_or("");
+            if p2.is_empty() { return Err(format!("get_nodes retry failed: {}", body2)); }
+            let decoded2 = xor_decode(p2, SECRET_KEY)?;
+            db.save_otp24_cache(&cache_key, &decoded2).await;
+            return Ok(decoded2);
         }
         return Err(format!("get_nodes failed: {}", body));
     }
@@ -326,12 +346,35 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
 
     if json["success"].as_bool() != Some(true) {
         let msg = json["message"].as_str().unwrap_or("Unknown error");
-        // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง
+        // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง (inline, no recursion)
         if msg.to_lowercase().contains("authentication") || msg.to_lowercase().contains("csrf") || msg.to_lowercase().contains("invalid") {
             info!("OTP24: CSRF expired for get_cookie node_id={}, re-login and retry...", node_id);
             db.save_otp24_cookie("").await;
             let _ = fetch_and_cache_otp24(db).await?;
-            return get_cookie(db, node_id, force_refresh).await;
+
+            // Inline retry
+            let cached_retry = db.get_otp24_cookie().await;
+            let (csrf2, key2) = if let Some((p, _)) = cached_retry {
+                let pr: Value = serde_json::from_str(&p).unwrap_or_default();
+                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string())
+            } else { return Err("Re-login failed".to_string()); };
+
+            let url2 = format!("{}?action=get_cookie&node_id={}&key={}", API_BASE, node_id, key2);
+            let mut h2 = reqwest::header::HeaderMap::new();
+            h2.insert("User-Agent", "Mozilla/5.0".parse().unwrap());
+            h2.insert("x-csrf-token", csrf2.parse().unwrap());
+            h2.insert("x-device-id", device_id.parse().unwrap());
+            h2.insert("x-license-key", key2.parse().unwrap());
+
+            let res2 = client.get(&url2).headers(h2).send().await.map_err(|e| e.to_string())?;
+            let body2 = res2.text().await.map_err(|e| e.to_string())?;
+            let json2: Value = serde_json::from_str(&body2).map_err(|e| e.to_string())?;
+            if json2["success"].as_bool() != Some(true) { return Err(format!("get_cookie retry failed: {}", body2)); }
+            let p2 = json2["payload"].as_str().unwrap_or("");
+            if p2.is_empty() { return Err("No cookie payload on retry".to_string()); }
+            let decoded2 = xor_decode(p2, SECRET_KEY)?;
+            db.save_otp24_cache(&cache_key, &decoded2).await;
+            return Ok(decoded2);
         }
         return Err(format!("get_cookie failed: {}", msg));
     }
