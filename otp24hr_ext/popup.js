@@ -723,6 +723,11 @@ async function showServerAccountPanel(panel) {
     // ใช้ข้อมูลจาก OTP24HR API ที่ได้ตอน login (ข้อมูลจริง ไม่ใช่ cache จาก EA-Server)
     const data = lastAccountData;
 
+    // ดึง device_id และ license_key จาก storage
+    const storageData = await chrome.storage.local.get(['device_id', 'license_key']);
+    const deviceId = storageData.device_id || '-';
+    const licenseKey = storageData.license_key || '-';
+
     if (!data) {
         panel.innerHTML = `
             <div class="server-account-bar disconnected">
@@ -782,11 +787,25 @@ async function showServerAccountPanel(panel) {
     const dotClass = serverOnline ? 'status-dot-online' : 'status-dot-offline';
     const barClass = serverOnline ? '' : 'disconnected';
 
-    // แสดงข้อมูล
-    panel.innerHTML = `
+        // ตัดตัวอักษรให้สั้นลงเพื่อแสดงใน Panel
+        const shortId = deviceId.length > 8 ? '...' + deviceId.slice(-8) : deviceId;
+        const shortKey = licenseKey.length > 6 ? '...' + licenseKey.slice(-6) : licenseKey;
+
+        // แสดงข้อมูล
+        panel.innerHTML = `
             <div class="server-account-bar ${barClass}">
                 <div class="sa-dot ${dotClass}"></div>
                 <div class="sa-items">
+                    <div class="sa-item sa-item-copyable" data-copy="${deviceId}" title="คลิกเพื่อคัดลอก Device ID">
+                        <span class="sa-label">ID</span>
+                        <span class="sa-value sa-id-value">${shortId}</span>
+                    </div>
+                    <div class="sa-divider"></div>
+                    <div class="sa-item sa-item-copyable" data-copy="${licenseKey}" title="คลิกเพื่อคัดลอก License Key">
+                        <span class="sa-label">KEY</span>
+                        <span class="sa-value sa-key-value">${shortKey}</span>
+                    </div>
+                    <div class="sa-divider"></div>
                     <div class="sa-item">
                         <span class="sa-label">PLAN</span>
                         <span class="sa-value sa-plan">${plan}</span>
@@ -805,7 +824,27 @@ async function showServerAccountPanel(panel) {
             </div>
         `;
 
-    console.log(`[PANEL] Account: ${plan} | ${used}/${limitText} | ${expiryText} | Server: ${serverOnline ? 'ON' : 'OFF'}`);
+        // เพิ่ม Event คัดลอกข้อมูลเมื่อคลิก
+        panel.querySelectorAll('.sa-item-copyable').forEach(item => {
+            item.addEventListener('click', async () => {
+                const textToCopy = item.getAttribute('data-copy');
+                try {
+                    await navigator.clipboard.writeText(textToCopy);
+                    const valueEl = item.querySelector('.sa-value');
+                    const originalText = valueEl.textContent;
+                    valueEl.textContent = 'Copied!';
+                    valueEl.style.color = '#2ecc71';
+                    setTimeout(() => {
+                        valueEl.textContent = originalText;
+                        valueEl.style.color = '';
+                    }, 1200);
+                } catch (e) {
+                    console.error('Copy failed:', e);
+                }
+            });
+        });
+
+        console.log(`[PANEL] Account: ${plan} | ${used}/${limitText} | ${expiryText} | ID: ${shortId} | Key: ${shortKey} | Server: ${serverOnline ? 'ON' : 'OFF'}`);
 }
 
 // Refresh panel ทุก 30 วินาที

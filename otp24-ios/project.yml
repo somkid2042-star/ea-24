@@ -21,13 +21,13 @@ targets:
     settings:
       base:
         PRODUCT_BUNDLE_IDENTIFIER: com.otp24hr.app
+        INFOPLIST_FILE: OTP24/Info.plist
+        GENERATE_INFOPLIST_FILE: false
         INFOPLIST_KEY_UIApplicationSceneManifest_Generation: true
         INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents: true
         INFOPLIST_KEY_UILaunchScreen_Generation: true
         INFOPLIST_KEY_UISupportedInterfaceOrientations: "UIInterfaceOrientationPortrait"
-        GENERATE_INFOPLIST_FILE: true
         CURRENT_PROJECT_VERSION: 1
         MARKETING_VERSION: "1.0.0"
         SWIFT_EMIT_LOC_STRINGS: true
         ENABLE_PREVIEWS: true
-        INFOPLIST_FILE: OTP24/Info.plist

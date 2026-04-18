@@ -2185,6 +2185,31 @@
     background: rgba(255, 255, 255, 0.1);
 }
 
+/* Copyable items (ID, KEY) */
+.sa-item-copyable {
+    cursor: pointer;
+    padding: 2px 4px;
+    border-radius: 6px;
+    transition: all 0.2s ease;
+}
+
+.sa-item-copyable:hover {
+    background: rgba(255, 255, 255, 0.06);
+}
+
+.sa-item-copyable:active {
+    transform: scale(0.96);
+}
+
+.sa-id-value,
+.sa-key-value {
+    font-family: 'Courier New', monospace;
+    font-size: 10px;
+    color: rgba(255, 255, 255, 0.6);
+    letter-spacing: 0.3px;
+    transition: color 0.3s ease;
+}
+
 /* Node Card Refresh Button */
 .btn-node-refresh {
     display: flex;
