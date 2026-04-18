@@ -3757,26 +3757,72 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
             if device_id.is_empty() {
                 ("400 Bad Request", serde_json::json!({"status": "error", "message": "device_id is empty"}).to_string())
             } else {
-                // 🔒 บันทึก device_id ลง config (เขียนทับได้เฉพาะจากปุ่มนี้)
-                db.set_config("otp24_device_id", device_id).await;
-                info!("OTP24: 🔒 Device ID synced from Extension button: {}", device_id);
+                // ตรวจสอบว่ามีการบันทึก device_id ไว้หรือยัง (บันทึกได้แค่ครั้งเดียว)
+                let existing_device_id = db.get_config("otp24_device_id").await;
                 
-                // บันทึก session data ด้วย (ถ้ามี)
-                if !csrf_token.is_empty() && !license_key.is_empty() {
-                    let session_payload = serde_json::json!({
-                        "csrf_token": csrf_token,
-                        "license_key": license_key,
+                if let Some(existing) = existing_device_id {
+                    // ถ้ามีอยู่แล้ว ห้ามอัพเดทใหม่ (Lock ถาวร)
+                    info!("OTP24: 🚫 Rejecting device ID sync. Already locked to: {}", existing);
+                    ("403 Forbidden", serde_json::json!({
+                        "status": "error", 
+                        "message": "Device ID ถูกล็อคไว้แล้วในระบบ ไม่สามารถเปลี่ยนแปลงได้"
+                    }).to_string())
+                } else {
+                    // 🔒 ถ้ายังไม่มี ให้บันทึก device_id ลง config เป็นครั้งแรก
+                    db.set_config("otp24_device_id", device_id).await;
+                    info!("OTP24: 🔒 Device ID synced and LOCKED from Extension/App: {}", device_id);
+                    
+                    // บันทึก session data ด้วย (ถ้ามี)
+                    if !csrf_token.is_empty() && !license_key.is_empty() {
+                        let session_payload = serde_json::json!({
+                            "csrf_token": csrf_token,
+                            "license_key": license_key,
+                            "device_id": device_id
+                        });
+                        db.save_otp24_cookie(&session_payload.to_string()).await;
+                    }
+                    
+                    ("200 OK", serde_json::json!({
+                        "status": "success", 
+                        "message": format!("Device ID บันทึกถาวรแล้ว: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]),
                         "device_id": device_id
-                    });
-                    db.save_otp24_cookie(&session_payload.to_string()).await;
+                    }).to_string())
                 }
-                
-                ("200 OK", serde_json::json!({
-                    "status": "success", 
-                    "message": format!("Device ID บันทึกถาวรแล้ว: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]),
-                    "device_id": device_id
-                }).to_string())
             }
+        } else {
+            ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
+        };
+        
+        let response = format!(
+            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
+            status_code, json_body.len(), json_body
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    // ── OTP24 Admin Settings (Force Update DB directly) ──────────
+    if relative.starts_with("api/otp24/admin_settings") && method == "POST" {
+        let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
+        let body_str = &request[body_start..];
+        
+        let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
+            let device_id = json["device_id"].as_str().unwrap_or("");
+            let license_key = json["license_key"].as_str().unwrap_or("");
+            
+            if !device_id.is_empty() {
+                db.set_config("otp24_device_id", device_id).await;
+            }
+            if !license_key.is_empty() {
+                db.set_config("otp24_license_key", license_key).await;
+            }
+            
+            info!("OTP24: 🔧 Admin forcibly updated settings - Device: {}, License: {}", device_id, license_key);
+            
+            ("200 OK", serde_json::json!({
+                "status": "success", 
+                "message": "บันทึกการตั้งค่าลงฐานข้อมูลเรียบร้อยแล้ว"
+            }).to_string())
         } else {
             ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
         };

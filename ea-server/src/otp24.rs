@@ -23,12 +23,18 @@ fn xor_decode(encoded_str: &str, key: &str) -> Result<String, String> {
 }
 
 pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
-    // 1. Check Cache first (if less than 24 hours old)
+    // 1. Check Cache first (if less than 24 hours old AND has valid apps data)
     if let Some((payload, updated_at)) = db.get_otp24_cookie().await {
         let diff = Utc::now().signed_duration_since(updated_at);
         if diff.num_hours() < 24 {
-            info!("OTP24: Returning cached payload ({} hours old)", diff.num_hours());
-            return Ok(payload);
+            // Validate cache has actual apps data (not stale placeholder)
+            if let Ok(parsed) = serde_json::from_str::<Value>(&payload) {
+                if parsed.get("apps").and_then(|a| a.as_array()).is_some() {
+                    info!("OTP24: Returning cached payload ({} hours old)", diff.num_hours());
+                    return Ok(payload);
+                }
+            }
+            info!("OTP24: Cache exists but missing 'apps' key, re-fetching...");
         }
     }
 

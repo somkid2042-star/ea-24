@@ -12,14 +12,20 @@
     "declarativeNetRequest",
     "declarativeNetRequestFeedback",
     "scripting",
-	"activeTab"
+    "activeTab"
   ],
   "host_permissions": [
     "<all_urls>"
-  ],"content_scripts": [
+  ],
+  "content_scripts": [
     {
-      "matches": ["<all_urls>"], 
-      "js": ["content.js","loader.js"],
+      "matches": [
+        "<all_urls>"
+      ],
+      "js": [
+        "content.js",
+        "loader.js"
+      ],
       "run_at": "document_start"
     }
   ],
@@ -44,8 +50,12 @@
   },
   "web_accessible_resources": [
     {
-      "resources": ["images/*.png"],
-      "matches": ["<all_urls>"],
+      "resources": [
+        "images/*.png"
+      ],
+      "matches": [
+        "<all_urls>"
+      ],
       "use_dynamic_url": true
     }
   ]
