@@ -8,8 +8,8 @@ use crate::db::Database;
 
 const SECRET_KEY: &str = "OTP24HRHUB_PROTECT";
 const API_BASE: &str = "https://otp24hr.com/api/v1/tools/api";
-// Device fingerprint bound to license key DEMO-2840-3DA8-5345
-const DEVICE_ID: &str = "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT";
+// Device fingerprint for this Mac (URL-safe base64, no padding)
+const DEVICE_ID: &str = "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA";
 
 fn xor_decode(encoded_str: &str, key: &str) -> Result<String, String> {
     let binary_data = STANDARD.decode(encoded_str).map_err(|e| e.to_string())?;

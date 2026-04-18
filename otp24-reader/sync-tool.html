@@ -1,0 +1,204 @@
+<!DOCTYPE html>
+<html><head><title>OTP24 Sync Tool</title>
+<style>
+body { font-family: monospace; background: #1a1a2e; color: #eee; padding: 20px; }
+.box { background: #16213e; padding: 15px; border-radius: 8px; margin: 10px 0; }
+.ok { color: #0f0; } .err { color: #f44; } .warn { color: #ff0; }
+button { background: #e94560; color: #fff; border: none; padding: 10px 20px; 
+  border-radius: 5px; font-size: 16px; cursor: pointer; margin: 5px; }
+button:hover { background: #c81e45; }
+#log { white-space: pre-wrap; font-size: 13px; max-height: 400px; overflow-y: auto; }
+input { padding: 8px; width: 300px; font-family: monospace; border-radius: 4px; border: 1px solid #444; background: #0f3460; color: #fff; }
+</style>
+</head><body>
+<h2>OTP24 → EA-Server Sync Tool</h2>
+
+<div class="box">
+  <b>License Key:</b><br>
+  <input id="key" value="EXCLUSIVE-3940-6C1D-7746">
+</div>
+
+<div class="box">
+  <b>Device Fingerprint:</b>
+  <div id="fp" style="color:#0f0;margin:5px 0"></div>
+  <b>Device ID (Base64):</b>
+  <div id="did" style="color:#ff0;margin:5px 0;word-break:break-all"></div>
+</div>
+
+<button onclick="doSync()">Login & Sync to Server</button>
+<button onclick="testNodes()">Test get_nodes</button>
+
+<div class="box"><div id="log"></div></div>
+
+<script>
+const SECRET_KEY = 'OTP24HRHUB_PROTECT';
+const API = 'https://otp24hr.com/api/v1/tools/api';
+const EA_SERVER = 'http://35.201.156.240:4173';
+let csrf = '';
+
+function genFingerprint() {
+    const parts = [
+        'OTP',
+        navigator.platform || 'unknown',
+        navigator.hardwareConcurrency || 'unknown',
+        navigator.deviceMemory || 'undefined',
+        `${screen.width}x${screen.height}`,
+        Intl.DateTimeFormat().resolvedOptions().timeZone,
+        navigator.language
+    ];
+    return parts.join('|');
+}
+
+function toBase64(str) {
+    return btoa(str);
+}
+
+function log(msg, cls='') {
+    document.getElementById('log').innerHTML += `<span class="${cls}">${msg}</span>\n`;
+}
+
+function xorDecode(encoded, key) {
+    const bin = atob(encoded);
+    let out = '';
+    for (let i = 0; i < bin.length; i++) {
+        out += String.fromCharCode(bin.charCodeAt(i) ^ key.charCodeAt(i % key.length));
+    }
+    return out;
+}
+
+// Show fingerprint on load
+const fp = genFingerprint();
+const deviceId = toBase64(fp);
+document.getElementById('fp').textContent = fp;
+document.getElementById('did').textContent = deviceId;
+
+async function doSync() {
+    document.getElementById('log').innerHTML = '';
+    const licenseKey = document.getElementById('key').value.trim();
+    
+    log(`License: ${licenseKey}`);
+    log(`Device: ${fp}`);
+    log(`Device ID: ${deviceId}\n`);
+    
+    // Step 1: login_by_device
+    log('--- Step 1: login_by_device ---');
+    try {
+        const r1 = await fetch(`${API}?action=login_by_device`, {
+            method: 'POST',
+            headers: {
+                'x-device-id': deviceId,
+                'Content-Type': 'application/x-www-form-urlencoded'
+            },
+            body: `device_id=${encodeURIComponent(deviceId)}`
+        });
+        const t1 = r1.headers.get('x-csrf-token');
+        if (t1) { csrf = t1; log(`CSRF: ${csrf.substring(0,30)}...`, 'ok'); }
+        else { log('No CSRF in header', 'warn'); }
+        const d1 = await r1.json();
+        log(`Result: success=${d1.success} msg="${d1.message || ''}"`, d1.success ? 'ok' : 'warn');
+        
+        if (d1.payload) {
+            const decoded = xorDecode(d1.payload, SECRET_KEY);
+            log(`Decoded: ${decoded.substring(0, 100)}...`, 'ok');
+        }
+    } catch(e) { log(`Error: ${e.message}`, 'err'); }
+    
+    // Step 2: login with key
+    log('\n--- Step 2: login ---');
+    try {
+        const headers = {
+            'x-device-id': deviceId,
+            'x-license-key': licenseKey,
+            'Content-Type': 'application/x-www-form-urlencoded'
+        };
+        if (csrf) headers['x-csrf-token'] = csrf;
+        
+        const r2 = await fetch(`${API}?action=login&key=${licenseKey}`, {
+            method: 'POST',
+            headers,
+            body: `key=${encodeURIComponent(licenseKey)}&device_id=${encodeURIComponent(deviceId)}`
+        });
+        const t2 = r2.headers.get('x-csrf-token');
+        if (t2) { csrf = t2; log(`New CSRF: ${csrf.substring(0,30)}...`, 'ok'); }
+        const d2 = await r2.json();
+        log(`Result: success=${d2.success} msg="${d2.message || ''}"`, d2.success ? 'ok' : 'err');
+        
+        if (d2.payload) {
+            const decoded = xorDecode(d2.payload, SECRET_KEY);
+            try {
+                const parsed = JSON.parse(decoded);
+                log(`Plan: ${parsed.plan} Quota: ${parsed.used_today}/${parsed.daily_limit}`, 'ok');
+                log(`Apps: ${(parsed.apps||[]).length}`, 'ok');
+            } catch(e) { log(`Decode: ${decoded.substring(0,80)}`, 'warn'); }
+        }
+    } catch(e) { log(`Error: ${e.message}`, 'err'); }
+    
+    // Step 3: Sync to EA-Server
+    if (csrf) {
+        log('\n--- Step 3: Sync to EA-Server ---');
+        try {
+            const syncData = {
+                node_id: 'session_sync',
+                csrf_token: csrf,
+                device_id: deviceId,
+                license_key: licenseKey,
+                cookies: [],
+                target_url: ''
+            };
+            const r3 = await fetch(`${EA_SERVER}/api/otp24/save_cookie`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify(syncData)
+            });
+            const d3 = await r3.text();
+            log(`Synced! Response: ${d3.substring(0,100)}`, 'ok');
+            
+            // Also update device_id config on server
+            await fetch(`${EA_SERVER}/api/otp24/save_cookie`, {
+                method: 'POST',
+                headers: { 'Content-Type': 'application/json' },
+                body: JSON.stringify({
+                    cache_key: 'config_device_id',
+                    payload: deviceId
+                })
+            });
+            log(`Device ID synced to server config`, 'ok');
+            
+        } catch(e) { log(`Sync error: ${e.message}`, 'err'); }
+    }
+    
+    log('\n=== DONE ===', 'ok');
+}
+
+async function testNodes() {
+    document.getElementById('log').innerHTML += '\n--- Test get_nodes (Netflix app_id=26) ---\n';
+    const licenseKey = document.getElementById('key').value.trim();
+    
+    if (!csrf) { log('No CSRF! Run Login first.', 'err'); return; }
+    
+    const url = `${API}?action=get_nodes&app_id=26&key=${licenseKey}`;
+    const r = await fetch(url, {
+        headers: {
+            'x-csrf-token': csrf,
+            'x-device-id': deviceId,
+            'x-license-key': licenseKey
+        }
+    });
+    const d = await r.json();
+    if (d.payload) {
+        const decoded = xorDecode(d.payload, SECRET_KEY);
+        try {
+            const nodes = JSON.parse(decoded);
+            log(`Got ${nodes.length} nodes!`, 'ok');
+            nodes.slice(0,5).forEach(n => {
+                log(`  ${n.server_name} working=${n.is_working} access=${n.can_access}`, n.is_working ? 'ok' : 'warn');
+            });
+        } catch(e) {
+            log(`XOR decode failed: ${decoded.substring(0,80)}`, 'err');
+        }
+    } else {
+        log(`No payload: ${JSON.stringify(d)}`, 'err');
+    }
+}
+</script>
+</body></html>
