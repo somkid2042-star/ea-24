@@ -3573,7 +3573,7 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
 
     // ── OTP24 Get Cache (GET — Mobile ดึง cached data by key) ──
     if relative.starts_with("api/otp24/get_cache") {
-        let cache_key = relative.split("key=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+        let cache_key = path.split("key=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
         let cache_key = urlencoding::decode(cache_key).unwrap_or_default().to_string();
         
         let json_body = if cache_key.is_empty() {
