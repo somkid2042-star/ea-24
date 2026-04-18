@@ -74,6 +74,14 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
         );
       } else if (nodesResult is Map && nodesResult['status'] == 'error') {
         throw Exception(nodesResult['message']?.toString() ?? 'Failed to fetch servers');
+      } else if (nodesResult is Map && nodesResult['payload'] != null) {
+        // Server returned raw XOR-encoded payload (not decoded)
+        throw Exception('Server returned raw payload (not decoded).\n'
+          'Server may need update.\n'
+          'payload: ${nodesResult['payload'].toString().substring(0, 50)}...');
+      } else {
+        throw Exception('Unexpected response type: ${nodesResult.runtimeType}\n'
+          '${nodesResult.toString().substring(0, (nodesResult.toString().length).clamp(0, 200))}');
       }
 
       final okNodes = nodes.where((n) =>
@@ -81,7 +89,13 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
         (n['can_access'] == true || n['can_access'] == 1)
       ).toList();
 
-      if (okNodes.isEmpty) throw Exception('No available servers found');
+      if (okNodes.isEmpty) {
+        final total = nodes.length;
+        final working = nodes.where((n) => n['is_working'] == true || n['is_working'] == 1).length;
+        throw Exception('No available servers\n'
+          'Total: $total nodes, Working: $working\n'
+          'First node: ${nodes.isNotEmpty ? nodes.first.toString().substring(0, nodes.first.toString().length.clamp(0, 100)) : "none"}');
+      }
 
       final nodeId = (okNodes.first['id'] as num?)?.toInt() ?? 0;
       setState(() {

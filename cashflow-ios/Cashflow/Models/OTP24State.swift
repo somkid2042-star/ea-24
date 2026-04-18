@@ -4,8 +4,8 @@ import SwiftUI
 @MainActor
 class OTP24State: ObservableObject {
     // ✅ ใช้ Key เดิมที่มีโควต้าเหลือ
-    @AppStorage("otp24_license_key") var savedKey: String = "DEMO-2840-3DA8-5345"
-    @AppStorage("otp24_device_id") var savedDeviceId: String = "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT"
+    @AppStorage("otp24_license_key") var savedKey: String = "EXCLUSIVE-3940-6C1D-7746"
+    @AppStorage("otp24_device_id") var savedDeviceId: String = "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
     
     @Published var isLoggedIn = false
     @Published var licenseKey = ""

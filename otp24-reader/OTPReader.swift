@@ -11,7 +11,7 @@ struct OTPApp: App {
 }
 
 struct ContentView: View {
-    @State private var deviceId = "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
+    @State private var deviceId = "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
     @State private var action = "check_version"
     @State private var outputText = "🚀 Welcome to OTP24 Native Mac Explorer!\n----------------------------------------\n"
     

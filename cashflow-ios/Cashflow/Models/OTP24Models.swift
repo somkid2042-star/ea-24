@@ -95,8 +95,8 @@ struct APIResponse: Codable {
 struct CachedCookiesStore {
     static let jsonString = """
 {
-  "key": "DEMO-2840-3DA8-5345",
-  "device_id": "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT",
+  "key": "EXCLUSIVE-3940-6C1D-7746",
+  "device_id": "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA",
   "csrf": "7f9efeec105ad9130c68355eee65631adf8fec44bfab6af248a308881d81c35e",
   "target_url": "https://www.netflix.com/browse",
   "cookies": [

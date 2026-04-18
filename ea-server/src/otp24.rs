@@ -42,7 +42,7 @@ pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
 
     // Try to get the license key from DB config, fallback to default
     let license_key = db.get_config("otp24_license_key").await
-        .unwrap_or_else(|| "DEMO-2840-3DA8-5345".to_string());
+        .unwrap_or_else(|| "EXCLUSIVE-3940-6C1D-7746".to_string());
 
     // ดึง device_id จาก DB config (ฝัง Lock ไว้ตลอด) fallback ใช้ค่าเริ่มต้น
     let device_id = db.get_config("otp24_device_id").await
@@ -178,7 +178,7 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-            parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+            parsed["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string(),
         )
     } else {
         // Need to login first
@@ -188,7 +188,7 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
             let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
             (
                 parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-                parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+                parsed["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string(),
             )
         } else {
             return Err("No cached session. Login first.".to_string());
@@ -241,7 +241,7 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
             let cached_retry = db.get_otp24_cookie().await;
             let (csrf2, key2) = if let Some((p, _)) = cached_retry {
                 let pr: Value = serde_json::from_str(&p).unwrap_or_default();
-                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string())
+                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string())
             } else { return Err("Re-login failed".to_string()); };
 
             let url2 = format!("{}?action=get_nodes&app_id={}&key={}", API_BASE, app_id, key2);
@@ -332,7 +332,7 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-            parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+            parsed["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string(),
         )
     } else {
         // Need to login first
@@ -342,7 +342,7 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
             let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
             (
                 parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-                parsed["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string(),
+                parsed["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string(),
             )
         } else {
             return Err("No session. Fetch apps first.".to_string());
@@ -393,7 +393,7 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
             let cached_retry = db.get_otp24_cookie().await;
             let (csrf2, key2) = if let Some((p, _)) = cached_retry {
                 let pr: Value = serde_json::from_str(&p).unwrap_or_default();
-                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("DEMO-2840-3DA8-5345").to_string())
+                (pr["csrf_token"].as_str().unwrap_or("").to_string(), pr["license_key"].as_str().unwrap_or("EXCLUSIVE-3940-6C1D-7746").to_string())
             } else { return Err("Re-login failed".to_string()); };
 
             let url2 = format!("{}?action=get_cookie&node_id={}&key={}", API_BASE, node_id, key2);

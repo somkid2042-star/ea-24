@@ -12,7 +12,7 @@ SECRET_KEY = "OTP24HRHUB_PROTECT"
 API_BASE = "https://otp24hr.com/api/v1/tools/api"
 
 # Default Device ID ที่เราแฮกมาได้จากเครื่อง
-DEFAULT_DEVICE_ID = "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
+DEFAULT_DEVICE_ID = "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
 
 def decode_data(encoded_str, key):
     try:

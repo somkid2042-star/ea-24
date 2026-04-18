@@ -1,7 +1,7 @@
 const SECRET_KEY = 'OTP24HRHUB_PROTECT';
 const API_BASE = 'https://otp24hr.com/api/v1/tools/api';
 // Device ID ที่ใช้สร้าง Key สำเร็จแล้ว
-const SAVED_DEVICE = 'T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT';
+const SAVED_DEVICE = 'T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA';
 const SAVED_KEY = 'EXCLUSIVE-3940-6C1D-7746';
 
 let selectedAppId = '26';

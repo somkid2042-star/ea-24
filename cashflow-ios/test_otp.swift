@@ -2,8 +2,8 @@ import Foundation
 
 let apiBase = "https://otp24hr.com/api/v1/tools/api"
 let secretKey = "OTP24HRHUB_PROTECT"
-let deviceId = "T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT"
-let licenseKey = "DEMO-2840-3DA8-5345"
+let deviceId = "T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA"
+let licenseKey = "EXCLUSIVE-3940-6C1D-7746"
 var csrf = ""
 
 func apiCall(action: String, body: [String: String]? = nil, params: [String: String] = [:]) async -> Data? {

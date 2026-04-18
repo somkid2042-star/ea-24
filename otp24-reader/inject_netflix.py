@@ -11,8 +11,8 @@ import subprocess, time, socket, os, signal
 
 SECRET_KEY = 'OTP24HRHUB_PROTECT'
 API_BASE = 'https://otp24hr.com/api/v1/tools/api'
-DEVICE = 'T1RQfE1hY0ludGVsfDh8dW5kZWZpbmVkfDE5MjB4MTA4MHxBbWVyaWNhL05ld19Zb3JrfGVuLVVT'
-KEY = 'DEMO-2840-3DA8-5345'
+DEVICE = 'T1RQfE1hY0ludGVsfDEwfDE2fDE3MTB4MTEwN3xBc2lhL1RhaXBlaXx0aC1USA'
+KEY = 'EXCLUSIVE-3940-6C1D-7746'
 CDP_PORT = 9222
 
 def xor_decode(s, k):
