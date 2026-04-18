@@ -3539,38 +3539,20 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         return;
     }
 
-    // ── OTP24 Cached Apps (GET — บอก Extension ว่า App ไหนมี cache) ──
+    // ── OTP24 Cached Apps (GET — บอก Mobile ว่า App ไหนมี cookie cache) ──
     if relative.starts_with("api/otp24/cached_apps") {
         let entries = db.get_all_otp24_cache_entries().await;
         
-        // หา node_ids ที่มี cookie cache
-        let mut cached_node_ids: std::collections::HashSet<String> = std::collections::HashSet::new();
-        for (key, _) in &entries {
-            if let Some(node_id) = key.strip_prefix("cookie_") {
-                cached_node_ids.insert(node_id.to_string());
-            }
-        }
-        
-        // หา app_ids ที่มี nodes → ตรวจว่า node ไหนมี cookie cache
+        // หา app_ids จาก cache keys ที่ขึ้นต้นด้วย "cookie_app"
         let mut cached_app_ids: Vec<i64> = Vec::new();
-        for (key, payload) in &entries {
-            if let Some(app_id_str) = key.strip_prefix("nodes_") {
-                if let Ok(app_id) = app_id_str.parse::<i64>() {
-                    // Parse nodes JSON เพื่อดู node IDs
-                    if let Ok(nodes) = serde_json::from_str::<serde_json::Value>(payload) {
-                        if let Some(arr) = nodes.as_array() {
-                            let has_cache = arr.iter().any(|n| {
-                                if let Some(id) = n["id"].as_i64() {
-                                    cached_node_ids.contains(&id.to_string())
-                                } else if let Some(id) = n["id"].as_str() {
-                                    cached_node_ids.contains(id)
-                                } else {
-                                    false
-                                }
-                            });
-                            if has_cache {
-                                cached_app_ids.push(app_id);
-                            }
+        let mut seen = std::collections::HashSet::new();
+        for (key, _) in &entries {
+            // Match pattern: cookie_appX_nodeY
+            if let Some(rest) = key.strip_prefix("cookie_app") {
+                if let Some(app_id_str) = rest.split('_').next() {
+                    if let Ok(app_id) = app_id_str.parse::<i64>() {
+                        if app_id > 0 && seen.insert(app_id) {
+                            cached_app_ids.push(app_id);
                         }
                     }
                 }
@@ -3580,6 +3562,27 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let json_body = serde_json::json!({
             "cached_app_ids": cached_app_ids
         }).to_string();
+        
+        let response = format!(
+            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+            json_body.len(), json_body
+        );
+        let _ = stream.write_all(response.as_bytes()).await;
+        return;
+    }
+
+    // ── OTP24 Get Cache (GET — Mobile ดึง cached data by key) ──
+    if relative.starts_with("api/otp24/get_cache") {
+        let cache_key = relative.split("key=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
+        let cache_key = urlencoding::decode(cache_key).unwrap_or_default().to_string();
+        
+        let json_body = if cache_key.is_empty() {
+            serde_json::json!({"found": false, "error": "Missing key param"}).to_string()
+        } else if let Some((payload, _updated_at)) = db.get_otp24_cache(&cache_key).await {
+            serde_json::json!({"found": true, "payload": payload}).to_string()
+        } else {
+            serde_json::json!({"found": false}).to_string()
+        };
         
         let response = format!(
             "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
@@ -3698,45 +3701,52 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         let body_str = &request[body_start..];
         
         let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
-            let node_id = json["node_id"].as_str().unwrap_or("").to_string();
-            let cache_key = format!("cookie_{}", node_id);
-            
-            // บันทึก Session Data (csrf, license, device_id) กลับไปที่ Server ด้วย
-            let device_id = json["device_id"].as_str().unwrap_or("");
-            let csrf_token = json["csrf_token"].as_str().unwrap_or("");
-            let license_key = json["license_key"].as_str().unwrap_or("");
-            
-            // 🔒 บันทึก device_id ลง config ครั้งเดียว ใช้ค่านี้ตลอดไป
-            if !device_id.is_empty() {
-                let existing = db.get_config("otp24_device_id").await;
-                if existing.is_none() || existing.as_deref() == Some("") {
-                    db.set_config("otp24_device_id", device_id).await;
-                    info!("OTP24: 🔒 Locked device_id permanently: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]);
+            // ─── New mobile format: {"cache_key": "...", "payload": {...}} ───
+            if let Some(cache_key) = json["cache_key"].as_str() {
+                let payload = json["payload"].clone();
+                db.save_otp24_cache(cache_key, &payload.to_string()).await;
+                info!("OTP24: 💾 Saved cache key={}", cache_key);
+                ("200 OK", serde_json::json!({"status": "success", "message": "Cache saved"}).to_string())
+            }
+            // ─── Legacy extension format: {"node_id": "...", "cookies": [...]} ───
+            else {
+                let node_id = json["node_id"].as_str().unwrap_or("").to_string();
+                let cache_key = format!("cookie_{}", node_id);
+                
+                let device_id = json["device_id"].as_str().unwrap_or("");
+                let csrf_token = json["csrf_token"].as_str().unwrap_or("");
+                let license_key = json["license_key"].as_str().unwrap_or("");
+                
+                if !device_id.is_empty() {
+                    let existing = db.get_config("otp24_device_id").await;
+                    if existing.is_none() || existing.as_deref() == Some("") {
+                        db.set_config("otp24_device_id", device_id).await;
+                        info!("OTP24: 🔒 Locked device_id: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]);
+                    }
                 }
-            }
-            
-            if !csrf_token.is_empty() && !license_key.is_empty() {
-                let session_payload = serde_json::json!({
-                    "csrf_token": csrf_token,
-                    "license_key": license_key,
-                    "device_id": device_id
-                });
-                db.save_otp24_cookie(&session_payload.to_string()).await;
-                info!("OTP24: 💾 Synced Session (csrf, license) from Extension");
-            }
+                
+                if !csrf_token.is_empty() && !license_key.is_empty() {
+                    let session_payload = serde_json::json!({
+                        "csrf_token": csrf_token,
+                        "license_key": license_key,
+                        "device_id": device_id
+                    });
+                    db.save_otp24_cookie(&session_payload.to_string()).await;
+                    info!("OTP24: 💾 Synced Session from Extension");
+                }
 
-            // บันทึกข้อมูลคุกกี้ทั้งชุด ลง DB ด้วย INSERT
-            let payload_to_save = serde_json::json!({
-                "cookies": json["cookies"],
-                "target_url": json["target_url"],
-                "source": "extension_push",
-                "saved_at": chrono::Utc::now().to_rfc3339()
-            });
-            
-            db.save_otp24_cache(&cache_key, &payload_to_save.to_string()).await;
-            info!("OTP24: 💾 Saved cookie cache from Extension for node_id={}", node_id);
-            
-            ("200 OK", serde_json::json!({"status": "success", "message": "Cookie saved to server cache"}).to_string())
+                let payload_to_save = serde_json::json!({
+                    "cookies": json["cookies"],
+                    "target_url": json["target_url"],
+                    "source": "extension_push",
+                    "saved_at": chrono::Utc::now().to_rfc3339()
+                });
+                
+                db.save_otp24_cache(&cache_key, &payload_to_save.to_string()).await;
+                info!("OTP24: 💾 Saved cookie for node_id={}", node_id);
+                
+                ("200 OK", serde_json::json!({"status": "success", "message": "Cookie saved"}).to_string())
+            }
         } else {
             ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
         };

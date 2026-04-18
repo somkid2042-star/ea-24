@@ -25,7 +25,7 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
   String? _updatedAt;
   String? _deviceId;
   bool _deviceSynced = false;
-  List<int> _cachedAppIds = [];
+  Map<int, String> _cachedAppStatus = {};
 
   // Colors (Elite Quiz style)
   static const _primaryColor = Color(0xFFEF5388);
@@ -62,15 +62,15 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
       final results = await Future.wait([
         OTP24Service.fetchApps(),
         OTP24Service.fetchAccountInfo(),
-        OTP24Service.fetchCachedAppIds(),
+        OTP24Service.fetchCachedAppStatus(),
       ]);
 
       final appsData = results[0] as Map<String, dynamic>;
-      final cached = results[2] as List<int>;
+      final cachedStatus = results[2] as Map<int, String>;
 
       if (mounted) {
         setState(() {
-          _cachedAppIds = cached;
+          _cachedAppStatus = cachedStatus;
 
           if (appsData['status'] == 'error') {
             _error = appsData['message']?.toString();
@@ -535,7 +535,10 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
     final name = app['name']?.toString() ?? 'App';
     final icon = app['icon_url']?.toString() ?? '';
     final appId = (app['id'] as num?)?.toInt() ?? 0;
-    final hasCachedCookie = _cachedAppIds.contains(appId);
+    final cacheStatus = _cachedAppStatus[appId]; // null = no cache, 'valid' = green, 'error' = red
+    final hasCachedCookie = cacheStatus != null;
+    final isValid = cacheStatus == 'valid';
+    final borderColor = hasCachedCookie ? (isValid ? _successColor : const Color(0xFFE53935)) : null;
 
     return GestureDetector(
       onTap: () {
@@ -570,8 +573,8 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
           decoration: BoxDecoration(
             color: _cardColor,
             borderRadius: BorderRadius.circular(14),
-            border: hasCachedCookie
-                ? Border.all(color: _successColor, width: 2)
+            border: borderColor != null
+                ? Border.all(color: borderColor, width: 2)
                 : null,
             boxShadow: [
               BoxShadow(
@@ -583,25 +586,51 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
           ),
           child: Row(
             children: [
-              // App icon
-              Container(
-                width: 40,
-                height: 40,
-                decoration: BoxDecoration(
-                  color: _bgColor,
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                clipBehavior: Clip.antiAlias,
-                child: icon.isNotEmpty
-                    ? CachedNetworkImage(
-                        imageUrl: icon,
-                        width: 40,
-                        height: 40,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => Icon(
-                            Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
-                      )
-                    : Icon(Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
+              // App icon with cache indicator ring
+              Stack(
+                children: [
+                  Container(
+                    width: 40,
+                    height: 40,
+                    decoration: BoxDecoration(
+                      color: _bgColor,
+                      borderRadius: BorderRadius.circular(12),
+                      border: borderColor != null
+                          ? Border.all(color: borderColor, width: 2.5)
+                          : null,
+                    ),
+                    clipBehavior: Clip.antiAlias,
+                    child: icon.isNotEmpty
+                        ? CachedNetworkImage(
+                            imageUrl: icon,
+                            width: 40,
+                            height: 40,
+                            fit: BoxFit.cover,
+                            errorWidget: (_, __, ___) => Icon(
+                                Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
+                          )
+                        : Icon(Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
+                  ),
+                  if (hasCachedCookie)
+                    Positioned(
+                      right: 0,
+                      bottom: 0,
+                      child: Container(
+                        width: 14,
+                        height: 14,
+                        decoration: BoxDecoration(
+                          color: borderColor,
+                          shape: BoxShape.circle,
+                          border: Border.all(color: Colors.white, width: 2),
+                        ),
+                        child: Icon(
+                          isValid ? Icons.check : Icons.close,
+                          size: 8,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                ],
               ),
               const SizedBox(width: 10),
               Expanded(
@@ -621,10 +650,10 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
                     ),
                     if (hasCachedCookie)
                       Text(
-                        'Cached',
+                        isValid ? 'Cookie ✓' : 'Cookie หมดอายุ ✗',
                         style: GoogleFonts.nunito(
                           fontSize: 10,
-                          color: _successColor,
+                          color: borderColor,
                           fontWeight: FontWeight.w600,
                         ),
                       ),

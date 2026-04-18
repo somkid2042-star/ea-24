@@ -89,8 +89,8 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
         _status = forceRefresh ? 'Fetching fresh cookie (1 quota)...' : 'Fetching cookie...';
       });
 
-      // ── Step 2: Fetch cookie using node_id (server will use cache if not force)
-      final cookieResult = await OTP24Service.fetchCookie(nodeId, force: forceRefresh);
+      // ── Step 2: Fetch cookie directly from otp24hr
+      final cookieResult = await OTP24Service.fetchCookie(nodeId, force: forceRefresh, appId: widget.appId);
 
       if (cookieResult is Map<String, dynamic>) {
         if (cookieResult['status'] == 'error') {

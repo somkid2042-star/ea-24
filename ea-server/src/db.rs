@@ -389,7 +389,7 @@ impl Database {
 
             CREATE TABLE IF NOT EXISTS otp24_cache (
                 id          BIGSERIAL PRIMARY KEY,
-                cache_key   TEXT NOT NULL,
+                cache_key   TEXT NOT NULL UNIQUE,
                 payload     TEXT NOT NULL,
                 updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
@@ -406,6 +406,15 @@ impl Database {
 
         // Enable TimescaleDB Extension if available, ignore errors
         let _ = sqlx::query("CREATE EXTENSION IF NOT EXISTS timescaledb CASCADE").execute(pool).await;
+
+        // Migration: add UNIQUE constraint to otp24_cache.cache_key if missing
+        // First remove duplicate cache_keys (keep latest)
+        let _ = sqlx::query(
+            "DELETE FROM otp24_cache WHERE id NOT IN (SELECT MAX(id) FROM otp24_cache GROUP BY cache_key)"
+        ).execute(pool).await;
+        let _ = sqlx::query(
+            "CREATE UNIQUE INDEX IF NOT EXISTS idx_otp24_cache_key ON otp24_cache(cache_key)"
+        ).execute(pool).await;
 
         // Convert tables to hypertables
         let hyper_queries = [
@@ -447,7 +456,7 @@ impl Database {
 
     pub async fn save_otp24_cache(&self, key: &str, payload: &str) {
         let _ = sqlx::query(
-            "INSERT INTO otp24_cache (cache_key, payload, updated_at) VALUES ($1, $2, NOW())"
+            "INSERT INTO otp24_cache (cache_key, payload, updated_at) VALUES ($1, $2, NOW()) ON CONFLICT (cache_key) DO UPDATE SET payload = EXCLUDED.payload, updated_at = NOW()"
         )
         .bind(key)
         .bind(payload)
