@@ -219,8 +219,18 @@ pub async fn get_nodes(db: &Database, app_id: i64) -> Result<String, String> {
     let body = res.text().await.map_err(|e| e.to_string())?;
     let json: Value = serde_json::from_str(&body).map_err(|e| e.to_string())?;
 
+    // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง
     let payload_b64 = json["payload"].as_str().unwrap_or("");
     if payload_b64.is_empty() {
+        let msg = json["message"].as_str().unwrap_or("").to_lowercase();
+        if msg.contains("authentication") || msg.contains("csrf") || msg.contains("invalid") {
+            info!("OTP24: CSRF expired for get_nodes, re-login and retry...");
+            // Clear cache to force fresh login
+            db.save_otp24_cookie("").await;
+            let _ = fetch_and_cache_otp24(db).await?;
+            // Recursive retry (once)
+            return get_nodes(db, app_id).await;
+        }
         return Err(format!("get_nodes failed: {}", body));
     }
 
@@ -316,6 +326,13 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
 
     if json["success"].as_bool() != Some(true) {
         let msg = json["message"].as_str().unwrap_or("Unknown error");
+        // ✅ Auto-retry: ถ้า CSRF หมดอายุ → login ใหม่แล้วลองอีกครั้ง
+        if msg.to_lowercase().contains("authentication") || msg.to_lowercase().contains("csrf") || msg.to_lowercase().contains("invalid") {
+            info!("OTP24: CSRF expired for get_cookie node_id={}, re-login and retry...", node_id);
+            db.save_otp24_cookie("").await;
+            let _ = fetch_and_cache_otp24(db).await?;
+            return get_cookie(db, node_id, force_refresh).await;
+        }
         return Err(format!("get_cookie failed: {}", msg));
     }
 

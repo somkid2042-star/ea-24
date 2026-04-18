@@ -1,11 +1,12 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'otp24_service.dart';
 import 'otp24_app_viewer_screen.dart';
 import 'otp24_settings_screen.dart';
 
-/// OTP24 Home Screen — main dashboard mirroring the browser extension
+/// OTP24 Home Screen — Elite Quiz-inspired clean design
 class OTP24HomeScreen extends StatefulWidget {
   const OTP24HomeScreen({super.key});
 
@@ -13,8 +14,7 @@ class OTP24HomeScreen extends StatefulWidget {
   State<OTP24HomeScreen> createState() => _OTP24HomeScreenState();
 }
 
-class _OTP24HomeScreenState extends State<OTP24HomeScreen>
-    with TickerProviderStateMixin {
+class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
   // State
   bool _isLoading = true;
   String? _error;
@@ -27,27 +27,17 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   bool _deviceSynced = false;
   List<int> _cachedAppIds = [];
 
-  // Animation
-  late AnimationController _pulseController;
-  late Animation<double> _pulseAnimation;
+  // Colors (Elite Quiz style)
+  static const _primaryColor = Color(0xFFEF5388);
+  static const _textColor = Color(0xFF45536D);
+  static const _bgColor = Color(0xFFF3F7FA);
+  static const _cardColor = Colors.white;
+  static const _successColor = Color(0xFF5DB760);
 
   @override
   void initState() {
     super.initState();
-    _pulseController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 1500),
-    )..repeat(reverse: true);
-    _pulseAnimation = Tween<double>(begin: 0.95, end: 1.05).animate(
-      CurvedAnimation(parent: _pulseController, curve: Curves.easeInOut),
-    );
     _init();
-  }
-
-  @override
-  void dispose() {
-    _pulseController.dispose();
-    super.dispose();
   }
 
   Future<void> _init() async {
@@ -69,7 +59,6 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   Future<void> _fetchAll() async {
     if (mounted) setState(() { _isLoading = true; _error = null; });
     try {
-      // Fetch in parallel
       final results = await Future.wait([
         OTP24Service.fetchApps(),
         OTP24Service.fetchAccountInfo(),
@@ -77,7 +66,6 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
       ]);
 
       final appsData = results[0] as Map<String, dynamic>;
-      // accountInfo available in results[1] if needed later
       final cached = results[2] as List<int>;
 
       if (mounted) {
@@ -87,7 +75,6 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
           if (appsData['status'] == 'error') {
             _error = appsData['message']?.toString();
           } else if (appsData.containsKey('apps') && appsData['apps'] is List) {
-            // Valid response with apps
             _plan = appsData['plan']?.toString() ?? 'free';
             _usedToday = (appsData['used_today'] as num?)?.toInt() ?? 0;
             _dailyLimit = (appsData['daily_limit'] as num?)?.toInt() ?? 5;
@@ -101,8 +88,7 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
             _apps.sort((a, b) =>
                 (a['sort_order'] ?? 99).compareTo(b['sort_order'] ?? 99));
           } else {
-            // Server connected but no apps data (stale cache)
-            _error = 'Server เชื่อมต่อได้ แต่ยังไม่มีข้อมูล apps\nกรุณา sync ผ่าน Extension หรือกด Force Refresh';
+            _error = 'Server connected but no apps data yet';
           }
           _isLoading = false;
         });
@@ -121,10 +107,10 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
     if (d == null) return '-';
     try {
       final diff = DateTime.now().difference(DateTime.parse(d));
-      if (diff.inMinutes < 1) return 'เมื่อกี้';
-      if (diff.inMinutes < 60) return '${diff.inMinutes} นาทีที่แล้ว';
-      if (diff.inHours < 24) return '${diff.inHours} ชม.ที่แล้ว';
-      return '${diff.inDays} วันที่แล้ว';
+      if (diff.inMinutes < 1) return 'just now';
+      if (diff.inMinutes < 60) return '${diff.inMinutes}m ago';
+      if (diff.inHours < 24) return '${diff.inHours}h ago';
+      return '${diff.inDays}d ago';
     } catch (_) {
       return d;
     }
@@ -133,36 +119,32 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   Map<String, List<Map<String, dynamic>>> _grouped() {
     final m = <String, List<Map<String, dynamic>>>{};
     for (final a in _apps) {
-      m.putIfAbsent(a['category']?.toString() ?? 'อื่นๆ', () => []).add(a);
+      m.putIfAbsent(a['category']?.toString() ?? 'Other', () => []).add(a);
     }
     return m;
   }
 
+  double get _hzMargin => MediaQuery.of(context).size.width * 0.05;
+
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: _bgColor,
       body: SafeArea(
         child: RefreshIndicator(
           onRefresh: _fetchAll,
-          color: const Color(0xFFFF5722),
-          backgroundColor: const Color(0xFF1A1F2E),
+          color: _primaryColor,
           child: CustomScrollView(
             physics: const AlwaysScrollableScrollPhysics(),
             slivers: [
-              // ── Header ──
               SliverToBoxAdapter(child: _buildHeader()),
-              // ── Device Panel ──
-              SliverToBoxAdapter(child: _buildDevicePanel()),
-              // ── Account Status Card ──
               SliverToBoxAdapter(child: _buildStatusCard()),
-              // ── Body ──
+              SliverToBoxAdapter(child: _buildDevicePanel()),
               if (_isLoading && _apps.isEmpty)
                 const SliverFillRemaining(child: _LoadingView())
               else if (_error != null && _apps.isEmpty)
                 SliverFillRemaining(child: _buildErrorView())
               else ...[
-                // App Categories
                 ..._grouped().entries.map((entry) => SliverToBoxAdapter(
                       child: _buildCategorySection(entry.key, entry.value),
                     )),
@@ -178,36 +160,27 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   // ── Header ─────────────────────────────────────────
   Widget _buildHeader() {
     return Container(
-      padding: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      padding: EdgeInsets.fromLTRB(_hzMargin, 16, _hzMargin, 0),
       child: Row(
         children: [
           // Logo
-          AnimatedBuilder(
-            animation: _pulseAnimation,
-            builder: (_, child) => Transform.scale(
-              scale: _pulseAnimation.value,
-              child: child,
-            ),
-            child: Container(
-              width: 44,
-              height: 44,
-              decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
+          Container(
+            width: 48,
+            height: 48,
+            decoration: BoxDecoration(
+              color: _primaryColor,
+              borderRadius: BorderRadius.circular(16),
+              boxShadow: [
+                BoxShadow(
+                  color: _primaryColor.withOpacity(0.3),
+                  blurRadius: 12,
+                  offset: const Offset(0, 4),
                 ),
-                borderRadius: BorderRadius.circular(14),
-                boxShadow: [
-                  BoxShadow(
-                    color: const Color(0xFFFF5722).withOpacity(0.4),
-                    blurRadius: 12,
-                    offset: const Offset(0, 4),
-                  ),
-                ],
-              ),
-              child: const Center(
-                child: Icon(Icons.local_fire_department,
-                    color: Colors.white, size: 26),
-              ),
+              ],
+            ),
+            child: const Center(
+              child: Icon(Icons.local_fire_department,
+                  color: Colors.white, size: 28),
             ),
           ),
           const SizedBox(width: 14),
@@ -216,54 +189,169 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
-                const Text(
+                Text(
                   'OTP24HR HUB',
-                  style: TextStyle(
-                    color: Colors.white,
+                  style: GoogleFonts.nunito(
+                    color: _textColor,
                     fontSize: 20,
                     fontWeight: FontWeight.w800,
-                    letterSpacing: 1.5,
+                    letterSpacing: 1,
                   ),
                 ),
                 Text(
-                  'SECURE SYSTEM',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
-                    fontSize: 10,
+                  'Secure System',
+                  style: GoogleFonts.nunito(
+                    color: _textColor.withOpacity(0.4),
+                    fontSize: 11,
                     fontWeight: FontWeight.w600,
-                    letterSpacing: 3,
+                    letterSpacing: 2,
                   ),
                 ),
               ],
             ),
           ),
           // Settings
-          IconButton(
-            onPressed: () async {
+          _buildIconButton(
+            icon: Icons.settings_outlined,
+            onTap: () async {
               final result = await Navigator.push(
                 context,
-                MaterialPageRoute(builder: (context) => const OTP24SettingsScreen()),
+                MaterialPageRoute(builder: (_) => const OTP24SettingsScreen()),
               );
-              if (result == true) {
-                _fetchAll();
-              }
+              if (result == true) _fetchAll();
             },
-            icon: const Icon(Icons.settings, color: Colors.white54),
           ),
+          const SizedBox(width: 8),
           // Refresh
-          IconButton(
-            onPressed: _isLoading ? null : _fetchAll,
-            icon: _isLoading
+          _buildIconButton(
+            icon: _isLoading ? null : Icons.refresh,
+            onTap: _isLoading ? null : _fetchAll,
+            child: _isLoading
                 ? const SizedBox(
-                    width: 20,
-                    height: 20,
+                    width: 18,
+                    height: 18,
                     child: CircularProgressIndicator(
                       strokeWidth: 2,
-                      color: Color(0xFFFF5722),
+                      color: _primaryColor,
                     ),
                   )
-                : const Icon(Icons.refresh, color: Colors.white54),
+                : null,
           ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildIconButton({IconData? icon, VoidCallback? onTap, Widget? child}) {
+    return GestureDetector(
+      onTap: onTap,
+      child: Container(
+        width: 40,
+        height: 40,
+        decoration: BoxDecoration(
+          color: _cardColor,
+          borderRadius: BorderRadius.circular(12),
+          boxShadow: [
+            BoxShadow(
+              color: Colors.black.withOpacity(0.06),
+              blurRadius: 8,
+              offset: const Offset(0, 2),
+            ),
+          ],
+        ),
+        child: Center(
+          child: child ?? Icon(icon, color: _textColor.withOpacity(0.6), size: 20),
+        ),
+      ),
+    );
+  }
+
+  // ── Status Card ────────────────────────────────────
+  Widget _buildStatusCard() {
+    final isOnline = _apps.isNotEmpty && _error == null;
+    return Container(
+      margin: EdgeInsets.fromLTRB(_hzMargin, 20, _hzMargin, 0),
+      padding: const EdgeInsets.all(18),
+      decoration: BoxDecoration(
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(18),
+        boxShadow: [
+          BoxShadow(
+            color: (isOnline ? _primaryColor : Colors.red).withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
+      ),
+      child: Column(
+        children: [
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: (isOnline ? _successColor : Colors.red).withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
+                ),
+                child: Icon(
+                  isOnline ? Icons.cloud_done_outlined : Icons.cloud_off_outlined,
+                  color: isOnline ? _successColor : Colors.red,
+                  size: 26,
+                ),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      isOnline ? 'OTP24 Online' : 'Connection Error',
+                      style: GoogleFonts.nunito(
+                        color: _textColor,
+                        fontSize: 16,
+                        fontWeight: FontWeight.w800,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      isOnline
+                          ? '${_plan?.toUpperCase()} | ${_apps.length} apps | ${_fmtDate(_updatedAt)}'
+                          : _error ?? '',
+                      style: GoogleFonts.nunito(
+                        color: _textColor.withOpacity(0.5),
+                        fontSize: 12,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ],
+                ),
+              ),
+            ],
+          ),
+          if (isOnline) ...[
+            const SizedBox(height: 16),
+            ClipRRect(
+              borderRadius: BorderRadius.circular(6),
+              child: LinearProgressIndicator(
+                value: _dailyLimit > 0 ? _usedToday / _dailyLimit : 0,
+                backgroundColor: _primaryColor.withOpacity(0.08),
+                valueColor: AlwaysStoppedAnimation(
+                  _usedToday >= _dailyLimit ? Colors.red : _primaryColor,
+                ),
+                minHeight: 6,
+              ),
+            ),
+            const SizedBox(height: 8),
+            Text(
+              'Used: $_usedToday / $_dailyLimit today',
+              style: GoogleFonts.nunito(
+                color: _textColor.withOpacity(0.4),
+                fontSize: 12,
+                fontWeight: FontWeight.w600,
+              ),
+            ),
+          ],
         ],
       ),
     );
@@ -272,43 +360,44 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   // ── Device Panel ───────────────────────────────────
   Widget _buildDevicePanel() {
     return Container(
-      margin: const EdgeInsets.fromLTRB(20, 16, 20, 0),
+      margin: EdgeInsets.fromLTRB(_hzMargin, 12, _hzMargin, 0),
       padding: const EdgeInsets.all(14),
       decoration: BoxDecoration(
-        color: const Color(0xFF141929),
-        borderRadius: BorderRadius.circular(16),
-        border: Border.all(
-          color: _deviceSynced
-              ? const Color(0xFF4CAF50).withOpacity(0.3)
-              : const Color(0xFFFF5722).withOpacity(0.3),
-        ),
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(14),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
           Container(
             padding: const EdgeInsets.all(10),
             decoration: BoxDecoration(
-              color: (_deviceSynced ? const Color(0xFF4CAF50) : const Color(0xFFFF5722))
-                  .withOpacity(0.15),
+              color: (_deviceSynced ? _successColor : _primaryColor).withOpacity(0.1),
               borderRadius: BorderRadius.circular(12),
             ),
             child: Icon(
-              _deviceSynced ? Icons.verified : Icons.fingerprint,
-              color: _deviceSynced ? const Color(0xFF4CAF50) : const Color(0xFFFF5722),
-              size: 24,
+              _deviceSynced ? Icons.verified_outlined : Icons.fingerprint,
+              color: _deviceSynced ? _successColor : _primaryColor,
+              size: 22,
             ),
           ),
-          const SizedBox(width: 14),
+          const SizedBox(width: 12),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   _deviceSynced ? 'Device Synced' : 'Device ID',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.9),
+                  style: GoogleFonts.nunito(
+                    color: _textColor,
                     fontSize: 13,
-                    fontWeight: FontWeight.w600,
+                    fontWeight: FontWeight.w700,
                   ),
                 ),
                 const SizedBox(height: 2),
@@ -316,8 +405,8 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
                   _deviceId != null
                       ? '${_deviceId!.substring(0, _deviceId!.length.clamp(0, 12))}...'
                       : 'Generating...',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.4),
+                  style: const TextStyle(
+                    color: Color(0x6645536D),
                     fontSize: 11,
                     fontFamily: 'monospace',
                   ),
@@ -329,133 +418,30 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
             TextButton(
               onPressed: _syncDevice,
               style: TextButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5722).withOpacity(0.15),
+                backgroundColor: _primaryColor.withOpacity(0.1),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(10)),
+                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
               ),
-              child: const Text('SYNC',
-                  style: TextStyle(
-                      color: Color(0xFFFF5722),
+              child: Text('SYNC',
+                  style: GoogleFonts.nunito(
+                      color: _primaryColor,
                       fontSize: 11,
-                      fontWeight: FontWeight.w700)),
+                      fontWeight: FontWeight.w800)),
             )
           else
             Container(
-              padding: const EdgeInsets.symmetric(horizontal: 10, vertical: 4),
+              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
               decoration: BoxDecoration(
-                color: const Color(0xFF4CAF50).withOpacity(0.15),
-                borderRadius: BorderRadius.circular(6),
+                color: _successColor.withOpacity(0.1),
+                borderRadius: BorderRadius.circular(8),
               ),
-              child: const Text('✓ LOCKED',
-                  style: TextStyle(
-                      color: Color(0xFF4CAF50),
+              child: Text('LOCKED',
+                  style: GoogleFonts.nunito(
+                      color: _successColor,
                       fontSize: 10,
-                      fontWeight: FontWeight.w700)),
+                      fontWeight: FontWeight.w800)),
             ),
-        ],
-      ),
-    );
-  }
-
-  // ── Status Card ────────────────────────────────────
-  Widget _buildStatusCard() {
-    final isOnline = _apps.isNotEmpty && _error == null;
-    return Container(
-      margin: const EdgeInsets.fromLTRB(20, 12, 20, 0),
-      padding: const EdgeInsets.all(16),
-      decoration: BoxDecoration(
-        gradient: LinearGradient(
-          colors: isOnline
-              ? [const Color(0xFF1A2332), const Color(0xFF0D1B2A)]
-              : [const Color(0xFF2A1A1A), const Color(0xFF1A0D0D)],
-          begin: Alignment.topLeft,
-          end: Alignment.bottomRight,
-        ),
-        borderRadius: BorderRadius.circular(18),
-        border: Border.all(
-          color: isOnline
-              ? const Color(0xFF00BCD4).withOpacity(0.2)
-              : Colors.red.withOpacity(0.2),
-        ),
-        boxShadow: [
-          BoxShadow(
-            color: (isOnline ? const Color(0xFF00BCD4) : Colors.red)
-                .withOpacity(0.08),
-            blurRadius: 20,
-            offset: const Offset(0, 8),
-          ),
-        ],
-      ),
-      child: Column(
-        children: [
-          Row(
-            children: [
-              Container(
-                padding: const EdgeInsets.all(10),
-                decoration: BoxDecoration(
-                  color: (isOnline ? const Color(0xFF00BCD4) : Colors.red)
-                      .withOpacity(0.15),
-                  borderRadius: BorderRadius.circular(12),
-                ),
-                child: Icon(
-                  isOnline ? Icons.cloud_done : Icons.cloud_off,
-                  color: isOnline ? const Color(0xFF00BCD4) : Colors.red,
-                  size: 26,
-                ),
-              ),
-              const SizedBox(width: 14),
-              Expanded(
-                child: Column(
-                  crossAxisAlignment: CrossAxisAlignment.start,
-                  children: [
-                    Text(
-                      isOnline ? 'OTP24 พร้อมใช้งาน' : 'ไม่สามารถเชื่อมต่อได้',
-                      style: const TextStyle(
-                        color: Colors.white,
-                        fontSize: 15,
-                        fontWeight: FontWeight.w700,
-                      ),
-                    ),
-                    const SizedBox(height: 3),
-                    Text(
-                      isOnline
-                          ? '${_plan?.toUpperCase()} • ${_apps.length} แอพ • ${_fmtDate(_updatedAt)}'
-                          : _error ?? '',
-                      style: TextStyle(
-                        color: Colors.white.withOpacity(0.5),
-                        fontSize: 11,
-                      ),
-                    ),
-                  ],
-                ),
-              ),
-            ],
-          ),
-          if (isOnline) ...[
-            const SizedBox(height: 14),
-            // Progress bar
-            ClipRRect(
-              borderRadius: BorderRadius.circular(4),
-              child: LinearProgressIndicator(
-                value: _dailyLimit > 0 ? _usedToday / _dailyLimit : 0,
-                backgroundColor: Colors.white.withOpacity(0.08),
-                valueColor: AlwaysStoppedAnimation(
-                  _usedToday >= _dailyLimit
-                      ? Colors.red
-                      : const Color(0xFF00BCD4),
-                ),
-                minHeight: 4,
-              ),
-            ),
-            const SizedBox(height: 6),
-            Text(
-              'ใช้ไป: $_usedToday / $_dailyLimit ครั้ง',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
-                fontSize: 11,
-              ),
-            ),
-          ],
         ],
       ),
     );
@@ -465,81 +451,73 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
   Widget _buildCategorySection(
       String category, List<Map<String, dynamic>> apps) {
     final displayNames = {
-      'streaming': '🎬 สตรีมมิ่ง',
-      'social': '👥 โซเชียล',
-      'music': '🎵 เพลง',
-      'tools': '🛠 เครื่องมือ',
-      'education': '📚 การศึกษา',
-      'design': '🎨 ดีไซน์',
-      'ai': '🤖 AI',
-      'vpn': '🔒 VPN',
-    };
-    final categoryColors = {
-      'streaming': Colors.red,
-      'social': Colors.blue,
-      'music': Colors.green,
-      'tools': Colors.orange,
-      'education': Colors.purple,
-      'design': Colors.pink,
-      'ai': Colors.teal,
-      'vpn': Colors.indigo,
+      'streaming': 'Streaming',
+      'social': 'Social',
+      'music': 'Music',
+      'tools': 'Tools',
+      'education': 'Education',
+      'design': 'Design',
+      'ai': 'AI',
+      'vpn': 'VPN',
     };
 
-    final displayName =
-        displayNames[category.toLowerCase()] ?? '📦 $category';
-    final color = categoryColors[category.toLowerCase()] ?? Colors.grey;
+    final categoryIcons = {
+      'streaming': Icons.play_circle_outline,
+      'social': Icons.people_outline,
+      'music': Icons.music_note_outlined,
+      'tools': Icons.build_outlined,
+      'education': Icons.school_outlined,
+      'design': Icons.palette_outlined,
+      'ai': Icons.auto_awesome_outlined,
+      'vpn': Icons.lock_outline,
+    };
+
+    final displayName = displayNames[category.toLowerCase()] ?? category;
+    final icon = categoryIcons[category.toLowerCase()] ?? Icons.apps;
 
     return Padding(
-      padding: const EdgeInsets.fromLTRB(20, 20, 20, 0),
+      padding: EdgeInsets.fromLTRB(_hzMargin, 24, _hzMargin, 0),
       child: Column(
         crossAxisAlignment: CrossAxisAlignment.start,
         children: [
           // Category Header
-          Container(
-            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 8),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.08),
-              borderRadius: BorderRadius.circular(10),
-              border: Border.all(color: color.withOpacity(0.15)),
-            ),
-            child: Row(
-              mainAxisSize: MainAxisSize.min,
-              children: [
-                Text(
-                  displayName,
-                  style: const TextStyle(
-                    fontSize: 13,
-                    fontWeight: FontWeight.w600,
-                    color: Colors.white,
-                  ),
+          Row(
+            children: [
+              Icon(icon, color: _primaryColor, size: 20),
+              const SizedBox(width: 8),
+              Text(
+                displayName,
+                style: GoogleFonts.nunito(
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
+                  color: _textColor,
                 ),
-                const SizedBox(width: 8),
-                Container(
-                  padding:
-                      const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
-                  decoration: BoxDecoration(
-                    color: color.withOpacity(0.2),
-                    borderRadius: BorderRadius.circular(10),
-                  ),
-                  child: Text(
-                    '${apps.length}',
-                    style: TextStyle(
-                        fontSize: 11,
-                        color: color,
-                        fontWeight: FontWeight.bold),
-                  ),
+              ),
+              const SizedBox(width: 8),
+              Container(
+                padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 2),
+                decoration: BoxDecoration(
+                  color: _primaryColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(10),
                 ),
-              ],
-            ),
+                child: Text(
+                  '${apps.length}',
+                  style: GoogleFonts.nunito(
+                      fontSize: 11,
+                      color: _primaryColor,
+                      fontWeight: FontWeight.w800),
+                ),
+              ),
+            ],
           ),
-          const SizedBox(height: 12),
-          // App Grid
+          const SizedBox(height: 14),
+          // App Grid — 2 columns like ui2
           GridView.builder(
             shrinkWrap: true,
             physics: const NeverScrollableScrollPhysics(),
             gridDelegate: const SliverGridDelegateWithFixedCrossAxisCount(
-              crossAxisCount: 4,
-              childAspectRatio: 0.75,
+              crossAxisCount: 2,
+              childAspectRatio: 2.8,
               crossAxisSpacing: 12,
               mainAxisSpacing: 12,
             ),
@@ -564,8 +542,8 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
         if (locked) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(
-              content: Text('🔒 ${app['requirement'] ?? "Premium only"}'),
-              backgroundColor: Colors.orange[800],
+              content: Text(app['requirement'] ?? 'Premium only'),
+              backgroundColor: Colors.orange[700],
               behavior: SnackBarBehavior.floating,
               shape: RoundedRectangleBorder(
                   borderRadius: BorderRadius.circular(10)),
@@ -586,102 +564,79 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
         }
       },
       child: Opacity(
-        opacity: locked ? 0.4 : 1.0,
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
-          children: [
-            Stack(
-              children: [
-                Container(
-                  width: 56,
-                  height: 56,
-                  decoration: BoxDecoration(
-                    color: const Color(0xFF1A1F2E),
-                    borderRadius: BorderRadius.circular(16),
-                    border: Border.all(
-                      color: hasCachedCookie
-                          ? const Color(0xFF4CAF50).withOpacity(0.4)
-                          : Colors.white.withOpacity(0.06),
-                    ),
-                    boxShadow: [
-                      if (hasCachedCookie)
-                        BoxShadow(
-                          color: const Color(0xFF4CAF50).withOpacity(0.15),
-                          blurRadius: 8,
-                          offset: const Offset(0, 2),
-                        ),
-                    ],
-                  ),
-                  clipBehavior: Clip.antiAlias,
-                  child: icon.isNotEmpty
-                      ? CachedNetworkImage(
-                          imageUrl: icon,
-                          width: 56,
-                          height: 56,
-                          fit: BoxFit.cover,
-                          errorWidget: (_, __, ___) => const Icon(
-                              Icons.apps,
-                              size: 28,
-                              color: Colors.grey),
-                        )
-                      : const Icon(Icons.apps,
-                          size: 28, color: Colors.grey),
-                ),
-                if (locked)
-                  Positioned(
-                    right: 0,
-                    top: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: Colors.orange,
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color: Colors.orange.withOpacity(0.4),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.lock,
-                          size: 8, color: Colors.white),
-                    ),
-                  ),
-                if (hasCachedCookie)
-                  Positioned(
-                    left: 0,
-                    bottom: 0,
-                    child: Container(
-                      padding: const EdgeInsets.all(3),
-                      decoration: BoxDecoration(
-                        color: const Color(0xFF4CAF50),
-                        shape: BoxShape.circle,
-                        boxShadow: [
-                          BoxShadow(
-                            color:
-                                const Color(0xFF4CAF50).withOpacity(0.4),
-                            blurRadius: 6,
-                          ),
-                        ],
-                      ),
-                      child: const Icon(Icons.check,
-                          size: 8, color: Colors.white),
-                    ),
-                  ),
-              ],
-            ),
-            const SizedBox(height: 6),
-            Text(
-              name,
-              style: TextStyle(
-                fontSize: 10,
-                color: Colors.white.withOpacity(0.7),
+        opacity: locked ? 0.5 : 1.0,
+        child: Container(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(14),
+            border: hasCachedCookie
+                ? Border.all(color: _successColor.withOpacity(0.3))
+                : null,
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.04),
+                blurRadius: 8,
+                offset: const Offset(0, 3),
               ),
-              maxLines: 1,
-              overflow: TextOverflow.ellipsis,
-              textAlign: TextAlign.center,
-            ),
-          ],
+            ],
+          ),
+          child: Row(
+            children: [
+              // App icon
+              Container(
+                width: 40,
+                height: 40,
+                decoration: BoxDecoration(
+                  color: _bgColor,
+                  borderRadius: BorderRadius.circular(12),
+                ),
+                clipBehavior: Clip.antiAlias,
+                child: icon.isNotEmpty
+                    ? CachedNetworkImage(
+                        imageUrl: icon,
+                        width: 40,
+                        height: 40,
+                        fit: BoxFit.cover,
+                        errorWidget: (_, __, ___) => Icon(
+                            Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
+                      )
+                    : Icon(Icons.apps, size: 22, color: _textColor.withOpacity(0.3)),
+              ),
+              const SizedBox(width: 10),
+              Expanded(
+                child: Column(
+                  mainAxisAlignment: MainAxisAlignment.center,
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      name,
+                      style: GoogleFonts.nunito(
+                        fontSize: 13,
+                        fontWeight: FontWeight.w700,
+                        color: _textColor,
+                      ),
+                      maxLines: 1,
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                    if (hasCachedCookie)
+                      Text(
+                        'Cached',
+                        style: GoogleFonts.nunito(
+                          fontSize: 10,
+                          color: _successColor,
+                          fontWeight: FontWeight.w600,
+                        ),
+                      ),
+                  ],
+                ),
+              ),
+              if (locked)
+                Icon(Icons.lock_outline, size: 16, color: Colors.orange[400]),
+              if (hasCachedCookie && !locked)
+                Icon(Icons.check_circle, size: 16, color: _successColor),
+            ],
+          ),
         ),
       ),
     );
@@ -695,23 +650,23 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
         child: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
-            Icon(Icons.cloud_off,
-                size: 64, color: Colors.white.withOpacity(0.15)),
+            Icon(Icons.cloud_off_outlined,
+                size: 64, color: _textColor.withOpacity(0.15)),
             const SizedBox(height: 20),
-            const Text(
-              'ไม่สามารถเชื่อมต่อ OTP24 ได้',
-              style: TextStyle(
+            Text(
+              'Connection Error',
+              style: GoogleFonts.nunito(
                 fontSize: 18,
-                fontWeight: FontWeight.bold,
-                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                color: _textColor,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               _error ?? '',
-              style: TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
-                color: Colors.white.withOpacity(0.4),
+                color: _textColor.withOpacity(0.4),
               ),
               textAlign: TextAlign.center,
             ),
@@ -719,12 +674,11 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen>
             ElevatedButton.icon(
               onPressed: _fetchAll,
               icon: const Icon(Icons.refresh),
-              label: const Text('ลองอีกครั้ง'),
+              label: const Text('Try Again'),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5722),
+                backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,
-                padding:
-                    const EdgeInsets.symmetric(vertical: 14, horizontal: 32),
+                padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
               ),
@@ -750,10 +704,15 @@ class _LoadingView extends StatelessWidget {
             width: 64,
             height: 64,
             decoration: BoxDecoration(
-              gradient: const LinearGradient(
-                colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
-              ),
+              color: const Color(0xFFEF5388),
               borderRadius: BorderRadius.circular(20),
+              boxShadow: [
+                BoxShadow(
+                  color: const Color(0xFFEF5388).withOpacity(0.25),
+                  blurRadius: 20,
+                  offset: const Offset(0, 8),
+                ),
+              ],
             ),
             child: const Center(
               child: Icon(Icons.local_fire_department,
@@ -761,22 +720,22 @@ class _LoadingView extends StatelessWidget {
             ),
           ),
           const SizedBox(height: 24),
-          const Text(
-            'SECURE INITIALIZING...',
-            style: TextStyle(
-              color: Color(0xFFFF5722),
-              fontSize: 12,
-              letterSpacing: 2,
-              fontWeight: FontWeight.w600,
+          Text(
+            'Loading...',
+            style: GoogleFonts.nunito(
+              color: const Color(0xFFEF5388),
+              fontSize: 14,
+              letterSpacing: 1,
+              fontWeight: FontWeight.w700,
             ),
           ),
           const SizedBox(height: 16),
           SizedBox(
             width: 120,
             child: LinearProgressIndicator(
-              backgroundColor: Colors.white.withOpacity(0.05),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFFF5722)),
-              minHeight: 2,
+              backgroundColor: const Color(0xFFEF5388).withOpacity(0.1),
+              valueColor: const AlwaysStoppedAnimation(Color(0xFFEF5388)),
+              minHeight: 3,
             ),
           ),
         ],

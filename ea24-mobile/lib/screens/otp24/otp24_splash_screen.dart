@@ -1,8 +1,9 @@
 import 'dart:async';
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'otp24_home_screen.dart';
 
-/// OTP24 Splash Screen — premium loading animation
+/// OTP24 Splash Screen — clean Elite Quiz-inspired design
 class OTP24SplashScreen extends StatefulWidget {
   const OTP24SplashScreen({super.key});
 
@@ -13,49 +14,40 @@ class OTP24SplashScreen extends StatefulWidget {
 class _OTP24SplashScreenState extends State<OTP24SplashScreen>
     with TickerProviderStateMixin {
   late AnimationController _logoController;
-  late AnimationController _ringController;
-  late AnimationController _textController;
-  late Animation<double> _logoScale;
-  late Animation<double> _ringRotation;
-  late Animation<double> _textOpacity;
+  late Animation<double> _logoScaleUp;
+  late Animation<double> _logoScaleDown;
 
   @override
   void initState() {
     super.initState();
 
-    // Logo scale — simple tween with elasticOut (no TweenSequence)
     _logoController = AnimationController(
       vsync: this,
-      duration: const Duration(milliseconds: 900),
+      duration: const Duration(milliseconds: 700),
+    )..addListener(() {
+        if (_logoController.isCompleted) {
+          _navigateToHome();
+        }
+      });
+
+    _logoScaleUp = Tween<double>(begin: 0, end: 1.1).animate(
+      CurvedAnimation(
+        parent: _logoController,
+        curve: const Interval(0, 0.4, curve: Curves.ease),
+      ),
     );
-    _logoScale = Tween<double>(begin: 0.0, end: 1.0).animate(
-      CurvedAnimation(parent: _logoController, curve: Curves.elasticOut),
+    _logoScaleDown = Tween<double>(begin: 0, end: 0.1).animate(
+      CurvedAnimation(
+        parent: _logoController,
+        curve: const Interval(0.4, 1, curve: Curves.easeInOut),
+      ),
     );
 
-    // Ring spin
-    _ringController = AnimationController(
-      vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
-    _ringRotation = Tween<double>(begin: 0, end: 6.28).animate(_ringController);
-
-    // Text fade in
-    _textController = AnimationController(
-      vsync: this,
-      duration: const Duration(milliseconds: 600),
-    );
-    _textOpacity = Tween<double>(begin: 0, end: 1).animate(
-      CurvedAnimation(parent: _textController, curve: Curves.easeIn),
-    );
-
-    // Start sequence
     _logoController.forward();
-    Timer(const Duration(milliseconds: 500), () {
-      if (mounted) _textController.forward();
-    });
+  }
 
-    // Navigate after delay
-    Timer(const Duration(milliseconds: 2200), () {
+  void _navigateToHome() {
+    Timer(const Duration(milliseconds: 800), () {
       if (mounted) {
         Navigator.of(context).pushReplacement(
           MaterialPageRoute(builder: (_) => const OTP24HomeScreen()),
@@ -67,130 +59,73 @@ class _OTP24SplashScreenState extends State<OTP24SplashScreen>
   @override
   void dispose() {
     _logoController.dispose();
-    _ringController.dispose();
-    _textController.dispose();
     super.dispose();
   }
 
   @override
   Widget build(BuildContext context) {
+    const primaryColor = Color(0xFFEF5388);
+
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
-      body: Center(
-        child: Column(
-          mainAxisSize: MainAxisSize.min,
+      backgroundColor: primaryColor,
+      body: SizedBox.expand(
+        child: Stack(
           children: [
-            // Animated logo with ring
-            SizedBox(
-              width: 160,
-              height: 160,
-              child: Stack(
-                alignment: Alignment.center,
-                children: [
-                  // Outer spinning ring
-                  AnimatedBuilder(
-                    animation: _ringRotation,
-                    builder: (_, child) => Transform.rotate(
-                      angle: _ringRotation.value,
-                      child: child,
-                    ),
-                    child: Container(
-                      width: 140,
-                      height: 140,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFF5722).withValues(alpha: 0.15),
-                          width: 2,
-                        ),
-                        gradient: SweepGradient(
-                          colors: [
-                            Colors.transparent,
-                            const Color(0xFFFF5722).withValues(alpha: 0.4),
-                            Colors.transparent,
+            // Logo — center bounce animation
+            Align(
+              child: AnimatedBuilder(
+                animation: _logoController,
+                builder: (_, __) => Transform.scale(
+                  scale: _logoScaleUp.value - _logoScaleDown.value,
+                  child: Column(
+                    mainAxisSize: MainAxisSize.min,
+                    children: [
+                      // Logo container
+                      Container(
+                        width: 100,
+                        height: 100,
+                        decoration: BoxDecoration(
+                          color: Colors.white,
+                          borderRadius: BorderRadius.circular(28),
+                          boxShadow: [
+                            BoxShadow(
+                              color: Colors.black.withOpacity(0.15),
+                              blurRadius: 30,
+                              offset: const Offset(0, 10),
+                            ),
                           ],
                         ),
-                      ),
-                    ),
-                  ),
-                  // Inner spinning ring
-                  AnimatedBuilder(
-                    animation: _ringRotation,
-                    builder: (_, child) => Transform.rotate(
-                      angle: -_ringRotation.value * 0.7,
-                      child: child,
-                    ),
-                    child: Container(
-                      width: 120,
-                      height: 120,
-                      decoration: BoxDecoration(
-                        shape: BoxShape.circle,
-                        border: Border.all(
-                          color: const Color(0xFFFF9800).withValues(alpha: 0.1),
-                          width: 1.5,
-                        ),
-                      ),
-                    ),
-                  ),
-                  // Logo
-                  ScaleTransition(
-                    scale: _logoScale,
-                    child: Container(
-                      width: 80,
-                      height: 80,
-                      decoration: BoxDecoration(
-                        gradient: const LinearGradient(
-                          colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
-                          begin: Alignment.topLeft,
-                          end: Alignment.bottomRight,
-                        ),
-                        borderRadius: BorderRadius.circular(24),
-                        boxShadow: [
-                          BoxShadow(
-                            color: const Color(0xFFFF5722).withValues(alpha: 0.5),
-                            blurRadius: 30,
-                            offset: const Offset(0, 8),
+                        child: const Center(
+                          child: Icon(
+                            Icons.local_fire_department,
+                            color: primaryColor,
+                            size: 52,
                           ),
-                        ],
-                      ),
-                      child: const Center(
-                        child: Icon(
-                          Icons.local_fire_department,
-                          color: Colors.white,
-                          size: 42,
                         ),
                       ),
-                    ),
+                      const SizedBox(height: 24),
+                      Text(
+                        'OTP24HR',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white,
+                          fontSize: 28,
+                          fontWeight: FontWeight.w900,
+                          letterSpacing: 2,
+                        ),
+                      ),
+                      const SizedBox(height: 4),
+                      Text(
+                        'HUB',
+                        style: GoogleFonts.nunito(
+                          color: Colors.white.withOpacity(0.7),
+                          fontSize: 14,
+                          fontWeight: FontWeight.w600,
+                          letterSpacing: 6,
+                        ),
+                      ),
+                    ],
                   ),
-                ],
-              ),
-            ),
-            const SizedBox(height: 36),
-            // Title
-            FadeTransition(
-              opacity: _textOpacity,
-              child: Column(
-                children: [
-                  const Text(
-                    'OTP24HR HUB',
-                    style: TextStyle(
-                      color: Color(0xFFFF5722),
-                      fontSize: 24,
-                      fontWeight: FontWeight.w900,
-                      letterSpacing: 3,
-                    ),
-                  ),
-                  const SizedBox(height: 8),
-                  Text(
-                    'SYSTEM SECURE PROCESSING...',
-                    style: TextStyle(
-                      color: Colors.white.withValues(alpha: 0.35),
-                      fontSize: 11,
-                      fontWeight: FontWeight.w500,
-                      letterSpacing: 3,
-                    ),
-                  ),
-                ],
+                ),
               ),
             ),
           ],

@@ -1,6 +1,8 @@
 import 'package:flutter/material.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'otp24_service.dart';
 
+/// OTP24 Settings Screen — Elite Quiz-inspired clean design
 class OTP24SettingsScreen extends StatefulWidget {
   const OTP24SettingsScreen({super.key});
 
@@ -14,6 +16,11 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
   final _serverIpController = TextEditingController();
   bool _isLoading = false;
   bool _isSavingIp = false;
+
+  static const _primaryColor = Color(0xFFEF5388);
+  static const _textColor = Color(0xFF45536D);
+  static const _cardColor = Colors.white;
+  static const _successColor = Color(0xFF5DB760);
 
   @override
   void initState() {
@@ -46,12 +53,15 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
       setState(() { _isSavingIp = false; });
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
-          content: Text(ip.isEmpty
-              ? 'รีเซ็ตกลับเป็น localhost:4173'
-              : 'บันทึก Server IP: $ip สำเร็จ'),
-          backgroundColor: Colors.green,
+          content: Text(
+            ip.isEmpty
+                ? 'Reset to localhost:4173'
+                : 'Server IP saved: $ip',
+            style: GoogleFonts.nunito(),
+          ),
+          backgroundColor: _successColor,
           behavior: SnackBarBehavior.floating,
-          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(10)),
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
         ),
       );
       Navigator.pop(context, true);
@@ -64,35 +74,43 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
 
     if (deviceId.isEmpty && licenseKey.isEmpty) {
       ScaffoldMessenger.of(context).showSnackBar(
-        const SnackBar(content: Text('กรุณากรอกข้อมูลอย่างน้อย 1 ช่อง')),
+        SnackBar(
+          content: Text('Please fill at least one field',
+              style: GoogleFonts.nunito()),
+          backgroundColor: Colors.orange,
+          behavior: SnackBarBehavior.floating,
+          shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
+        ),
       );
       return;
     }
 
-    setState(() {
-      _isLoading = true;
-    });
+    setState(() { _isLoading = true; });
 
     final result = await OTP24Service.updateAdminSettings(deviceId, licenseKey);
 
     if (mounted) {
-      setState(() {
-        _isLoading = false;
-      });
+      setState(() { _isLoading = false; });
 
       if (result['status'] == 'success') {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'บันทึกสำเร็จ'),
-            backgroundColor: Colors.green,
+            content: Text(result['message'] ?? 'Saved successfully',
+                style: GoogleFonts.nunito()),
+            backgroundColor: _successColor,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
-        Navigator.pop(context, true); // Return true to indicate success/refresh needed
+        Navigator.pop(context, true);
       } else {
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text(result['message'] ?? 'เกิดข้อผิดพลาด'),
+            content: Text(result['message'] ?? 'Error occurred',
+                style: GoogleFonts.nunito()),
             backgroundColor: Colors.red,
+            behavior: SnackBarBehavior.floating,
+            shape: RoundedRectangleBorder(borderRadius: BorderRadius.circular(12)),
           ),
         );
       }
@@ -102,140 +120,82 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: const Color(0xFFF3F7FA),
       appBar: AppBar(
         backgroundColor: Colors.transparent,
         elevation: 0,
-        title: const Text(
-          'ตั้งค่า',
-          style: TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+        leading: _buildBackButton(),
+        title: Text(
+          'Settings',
+          style: GoogleFonts.nunito(
+            color: _textColor,
+            fontSize: 20,
+            fontWeight: FontWeight.w800,
           ),
         ),
-        iconTheme: const IconThemeData(color: Colors.white),
       ),
       body: SingleChildScrollView(
-        padding: const EdgeInsets.all(20.0),
+        padding: const EdgeInsets.all(20),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.start,
           children: [
-            // ─── Section 1: Server IP ───────────────────
-            _buildSectionHeader(
-              icon: Icons.dns_rounded,
-              title: 'Server IP',
-              subtitle: 'กรอก IP ของเซิร์ฟเวอร์ EA-24 (เช่น 192.168.1.100:4173)',
-              color: const Color(0xFF00BCD4),
-            ),
-            const SizedBox(height: 12),
-            _buildTextField(
-              controller: _serverIpController,
-              label: 'Server IP',
-              hint: 'เช่น 192.168.1.100:4173 หรือ http://35.201.156.240:4173',
-              icon: Icons.language,
-            ),
-            const SizedBox(height: 12),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isSavingIp ? null : _saveServerIp,
-                icon: _isSavingIp
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.save_rounded, size: 20),
-                label: Text(
-                  _isSavingIp ? 'กำลังบันทึก...' : 'บันทึก Server IP',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+            // ─── Section 1: Server IP ───────────────
+            _buildSectionCard(
+              icon: Icons.dns_outlined,
+              iconColor: _primaryColor,
+              title: 'Server Connection',
+              subtitle: 'Configure EA-24 Server IP address',
+              children: [
+                _buildInput(
+                  controller: _serverIpController,
+                  label: 'Server IP',
+                  hint: 'e.g. 192.168.1.100:4173',
+                  icon: Icons.language_outlined,
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFF00BCD4),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                const SizedBox(height: 16),
+                _buildButton(
+                  text: 'Save Server IP',
+                  icon: Icons.save_outlined,
+                  isLoading: _isSavingIp,
+                  color: _primaryColor,
+                  onTap: _isSavingIp ? null : _saveServerIp,
                 ),
-              ),
+              ],
             ),
 
-            const SizedBox(height: 32),
-            // Divider
-            Container(
-              height: 1,
-              decoration: BoxDecoration(
-                gradient: LinearGradient(
-                  colors: [
-                    Colors.transparent,
-                    Colors.white.withOpacity(0.1),
-                    Colors.transparent,
-                  ],
-                ),
-              ),
-            ),
-            const SizedBox(height: 32),
-
-            // ─── Section 2: Admin Settings ──────────────
-            _buildSectionHeader(
-              icon: Icons.admin_panel_settings,
-              title: 'ตั้งค่าขั้นสูง (Admin)',
-              subtitle: 'ฟังก์ชันนี้จะเขียนทับฐานข้อมูลเซิร์ฟเวอร์โดยตรง',
-              color: const Color(0xFFFF5E13),
-            ),
-            const SizedBox(height: 12),
-            _buildTextField(
-              controller: _deviceIdController,
-              label: 'Device ID',
-              hint: 'กรอก Device ID ปลายทาง (เว้นว่างหากไม่ต้องการแก้)',
-              icon: Icons.devices,
-            ),
-            const SizedBox(height: 16),
-            _buildTextField(
-              controller: _licenseKeyController,
-              label: 'License Key',
-              hint: 'กรอก License Key ปลายทาง (เว้นว่างหากไม่ต้องการแก้)',
-              icon: Icons.key,
-            ),
             const SizedBox(height: 20),
-            SizedBox(
-              width: double.infinity,
-              height: 48,
-              child: ElevatedButton.icon(
-                onPressed: _isLoading ? null : _saveSettings,
-                icon: _isLoading
-                    ? const SizedBox(
-                        width: 18,
-                        height: 18,
-                        child: CircularProgressIndicator(
-                          color: Colors.white,
-                          strokeWidth: 2,
-                        ),
-                      )
-                    : const Icon(Icons.upload_rounded, size: 20),
-                label: Text(
-                  _isLoading ? 'กำลังบันทึก...' : 'บันทึกลงฐานข้อมูล',
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontSize: 14,
-                    fontWeight: FontWeight.bold,
-                  ),
+
+            // ─── Section 2: Admin ───────────────────
+            _buildSectionCard(
+              icon: Icons.admin_panel_settings_outlined,
+              iconColor: Colors.orange[700]!,
+              title: 'Admin Settings',
+              subtitle: 'Force update server database directly',
+              children: [
+                _buildInput(
+                  controller: _deviceIdController,
+                  label: 'Device ID',
+                  hint: 'Enter target device ID',
+                  icon: Icons.devices_outlined,
                 ),
-                style: ElevatedButton.styleFrom(
-                  backgroundColor: const Color(0xFFFF5E13),
-                  shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(12),
-                  ),
+                const SizedBox(height: 14),
+                _buildInput(
+                  controller: _licenseKeyController,
+                  label: 'License Key',
+                  hint: 'Enter target license key',
+                  icon: Icons.key_outlined,
                 ),
-              ),
+                const SizedBox(height: 16),
+                _buildButton(
+                  text: 'Save to Database',
+                  icon: Icons.upload_outlined,
+                  isLoading: _isLoading,
+                  color: Colors.orange[700]!,
+                  onTap: _isLoading ? null : _saveSettings,
+                ),
+              ],
             ),
+
             const SizedBox(height: 40),
           ],
         ),
@@ -243,59 +203,102 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
     );
   }
 
-  Widget _buildSectionHeader({
+  // ── Back Button (ui2 style) ────────────────────────
+  Widget _buildBackButton() {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Icon(Icons.arrow_back_ios_new, size: 16, color: _textColor),
+          ),
+        ),
+      ),
+    );
+  }
+
+  // ── Section Card ───────────────────────────────────
+  Widget _buildSectionCard({
     required IconData icon,
+    required Color iconColor,
     required String title,
     required String subtitle,
-    required Color color,
+    required List<Widget> children,
   }) {
     return Container(
-      padding: const EdgeInsets.all(16),
+      padding: const EdgeInsets.all(20),
       decoration: BoxDecoration(
-        color: color.withOpacity(0.08),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: color.withOpacity(0.2)),
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(20),
+        boxShadow: [
+          BoxShadow(
+            color: iconColor.withOpacity(0.08),
+            blurRadius: 20,
+            offset: const Offset(0, 8),
+          ),
+        ],
       ),
-      child: Row(
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
         children: [
-          Container(
-            padding: const EdgeInsets.all(10),
-            decoration: BoxDecoration(
-              color: color.withOpacity(0.15),
-              borderRadius: BorderRadius.circular(10),
-            ),
-            child: Icon(icon, color: color, size: 22),
-          ),
-          const SizedBox(width: 14),
-          Expanded(
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text(
-                  title,
-                  style: const TextStyle(
-                    color: Colors.white,
-                    fontWeight: FontWeight.bold,
-                    fontSize: 15,
-                  ),
+          // Header
+          Row(
+            children: [
+              Container(
+                padding: const EdgeInsets.all(12),
+                decoration: BoxDecoration(
+                  color: iconColor.withOpacity(0.1),
+                  borderRadius: BorderRadius.circular(14),
                 ),
-                const SizedBox(height: 2),
-                Text(
-                  subtitle,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
-                    fontSize: 11,
-                  ),
+                child: Icon(icon, color: iconColor, size: 24),
+              ),
+              const SizedBox(width: 14),
+              Expanded(
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
+                  children: [
+                    Text(
+                      title,
+                      style: GoogleFonts.nunito(
+                        color: _textColor,
+                        fontWeight: FontWeight.w800,
+                        fontSize: 16,
+                      ),
+                    ),
+                    const SizedBox(height: 2),
+                    Text(
+                      subtitle,
+                      style: GoogleFonts.nunito(
+                        color: _textColor.withOpacity(0.4),
+                        fontSize: 12,
+                      ),
+                    ),
+                  ],
                 ),
-              ],
-            ),
+              ),
+            ],
           ),
+          const SizedBox(height: 20),
+          ...children,
         ],
       ),
     );
   }
 
-  Widget _buildTextField({
+  // ── Input Field ────────────────────────────────────
+  Widget _buildInput({
     required TextEditingController controller,
     required String label,
     required String hint,
@@ -306,36 +309,82 @@ class _OTP24SettingsScreenState extends State<OTP24SettingsScreen> {
       children: [
         Text(
           label,
-          style: const TextStyle(
-            color: Colors.white,
-            fontWeight: FontWeight.bold,
+          style: GoogleFonts.nunito(
+            color: _textColor,
+            fontWeight: FontWeight.w700,
+            fontSize: 13,
           ),
         ),
         const SizedBox(height: 8),
         TextField(
           controller: controller,
-          style: const TextStyle(color: Colors.white),
+          style: GoogleFonts.nunito(color: _textColor, fontSize: 14),
           decoration: InputDecoration(
             hintText: hint,
-            hintStyle: TextStyle(color: Colors.white.withOpacity(0.3)),
-            prefixIcon: Icon(icon, color: Colors.white54),
+            hintStyle: GoogleFonts.nunito(
+                color: _textColor.withOpacity(0.3), fontSize: 13),
+            prefixIcon: Icon(icon, color: _textColor.withOpacity(0.3), size: 20),
             filled: true,
-            fillColor: Colors.white.withOpacity(0.05),
+            fillColor: const Color(0xFFF3F7FA),
+            contentPadding: const EdgeInsets.symmetric(
+                horizontal: 16, vertical: 14),
             border: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
             ),
             enabledBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: BorderSide(color: Colors.white.withOpacity(0.1)),
+              borderRadius: BorderRadius.circular(14),
+              borderSide: BorderSide.none,
             ),
             focusedBorder: OutlineInputBorder(
-              borderRadius: BorderRadius.circular(12),
-              borderSide: const BorderSide(color: Color(0xFFFF5E13)),
+              borderRadius: BorderRadius.circular(14),
+              borderSide: const BorderSide(color: _primaryColor, width: 1.5),
             ),
           ),
         ),
       ],
+    );
+  }
+
+  // ── Button ─────────────────────────────────────────
+  Widget _buildButton({
+    required String text,
+    required IconData icon,
+    required bool isLoading,
+    required Color color,
+    VoidCallback? onTap,
+  }) {
+    return SizedBox(
+      width: double.infinity,
+      height: 50,
+      child: ElevatedButton(
+        onPressed: onTap,
+        style: ElevatedButton.styleFrom(
+          backgroundColor: color,
+          foregroundColor: Colors.white,
+          elevation: 0,
+          shape: RoundedRectangleBorder(
+            borderRadius: BorderRadius.circular(14),
+          ),
+        ),
+        child: isLoading
+            ? const SizedBox(
+                width: 20,
+                height: 20,
+                child: CircularProgressIndicator(
+                    color: Colors.white, strokeWidth: 2),
+              )
+            : Row(
+                mainAxisAlignment: MainAxisAlignment.center,
+                children: [
+                  Icon(icon, size: 18),
+                  const SizedBox(width: 8),
+                  Text(text,
+                      style: GoogleFonts.nunito(
+                          fontWeight: FontWeight.w700, fontSize: 14)),
+                ],
+              ),
+      ),
     );
   }
 }

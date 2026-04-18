@@ -1,9 +1,10 @@
 import 'package:flutter/material.dart';
 import 'package:cached_network_image/cached_network_image.dart';
+import 'package:google_fonts/google_fonts.dart';
 import 'package:url_launcher/url_launcher.dart';
 import 'otp24_service.dart';
 
-/// OTP24 App Viewer — fetches nodes/cookies and opens in WebView or browser
+/// OTP24 App Viewer — Elite Quiz-inspired clean design
 class OTP24AppViewerScreen extends StatefulWidget {
   final int appId;
   final String appName;
@@ -25,26 +26,32 @@ class OTP24AppViewerScreen extends StatefulWidget {
 class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
     with TickerProviderStateMixin {
   bool _isLoading = true;
-  String _status = 'กำลังค้นหาเซิร์ฟเวอร์...';
+  String _status = 'Finding servers...';
   String? _error;
   Map<String, dynamic>? _selectedNode;
   Map<String, dynamic>? _cookieData;
 
-  late AnimationController _spinController;
+  late AnimationController _pulseController;
+
+  static const _primaryColor = Color(0xFFEF5388);
+  static const _textColor = Color(0xFF45536D);
+  static const _bgColor = Color(0xFFF3F7FA);
+  static const _cardColor = Colors.white;
+  static const _successColor = Color(0xFF5DB760);
 
   @override
   void initState() {
     super.initState();
-    _spinController = AnimationController(
+    _pulseController = AnimationController(
       vsync: this,
-      duration: const Duration(seconds: 2),
-    )..repeat();
+      duration: const Duration(milliseconds: 1200),
+    )..repeat(reverse: true);
     _autoFetch();
   }
 
   @override
   void dispose() {
-    _spinController.dispose();
+    _pulseController.dispose();
     super.dispose();
   }
 
@@ -52,11 +59,10 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
     setState(() {
       _isLoading = true;
       _error = null;
-      _status = 'กำลังค้นหาเซิร์ฟเวอร์...';
+      _status = 'Finding servers...';
     });
 
     try {
-      // 1. Fetch nodes
       final nodesResult = await OTP24Service.fetchNodes(widget.appId);
       List<Map<String, dynamic>> nodes = [];
 
@@ -65,29 +71,27 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
           nodesResult.where((e) => e is Map).map((e) => Map<String, dynamic>.from(e)),
         );
       } else if (nodesResult is Map && nodesResult['status'] == 'error') {
-        throw Exception(nodesResult['message']?.toString() ?? 'ดึงเซิร์ฟเวอร์ไม่ได้');
+        throw Exception(nodesResult['message']?.toString() ?? 'Failed to fetch servers');
       }
 
-      // Filter to working/accessible nodes
       final okNodes = nodes.where((n) =>
         (n['is_working'] == true || n['is_working'] == 1) &&
         (n['can_access'] == true || n['can_access'] == 1)
       ).toList();
 
-      if (okNodes.isEmpty) throw Exception('ไม่พบเซิร์ฟเวอร์ที่ใช้งานได้');
+      if (okNodes.isEmpty) throw Exception('No available servers found');
 
       setState(() {
         _selectedNode = okNodes.first;
-        _status = 'กำลังดึง Cookie...';
+        _status = 'Fetching cookie...';
       });
 
-      // 2. Fetch cookie from first working node
       final nodeId = (okNodes.first['id'] as num?)?.toInt() ?? 0;
       final cookieResult = await OTP24Service.fetchCookie(nodeId);
 
       if (cookieResult is Map<String, dynamic>) {
         if (cookieResult['status'] == 'error') {
-          throw Exception(cookieResult['message']?.toString() ?? 'ดึง Cookie ไม่สำเร็จ');
+          throw Exception(cookieResult['message']?.toString() ?? 'Failed to fetch cookie');
         }
         setState(() {
           _cookieData = cookieResult;
@@ -115,24 +119,20 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      backgroundColor: const Color(0xFF0A0E1A),
+      backgroundColor: _bgColor,
       appBar: AppBar(
-        backgroundColor: const Color(0xFF0F1422),
-        surfaceTintColor: Colors.transparent,
+        backgroundColor: Colors.transparent,
         elevation: 0,
-        leading: IconButton(
-          onPressed: () => Navigator.pop(context),
-          icon: const Icon(Icons.arrow_back_ios, color: Colors.white70, size: 20),
-        ),
+        leading: _buildBackButton(),
         title: Row(
           children: [
             if (widget.appIconUrl.isNotEmpty)
               ClipRRect(
-                borderRadius: BorderRadius.circular(8),
+                borderRadius: BorderRadius.circular(10),
                 child: CachedNetworkImage(
                   imageUrl: widget.appIconUrl,
-                  width: 28,
-                  height: 28,
+                  width: 30,
+                  height: 30,
                   fit: BoxFit.cover,
                   errorWidget: (_, __, ___) => const SizedBox(),
                 ),
@@ -141,10 +141,10 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
             Expanded(
               child: Text(
                 widget.appName,
-                style: const TextStyle(
-                  color: Colors.white,
-                  fontSize: 16,
-                  fontWeight: FontWeight.w700,
+                style: GoogleFonts.nunito(
+                  color: _textColor,
+                  fontSize: 18,
+                  fontWeight: FontWeight.w800,
                 ),
               ),
             ),
@@ -152,9 +152,28 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
         ),
         actions: [
           if (!_isLoading)
-            IconButton(
-              onPressed: _autoFetch,
-              icon: const Icon(Icons.refresh, color: Colors.white54),
+            Padding(
+              padding: const EdgeInsets.only(right: 12),
+              child: GestureDetector(
+                onTap: _autoFetch,
+                child: Container(
+                  width: 38,
+                  height: 38,
+                  decoration: BoxDecoration(
+                    color: _cardColor,
+                    borderRadius: BorderRadius.circular(12),
+                    boxShadow: [
+                      BoxShadow(
+                        color: Colors.black.withOpacity(0.06),
+                        blurRadius: 8,
+                        offset: const Offset(0, 2),
+                      ),
+                    ],
+                  ),
+                  child: Icon(Icons.refresh, size: 18,
+                      color: _textColor.withOpacity(0.5)),
+                ),
+              ),
             ),
         ],
       ),
@@ -166,71 +185,104 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
     );
   }
 
+  Widget _buildBackButton() {
+    return Padding(
+      padding: const EdgeInsets.all(8),
+      child: GestureDetector(
+        onTap: () => Navigator.pop(context),
+        child: Container(
+          decoration: BoxDecoration(
+            color: _cardColor,
+            borderRadius: BorderRadius.circular(12),
+            boxShadow: [
+              BoxShadow(
+                color: Colors.black.withOpacity(0.06),
+                blurRadius: 8,
+                offset: const Offset(0, 2),
+              ),
+            ],
+          ),
+          child: const Center(
+            child: Icon(Icons.arrow_back_ios_new, size: 16, color: _textColor),
+          ),
+        ),
+      ),
+    );
+  }
+
   Widget _buildLoadingView() {
     return Center(
       child: Column(
         mainAxisSize: MainAxisSize.min,
         children: [
-          // Spinning logo
+          // Pulsing icon
           AnimatedBuilder(
-            animation: _spinController,
-            builder: (_, child) => Transform.rotate(
-              angle: _spinController.value * 6.28,
-              child: child,
+            animation: _pulseController,
+            builder: (_, child) => Transform.scale(
+              scale: 0.9 + (_pulseController.value * 0.15),
+              child: Opacity(
+                opacity: 0.6 + (_pulseController.value * 0.4),
+                child: child,
+              ),
             ),
             child: Container(
               width: 80,
               height: 80,
               decoration: BoxDecoration(
-                gradient: const LinearGradient(
-                  colors: [Color(0xFFFF5722), Color(0xFFFF9800)],
-                ),
                 borderRadius: BorderRadius.circular(24),
                 boxShadow: [
                   BoxShadow(
-                    color: const Color(0xFFFF5722).withOpacity(0.3),
-                    blurRadius: 20,
+                    color: _primaryColor.withOpacity(0.2),
+                    blurRadius: 24,
                     offset: const Offset(0, 8),
                   ),
                 ],
               ),
+              clipBehavior: Clip.antiAlias,
               child: widget.appIconUrl.isNotEmpty
-                  ? ClipRRect(
-                      borderRadius: BorderRadius.circular(24),
-                      child: CachedNetworkImage(
-                        imageUrl: widget.appIconUrl,
-                        fit: BoxFit.cover,
-                        errorWidget: (_, __, ___) => const Icon(
-                            Icons.apps, size: 36, color: Colors.white),
+                  ? CachedNetworkImage(
+                      imageUrl: widget.appIconUrl,
+                      fit: BoxFit.cover,
+                      errorWidget: (_, __, ___) => Container(
+                        color: _primaryColor,
+                        child: const Icon(Icons.apps, size: 36,
+                            color: Colors.white),
                       ),
                     )
-                  : const Icon(Icons.apps, size: 36, color: Colors.white),
+                  : Container(
+                      color: _primaryColor,
+                      child: const Icon(Icons.apps, size: 36,
+                          color: Colors.white),
+                    ),
             ),
           ),
-          const SizedBox(height: 30),
+          const SizedBox(height: 28),
           Text(
             widget.appName,
-            style: const TextStyle(
-              color: Colors.white,
-              fontSize: 20,
-              fontWeight: FontWeight.w700,
+            style: GoogleFonts.nunito(
+              color: _textColor,
+              fontSize: 22,
+              fontWeight: FontWeight.w800,
             ),
           ),
-          const SizedBox(height: 12),
+          const SizedBox(height: 10),
           Text(
             _status,
-            style: TextStyle(
-              color: Colors.white.withOpacity(0.5),
+            style: GoogleFonts.nunito(
+              color: _textColor.withOpacity(0.4),
               fontSize: 14,
             ),
           ),
-          const SizedBox(height: 24),
+          const SizedBox(height: 28),
           SizedBox(
-            width: 160,
-            child: LinearProgressIndicator(
-              backgroundColor: Colors.white.withOpacity(0.05),
-              valueColor: const AlwaysStoppedAnimation(Color(0xFFFF5722)),
-              minHeight: 3,
+            width: 140,
+            child: ClipRRect(
+              borderRadius: BorderRadius.circular(4),
+              child: LinearProgressIndicator(
+                backgroundColor: _primaryColor.withOpacity(0.1),
+                valueColor: const AlwaysStoppedAnimation(_primaryColor),
+                minHeight: 4,
+              ),
             ),
           ),
         ],
@@ -247,22 +299,19 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
       padding: const EdgeInsets.all(20),
       child: Column(
         children: [
-          // Success header
+          // Success Card
           Container(
-            padding: const EdgeInsets.all(24),
+            padding: const EdgeInsets.all(28),
             decoration: BoxDecoration(
-              gradient: LinearGradient(
-                colors: [
-                  const Color(0xFF4CAF50).withOpacity(0.15),
-                  const Color(0xFF0A0E1A),
-                ],
-                begin: Alignment.topCenter,
-                end: Alignment.bottomCenter,
-              ),
-              borderRadius: BorderRadius.circular(20),
-              border: Border.all(
-                color: const Color(0xFF4CAF50).withOpacity(0.2),
-              ),
+              color: _cardColor,
+              borderRadius: BorderRadius.circular(24),
+              boxShadow: [
+                BoxShadow(
+                  color: _successColor.withOpacity(0.1),
+                  blurRadius: 30,
+                  offset: const Offset(0, 10),
+                ),
+              ],
             ),
             child: Column(
               children: [
@@ -270,10 +319,10 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
                   width: 72,
                   height: 72,
                   decoration: BoxDecoration(
-                    borderRadius: BorderRadius.circular(20),
+                    borderRadius: BorderRadius.circular(22),
                     boxShadow: [
                       BoxShadow(
-                        color: const Color(0xFF4CAF50).withOpacity(0.3),
+                        color: _primaryColor.withOpacity(0.15),
                         blurRadius: 16,
                       ),
                     ],
@@ -284,75 +333,79 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
                           imageUrl: widget.appIconUrl,
                           fit: BoxFit.cover,
                           errorWidget: (_, __, ___) => Container(
-                            color: const Color(0xFF1A1F2E),
-                            child: const Icon(Icons.apps, size: 36, color: Colors.white),
+                            color: _bgColor,
+                            child: Icon(Icons.apps, size: 36,
+                                color: _textColor.withOpacity(0.3)),
                           ),
                         )
                       : Container(
-                          color: const Color(0xFF1A1F2E),
-                          child: const Icon(Icons.apps, size: 36, color: Colors.white),
+                          color: _bgColor,
+                          child: Icon(Icons.apps, size: 36,
+                              color: _textColor.withOpacity(0.3)),
                         ),
                 ),
                 const SizedBox(height: 16),
-                const Icon(Icons.check_circle, color: Color(0xFF4CAF50), size: 32),
+                Icon(Icons.check_circle, color: _successColor, size: 32),
                 const SizedBox(height: 8),
                 Text(
-                  '${widget.appName} พร้อมแล้ว!',
-                  style: const TextStyle(
-                    color: Colors.white,
+                  '${widget.appName} Ready!',
+                  style: GoogleFonts.nunito(
+                    color: _textColor,
                     fontSize: 20,
-                    fontWeight: FontWeight.w700,
+                    fontWeight: FontWeight.w800,
                   ),
                 ),
-                const SizedBox(height: 6),
+                const SizedBox(height: 4),
                 Text(
-                  'ดึง Cookie สำเร็จ $cookieCount cookies',
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                  '$cookieCount cookies loaded',
+                  style: GoogleFonts.nunito(
+                    color: _textColor.withOpacity(0.4),
                     fontSize: 13,
                   ),
                 ),
               ],
             ),
           ),
-          const SizedBox(height: 20),
+          const SizedBox(height: 16),
 
-          // Info cards
-          _infoCard('🌐 Target URL', targetUrl, Icons.link),
+          // Info Cards
+          _infoCard('Target URL', targetUrl, Icons.language_outlined),
           const SizedBox(height: 10),
-          _infoCard('🍪 Cookies', '$cookieCount cookies loaded', Icons.cookie),
-          const SizedBox(height: 10),
-          if (_selectedNode != null)
+          _infoCard('Cookies', '$cookieCount loaded', Icons.cookie_outlined),
+          if (_selectedNode != null) ...[
+            const SizedBox(height: 10),
             _infoCard(
-              '🖥️ Server',
+              'Server',
               _selectedNode!['name']?.toString() ?? 'Node ${_selectedNode!['id']}',
-              Icons.dns,
+              Icons.dns_outlined,
             ),
-          const SizedBox(height: 30),
+          ],
+          const SizedBox(height: 28),
 
-          // Open button
+          // Open Button
           SizedBox(
             width: double.infinity,
+            height: 54,
             child: ElevatedButton.icon(
               onPressed: _openInBrowser,
               icon: const Icon(Icons.open_in_browser, size: 22),
               label: Text(
-                'เปิด ${widget.appName}',
-                style: const TextStyle(fontSize: 16, fontWeight: FontWeight.w700),
+                'Open ${widget.appName}',
+                style: GoogleFonts.nunito(
+                    fontSize: 16, fontWeight: FontWeight.w700),
               ),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5722),
+                backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,
-                padding: const EdgeInsets.symmetric(vertical: 16),
+                elevation: 0,
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(16)),
-                elevation: 0,
               ),
             ),
           ),
           const SizedBox(height: 12),
 
-          // Force refresh button
+          // Force Refresh
           TextButton.icon(
             onPressed: () async {
               setState(() {
@@ -362,10 +415,7 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
               final nodeId = (_selectedNode?['id'] as num?)?.toInt() ?? 0;
               final result = await OTP24Service.fetchCookie(nodeId, force: true);
               if (result is Map<String, dynamic> && result['status'] != 'error') {
-                setState(() {
-                  _cookieData = result;
-                  _isLoading = false;
-                });
+                setState(() { _cookieData = result; _isLoading = false; });
               } else {
                 setState(() {
                   _isLoading = false;
@@ -373,11 +423,12 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
                 });
               }
             },
-            icon: Icon(Icons.refresh, size: 18, color: Colors.white.withOpacity(0.4)),
+            icon: Icon(Icons.refresh, size: 16,
+                color: _textColor.withOpacity(0.3)),
             label: Text(
               'Force Refresh Cookie',
-              style: TextStyle(
-                color: Colors.white.withOpacity(0.4),
+              style: GoogleFonts.nunito(
+                color: _textColor.withOpacity(0.3),
                 fontSize: 12,
               ),
             ),
@@ -389,24 +440,37 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
 
   Widget _infoCard(String title, String value, IconData icon) {
     return Container(
-      padding: const EdgeInsets.all(14),
+      padding: const EdgeInsets.all(16),
       decoration: BoxDecoration(
-        color: const Color(0xFF141929),
-        borderRadius: BorderRadius.circular(14),
-        border: Border.all(color: Colors.white.withOpacity(0.06)),
+        color: _cardColor,
+        borderRadius: BorderRadius.circular(16),
+        boxShadow: [
+          BoxShadow(
+            color: Colors.black.withOpacity(0.04),
+            blurRadius: 10,
+            offset: const Offset(0, 4),
+          ),
+        ],
       ),
       child: Row(
         children: [
-          Icon(icon, color: Colors.white.withOpacity(0.4), size: 20),
-          const SizedBox(width: 12),
+          Container(
+            padding: const EdgeInsets.all(10),
+            decoration: BoxDecoration(
+              color: _primaryColor.withOpacity(0.08),
+              borderRadius: BorderRadius.circular(12),
+            ),
+            child: Icon(icon, color: _primaryColor, size: 20),
+          ),
+          const SizedBox(width: 14),
           Expanded(
             child: Column(
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
                   title,
-                  style: TextStyle(
-                    color: Colors.white.withOpacity(0.5),
+                  style: GoogleFonts.nunito(
+                    color: _textColor.withOpacity(0.4),
                     fontSize: 11,
                     fontWeight: FontWeight.w600,
                   ),
@@ -414,7 +478,11 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
                 const SizedBox(height: 2),
                 Text(
                   value,
-                  style: const TextStyle(color: Colors.white, fontSize: 13),
+                  style: GoogleFonts.nunito(
+                    color: _textColor,
+                    fontSize: 13,
+                    fontWeight: FontWeight.w600,
+                  ),
                   maxLines: 2,
                   overflow: TextOverflow.ellipsis,
                 ),
@@ -437,26 +505,26 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
               width: 72,
               height: 72,
               decoration: BoxDecoration(
-                color: Colors.red.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(20),
+                color: Colors.red.withOpacity(0.08),
+                borderRadius: BorderRadius.circular(22),
               ),
-              child: Icon(Icons.error_outline, size: 40, color: Colors.red[300]),
+              child: Icon(Icons.error_outline, size: 40, color: Colors.red[400]),
             ),
             const SizedBox(height: 20),
             Text(
-              'เปิด ${widget.appName} ไม่สำเร็จ',
-              style: const TextStyle(
+              'Unable to open ${widget.appName}',
+              style: GoogleFonts.nunito(
                 fontSize: 18,
-                fontWeight: FontWeight.w700,
-                color: Colors.white,
+                fontWeight: FontWeight.w800,
+                color: _textColor,
               ),
             ),
             const SizedBox(height: 8),
             Text(
               _error ?? '',
-              style: TextStyle(
+              style: GoogleFonts.nunito(
                 fontSize: 13,
-                color: Colors.white.withOpacity(0.4),
+                color: _textColor.withOpacity(0.4),
               ),
               textAlign: TextAlign.center,
             ),
@@ -464,10 +532,11 @@ class _OTP24AppViewerScreenState extends State<OTP24AppViewerScreen>
             ElevatedButton.icon(
               onPressed: _autoFetch,
               icon: const Icon(Icons.refresh),
-              label: const Text('ลองอีกครั้ง'),
+              label: Text('Try Again', style: GoogleFonts.nunito()),
               style: ElevatedButton.styleFrom(
-                backgroundColor: const Color(0xFFFF5722),
+                backgroundColor: _primaryColor,
                 foregroundColor: Colors.white,
+                elevation: 0,
                 padding: const EdgeInsets.symmetric(vertical: 14, horizontal: 32),
                 shape: RoundedRectangleBorder(
                     borderRadius: BorderRadius.circular(14)),
