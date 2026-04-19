@@ -9,6 +9,7 @@ set -e
 REPO="somkid2042-star/ea-24"
 INSTALL_DIR="/opt/ea-24"
 SERVICE_NAME="ea-server"
+BINARY_NAME="ea-server"
 
 echo "🚀 EA-24 Server Setup for Ubuntu 22.04"
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
@@ -22,36 +23,35 @@ apt-get update -y
 apt-get install -y python3-pip
 pip3 install telethon --break-system-packages || pip3 install telethon
 
-# ── Step 2: Download latest ea-server binary from GitHub Releases ──
-echo "📥 Downloading latest ea-server binary..."
-LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/tags" | grep '"name": "v' | head -n 1 | cut -d '"' -f 4)
-if [ -z "$LATEST_TAG" ]; then
-    echo "❌ Could not determine latest tag. GitHub might be blocking the request."
-    echo "   Try: https://github.com/${REPO}/releases/latest"
-    exit 1
-fi
-LATEST_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/ea-server"
-
-if [ -z "$LATEST_URL" ]; then
-    echo "❌ Could not find ea-server in latest release. Please check the GitHub repo."
-    echo "   Try: https://github.com/${REPO}/releases/latest"
-    exit 1
-fi
-
+# ── Step 2: Download latest ea-server binary from GitHub Releases or local path ──
 if systemctl is-active --quiet ${SERVICE_NAME}; then
     echo "🛑 Stopping ${SERVICE_NAME} before update..."
     systemctl stop ${SERVICE_NAME}
 fi
 
-echo "   URL: ${LATEST_URL}"
-wget -O ${INSTALL_DIR}/ea-server "${LATEST_URL}"
-chmod +x ${INSTALL_DIR}/ea-server
+if [ -n "${EA_SERVER_BINARY_PATH:-}" ] && [ -f "${EA_SERVER_BINARY_PATH}" ]; then
+    echo "📦 Using local binary: ${EA_SERVER_BINARY_PATH}"
+    cp "${EA_SERVER_BINARY_PATH}" "${INSTALL_DIR}/${BINARY_NAME}"
+    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+else
+    echo "📥 Downloading latest ea-server binary from GitHub Releases..."
+    LATEST_TAG=$(curl -s "https://api.github.com/repos/${REPO}/tags" | grep '"name": "v' | head -n 1 | cut -d '"' -f 4)
+    if [ -z "$LATEST_TAG" ]; then
+        echo "❌ Could not determine latest tag. GitHub might be blocking the request."
+        echo "   Try: https://github.com/${REPO}/releases/latest"
+        exit 1
+    fi
+    LATEST_URL="https://github.com/${REPO}/releases/download/${LATEST_TAG}/${BINARY_NAME}"
+    echo "   URL: ${LATEST_URL}"
+    wget -O "${INSTALL_DIR}/${BINARY_NAME}" "${LATEST_URL}"
+    chmod +x "${INSTALL_DIR}/${BINARY_NAME}"
+fi
 
 echo "📥 Downloading Telegram Python Proxy Scripts..."
 wget -O ${INSTALL_DIR}/telegram_downloader.py "https://raw.githubusercontent.com/${REPO}/main/ea-server/telegram_downloader.py"
 wget -O ${INSTALL_DIR}/telegram_session.session "https://raw.githubusercontent.com/${REPO}/main/ea-server/telegram_session.session"
 
-echo "✅ Downloaded to ${INSTALL_DIR}/ea-server"
+echo "✅ Downloaded to ${INSTALL_DIR}/${BINARY_NAME}"
 
 # ── Step 3: Create .env file (if not exists) ──
 if [ ! -f "${INSTALL_DIR}/.env" ]; then
@@ -102,7 +102,7 @@ echo ""
 echo "━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━━"
 echo "✅ EA-24 Server installed successfully!"
 echo ""
-echo "   📍 Binary: ${INSTALL_DIR}/ea-server"
+echo "   📍 Binary: ${INSTALL_DIR}/${BINARY_NAME}"
 echo "   📍 Config: ${INSTALL_DIR}/.env"
 echo "   📍 Service: ${SERVICE_NAME}"
 echo ""

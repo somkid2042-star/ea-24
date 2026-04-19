@@ -31,8 +31,24 @@ use tokio::net::{TcpListener, TcpStream};
 use tokio::sync::{broadcast, RwLock};
 use tokio_tungstenite::tungstenite::Message;
 
-
-
+async fn write_json_response(stream: &mut TcpStream, status: u16, body: &str) {
+    let status_text = match status {
+        200 => "200 OK",
+        201 => "201 Created",
+        400 => "400 Bad Request",
+        403 => "403 Forbidden",
+        404 => "404 Not Found",
+        500 => "500 Internal Server Error",
+        _ => "200 OK",
+    };
+    let response = format!(
+        "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
+        status_text,
+        body.len(),
+        body
+    );
+    let _ = stream.write_all(response.as_bytes()).await;
+}
 
 /// The latest EA version shipped with this server
 const LATEST_EA_VERSION: &str = "2.14";
@@ -3620,13 +3636,10 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
 
         let payload = match crate::otp24::get_nodes(&db, app_id, force_refresh).await {
             Ok(p) => p,
-            Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+            Err(e) => return write_json_response(&mut stream, 500, &serde_json::json!({"status": "error", "message": e}).to_string()).await,
         };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            payload.len(), payload
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
+        let wrapped = serde_json::json!({"status": "success", "app_id": app_id, "payload": payload}).to_string();
+        write_json_response(&mut stream, 200, &wrapped).await;
         return;
     }
 
@@ -3644,13 +3657,10 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
 
         let payload = match crate::otp24::get_cookie(&db, &node_id, force_refresh).await {
             Ok(p) => p,
-            Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
+            Err(e) => return write_json_response(&mut stream, 500, &serde_json::json!({"status": "error", "message": e}).to_string()).await,
         };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            payload.len(), payload
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
+        let wrapped = serde_json::json!({"status": "success", "node_id": node_id, "payload": payload}).to_string();
+        write_json_response(&mut stream, 200, &wrapped).await;
         return;
     }
 

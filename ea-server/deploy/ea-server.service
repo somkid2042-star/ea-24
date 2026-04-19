@@ -12,6 +12,7 @@ Restart=on-failure
 RestartSec=5
 Environment=RUST_LOG=info
 Environment=DATABASE_URL=postgresql://localhost/ea24
+Environment=RUST_LOG=info
 
 # Auto-restart when binary is replaced by updater
 WatchdogSec=300
