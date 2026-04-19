@@ -87,13 +87,7 @@ class OTP24Service {
         return data;
       }
 
-      // Cache stale — force fresh fetch
-      debugPrint('OTP24: Cache stale, force fetching via /api/cookies...');
-      final freshRes = await http.get(
-        Uri.parse('$serverBase/api/cookies'),
-        headers: {'Accept': 'application/json'},
-      ).timeout(const Duration(seconds: 30));
-      return jsonDecode(freshRes.body) as Map<String, dynamic>;
+      return data;
     } catch (e) {
       debugPrint('OTP24 fetchApps error: $e');
       return {'status': 'error', 'message': e.toString()};
@@ -146,8 +140,9 @@ class OTP24Service {
 
     final serverBase = await getServerBase();
     try {
+      final uri = Uri.parse('$serverBase/api/otp24/cookie?node_id=$nodeId${force ? '&force=true' : ''}');
       final res = await http.get(
-        Uri.parse('$serverBase/api/otp24/cookie?node_id=$nodeId'),
+        uri,
         headers: {'Accept': 'application/json'},
       ).timeout(const Duration(seconds: 30));
 
@@ -167,15 +162,8 @@ class OTP24Service {
   }
 
   // ─── Parse Server Response ────────────────────────
-  /// Server should return decoded JSON directly.
-  /// If it returns {success, payload}, try to decode payload.
   static dynamic _parseServerResponse(String body) {
-    final parsed = jsonDecode(body);
-    if (parsed is Map && parsed['payload'] is String && parsed['success'] == true) {
-      // Server returned raw payload — return as-is for error display
-      return parsed;
-    }
-    return parsed;
+    return jsonDecode(body);
   }
 
   // ─── Local Cache (SharedPreferences) ──────────────

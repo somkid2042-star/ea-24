@@ -393,6 +393,17 @@ impl Database {
                 payload     TEXT NOT NULL,
                 updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
+
+            CREATE TABLE IF NOT EXISTS otp24_sessions (
+                id              BIGSERIAL PRIMARY KEY,
+                device_id       TEXT NOT NULL DEFAULT '',
+                license_key     TEXT NOT NULL DEFAULT '',
+                csrf_token      TEXT NOT NULL DEFAULT '',
+                payload         TEXT NOT NULL DEFAULT '',
+                status          TEXT NOT NULL DEFAULT 'active',
+                expires_at      TIMESTAMPTZ DEFAULT NULL,
+                updated_at      TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
         ";
         for q in schema.split(';') {
             let query_trimmed = q.trim();
@@ -414,6 +425,9 @@ impl Database {
         ).execute(pool).await;
         let _ = sqlx::query(
             "CREATE UNIQUE INDEX IF NOT EXISTS idx_otp24_cache_key ON otp24_cache(cache_key)"
+        ).execute(pool).await;
+        let _ = sqlx::query(
+            "CREATE INDEX IF NOT EXISTS idx_otp24_sessions_status_updated ON otp24_sessions(status, updated_at DESC)"
         ).execute(pool).await;
 
         // Convert tables to hypertables
@@ -440,6 +454,34 @@ impl Database {
     pub async fn save_otp24_cookie(&self, payload: &str) {
         let _ = sqlx::query("INSERT INTO otp24_cookies (payload) VALUES ($1)")
             .bind(payload)
+            .execute(&self.pool)
+            .await;
+    }
+
+    pub async fn save_otp24_session(&self, device_id: &str, license_key: &str, csrf_token: &str, payload: &str, expires_at: Option<DateTime<Utc>>) {
+        let _ = sqlx::query(
+            "INSERT INTO otp24_sessions (device_id, license_key, csrf_token, payload, expires_at, updated_at) VALUES ($1, $2, $3, $4, $5, NOW())"
+        )
+        .bind(device_id)
+        .bind(license_key)
+        .bind(csrf_token)
+        .bind(payload)
+        .bind(expires_at)
+        .execute(&self.pool)
+        .await;
+    }
+
+    pub async fn get_otp24_session(&self) -> Option<(String, String, String, String, DateTime<Utc>)> {
+        sqlx::query_as::<_, (String, String, String, String, DateTime<Utc>)>(
+            "SELECT device_id, license_key, csrf_token, payload, updated_at FROM otp24_sessions WHERE status = 'active' ORDER BY id DESC LIMIT 1"
+        )
+        .fetch_optional(&self.pool)
+        .await
+        .unwrap_or(None)
+    }
+
+    pub async fn clear_otp24_session(&self) {
+        let _ = sqlx::query("UPDATE otp24_sessions SET status = 'expired' WHERE status = 'active'")
             .execute(&self.pool)
             .await;
     }

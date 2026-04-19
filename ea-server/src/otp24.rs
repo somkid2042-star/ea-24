@@ -1,7 +1,7 @@
 use log::info;
 use serde_json::Value;
 use std::time::Duration;
-use chrono::Utc;
+use chrono::{Duration as ChronoDuration, Utc};
 use base64::{Engine as _, engine::general_purpose::STANDARD};
 
 use crate::db::Database;
@@ -125,10 +125,12 @@ pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
     let expiry_date = parsed["expiry_date"].as_str().unwrap_or("");
     let plan = parsed["plan"].as_str().unwrap_or("free");
 
+    let expires_at = Utc::now() + ChronoDuration::hours(24);
     let result = serde_json::json!({
         "status": "success",
         "source": "otp24_live",
         "updated_at": Utc::now().to_rfc3339(),
+        "expires_at": expires_at.to_rfc3339(),
         "license_key": license_key,
         "plan": plan,
         "used_today": used_today,
@@ -141,7 +143,9 @@ pub async fn fetch_and_cache_otp24(db: &Database) -> Result<String, String> {
 
     let result_str = result.to_string();
 
-    // Save to Database Cache
+    // Save to Database Cache + Session Store
+    db.clear_otp24_session().await;
+    db.save_otp24_session(&device_id, &license_key, &new_csrf, &result_str, Some(expires_at)).await;
     db.save_otp24_cookie(&result_str).await;
     info!("OTP24: Successfully fetched and cached {} apps.", 
         apps.as_array().map(|a| a.len()).unwrap_or(0));
@@ -172,33 +176,24 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
 
     info!("OTP24: Fetching fresh nodes for app_id={}", app_id);
 
-    // We need a valid session (csrf + license_key) from the last login
-    let cached = db.get_otp24_cookie().await;
-    let (csrf_token, license_key) = if let Some((payload, _)) = cached {
-        let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
-        let fallback = db.get_config("otp24_license_key").await;
-        (
-            parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-            parsed["license_key"].as_str().map(|s| s.to_string())
-                .or(fallback)
-                .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
-        )
-    } else {
-        // Need to login first
-        let _ = fetch_and_cache_otp24(db).await?;
-        let cached2 = db.get_otp24_cookie().await;
-        if let Some((payload, _)) = cached2 {
-            let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
-            let fallback = db.get_config("otp24_license_key").await;
-            (
-                parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-                parsed["license_key"].as_str().map(|s| s.to_string())
-                    .or(fallback)
-                    .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
-            )
+    // We need a valid session (csrf + license_key) from DB session cache
+    let (csrf_token, license_key) = if let Some((device, key, csrf, _payload, updated_at)) = db.get_otp24_session().await {
+        let expired = Utc::now().signed_duration_since(updated_at).num_hours() >= 24;
+        if expired {
+            info!("OTP24: session expired, refreshing...");
+            let _ = fetch_and_cache_otp24(db).await?;
+            let fresh = db.get_otp24_session().await.ok_or_else(|| "No cached session. Login first.".to_string())?;
+            (fresh.2, fresh.1)
         } else {
-            return Err("No cached session. Login first.".to_string());
+            let fallback = db.get_config("otp24_license_key").await;
+            let key_final = if !key.is_empty() { key } else { fallback.ok_or_else(|| "otp24_license_key not set in DB".to_string())? };
+            let _ = device;
+            (csrf, key_final)
         }
+    } else {
+        let _ = fetch_and_cache_otp24(db).await?;
+        let fresh = db.get_otp24_session().await.ok_or_else(|| "No cached session. Login first.".to_string())?;
+        (fresh.2, fresh.1)
     };
 
     // อ่าน device_id จาก DB เท่านั้น
@@ -306,8 +301,10 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
     if !new_csrf.is_empty() {
         if let Some((old_payload, _)) = db.get_otp24_cookie().await {
             if let Ok(mut parsed) = serde_json::from_str::<Value>(&old_payload) {
-                parsed["csrf_token"] = Value::String(new_csrf);
-                db.save_otp24_cookie(&parsed.to_string()).await;
+                parsed["csrf_token"] = Value::String(new_csrf.clone());
+                let updated = parsed.to_string();
+                db.save_otp24_cookie(&updated).await;
+                db.save_otp24_session(&device_id, &license_key, &new_csrf, &updated, Some(Utc::now() + ChronoDuration::hours(24))).await;
             }
         }
     }
@@ -337,32 +334,23 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
 
     info!("OTP24: Fetching fresh cookie for node_id={}", node_id);
 
-    let cached = db.get_otp24_cookie().await;
-    let (csrf_token, license_key) = if let Some((payload, _)) = cached {
-        let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
-        let fallback = db.get_config("otp24_license_key").await;
-        (
-            parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-            parsed["license_key"].as_str().map(|s| s.to_string())
-                .or(fallback)
-                .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
-        )
-    } else {
-        // Need to login first
-        let _ = fetch_and_cache_otp24(db).await?;
-        let cached2 = db.get_otp24_cookie().await;
-        if let Some((payload, _)) = cached2 {
-            let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
-            let fallback = db.get_config("otp24_license_key").await;
-            (
-                parsed["csrf_token"].as_str().unwrap_or("").to_string(),
-                parsed["license_key"].as_str().map(|s| s.to_string())
-                    .or(fallback)
-                    .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
-            )
+    let (csrf_token, license_key) = if let Some((device, key, csrf, _payload, updated_at)) = db.get_otp24_session().await {
+        let expired = Utc::now().signed_duration_since(updated_at).num_hours() >= 24;
+        if expired {
+            info!("OTP24: session expired, refreshing...");
+            let _ = fetch_and_cache_otp24(db).await?;
+            let fresh = db.get_otp24_session().await.ok_or_else(|| "No cached session. Login first.".to_string())?;
+            (fresh.2, fresh.1)
         } else {
-            return Err("No session. Fetch apps first.".to_string());
+            let fallback = db.get_config("otp24_license_key").await;
+            let key_final = if !key.is_empty() { key } else { fallback.ok_or_else(|| "otp24_license_key not set in DB".to_string())? };
+            let _ = device;
+            (csrf, key_final)
         }
+    } else {
+        let _ = fetch_and_cache_otp24(db).await?;
+        let fresh = db.get_otp24_session().await.ok_or_else(|| "No session. Fetch apps first.".to_string())?;
+        (fresh.2, fresh.1)
     };
 
     // อ่าน device_id จาก DB เท่านั้น
