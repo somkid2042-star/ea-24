@@ -387,6 +387,17 @@ impl Database {
                 updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
             );
 
+            CREATE TABLE IF NOT EXISTS otp24_sessions (
+                id          BIGSERIAL PRIMARY KEY,
+                device_id   TEXT NOT NULL,
+                license_key TEXT NOT NULL,
+                csrf_token  TEXT NOT NULL,
+                payload     TEXT NOT NULL,
+                status      TEXT NOT NULL DEFAULT 'active',
+                expires_at  TIMESTAMPTZ,
+                updated_at  TIMESTAMPTZ NOT NULL DEFAULT NOW()
+            );
+
             CREATE TABLE IF NOT EXISTS otp24_cache (
                 id          BIGSERIAL PRIMARY KEY,
                 cache_key   TEXT NOT NULL UNIQUE,

@@ -3539,15 +3539,12 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         return;
     }
 
-    // ── OTP24 Cached Apps (GET — บอก Mobile ว่า App ไหนมี cookie cache) ──
+    // ── OTP24 Cached Apps (GET — server-managed cache list) ──
     if relative.starts_with("api/otp24/cached_apps") {
         let entries = db.get_all_otp24_cache_entries().await;
-        
-        // หา app_ids จาก cache keys ที่ขึ้นต้นด้วย "cookie_app"
         let mut cached_app_ids: Vec<i64> = Vec::new();
         let mut seen = std::collections::HashSet::new();
         for (key, _) in &entries {
-            // Match pattern: cookie_appX_nodeY
             if let Some(rest) = key.strip_prefix("cookie_app") {
                 if let Some(app_id_str) = rest.split('_').next() {
                     if let Ok(app_id) = app_id_str.parse::<i64>() {
@@ -3558,24 +3555,16 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
                 }
             }
         }
-        
-        let json_body = serde_json::json!({
-            "cached_app_ids": cached_app_ids
-        }).to_string();
-        
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            json_body.len(), json_body
-        );
+        let json_body = serde_json::json!({"cached_app_ids": cached_app_ids}).to_string();
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}", json_body.len(), json_body);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
 
-    // ── OTP24 Get Cache (GET — Mobile ดึง cached data by key) ──
+    // ── OTP24 Get Cache (GET — mobile reads server cache only) ──
     if relative.starts_with("api/otp24/get_cache") {
         let cache_key = path.split("key=").nth(1).unwrap_or("").split('&').next().unwrap_or("");
         let cache_key = urlencoding::decode(cache_key).unwrap_or_default().to_string();
-        
         let json_body = if cache_key.is_empty() {
             serde_json::json!({"found": false, "error": "Missing key param"}).to_string()
         } else if let Some((payload, _updated_at)) = db.get_otp24_cache(&cache_key).await {
@@ -3583,16 +3572,12 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         } else {
             serde_json::json!({"found": false}).to_string()
         };
-        
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            json_body.len(), json_body
-        );
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}", json_body.len(), json_body);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
 
-    // ── OTP24 Get License (GET — iOS ดึง key ที่ Extension sync ไว้) ──
+    // ── OTP24 Get License (server-backed) ──
     if relative.starts_with("api/otp24/get_license") {
         let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {
             if let Ok(parsed) = serde_json::from_str::<serde_json::Value>(&cached_payload) {
@@ -3604,44 +3589,18 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
         } else {
             serde_json::json!({"status": "error", "message": "No synced device"}).to_string()
         };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            payload.len(), payload
-        );
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}", payload.len(), payload);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
 
-    // ── OTP24 Account Info (GET — ส่งข้อมูลบัญชีกลับ Extension) ──
-    if relative.starts_with("api/otp24/account_info") {
-        let payload = if let Some((cached_payload, _)) = db.get_otp24_cookie().await {
-            // มี cache อยู่แล้ว ส่งกลับเลย
-            cached_payload
-        } else {
-            // ไม่มี cache → ดึงใหม่จาก OTP24HR
-            match crate::otp24::fetch_and_cache_otp24(&db).await {
-                Ok(p) => p,
-                Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
-            }
-        };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
-            payload.len(), payload
-        );
-        let _ = stream.write_all(response.as_bytes()).await;
-        return;
-    }
-
-    // ── OTP24 API ─────────────────────────────────────
-    if relative.starts_with("api/cookies") {
+    // ── OTP24 Account Info (server-only session fetch) ──
+    if relative.starts_with("api/otp24/account_info") || relative.starts_with("api/cookies") {
         let payload = match crate::otp24::fetch_and_cache_otp24(&db).await {
             Ok(p) => p,
             Err(e) => serde_json::json!({"status": "error", "message": e}).to_string(),
         };
-        let response = format!(
-            "HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nConnection: close\r\n\r\n{}",
-            payload.len(), payload
-        );
+        let response = format!("HTTP/1.1 200 OK\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}", payload.len(), payload);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
@@ -3699,62 +3658,27 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
     if relative.starts_with("api/otp24/save_cookie") && method == "POST" {
         let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
         let body_str = &request[body_start..];
-        
         let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
-            // ─── New mobile format: {"cache_key": "...", "payload": {...}} ───
             if let Some(cache_key) = json["cache_key"].as_str() {
                 let payload = json["payload"].clone();
                 db.save_otp24_cache(cache_key, &payload.to_string()).await;
-                info!("OTP24: 💾 Saved cache key={}", cache_key);
                 ("200 OK", serde_json::json!({"status": "success", "message": "Cache saved"}).to_string())
-            }
-            // ─── Legacy extension format: {"node_id": "...", "cookies": [...]} ───
-            else {
+            } else {
                 let node_id = json["node_id"].as_str().unwrap_or("").to_string();
                 let cache_key = format!("cookie_{}", node_id);
-                
-                let device_id = json["device_id"].as_str().unwrap_or("");
-                let csrf_token = json["csrf_token"].as_str().unwrap_or("");
-                let license_key = json["license_key"].as_str().unwrap_or("");
-                
-                if !device_id.is_empty() {
-                    let existing = db.get_config("otp24_device_id").await;
-                    if existing.is_none() || existing.as_deref() == Some("") {
-                        db.set_config("otp24_device_id", device_id).await;
-                        info!("OTP24: 🔒 Locked device_id: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]);
-                    }
-                }
-                
-                if !csrf_token.is_empty() && !license_key.is_empty() {
-                    let session_payload = serde_json::json!({
-                        "csrf_token": csrf_token,
-                        "license_key": license_key,
-                        "device_id": device_id
-                    });
-                    db.save_otp24_cookie(&session_payload.to_string()).await;
-                    info!("OTP24: 💾 Synced Session from Extension");
-                }
-
                 let payload_to_save = serde_json::json!({
                     "cookies": json["cookies"],
                     "target_url": json["target_url"],
                     "source": "extension_push",
                     "saved_at": chrono::Utc::now().to_rfc3339()
                 });
-                
                 db.save_otp24_cache(&cache_key, &payload_to_save.to_string()).await;
-                info!("OTP24: 💾 Saved cookie for node_id={}", node_id);
-                
                 ("200 OK", serde_json::json!({"status": "success", "message": "Cookie saved"}).to_string())
             }
         } else {
             ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
         };
-        
-        let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
-            status_code, json_body.len(), json_body
-        );
+        let response = format!("HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}", status_code, json_body.len(), json_body);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
@@ -3763,55 +3687,26 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
     if relative.starts_with("api/otp24/sync_device") && method == "POST" {
         let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
         let body_str = &request[body_start..];
-        
         let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
             let device_id = json["device_id"].as_str().unwrap_or("");
             let csrf_token = json["csrf_token"].as_str().unwrap_or("");
             let license_key = json["license_key"].as_str().unwrap_or("");
-            
             if device_id.is_empty() {
                 ("400 Bad Request", serde_json::json!({"status": "error", "message": "device_id is empty"}).to_string())
+            } else if db.get_config("otp24_device_id").await.is_some() {
+                ("403 Forbidden", serde_json::json!({"status": "error", "message": "Device ID ถูกล็อคไว้แล้วในระบบ ไม่สามารถเปลี่ยนแปลงได้"}).to_string())
             } else {
-                // ตรวจสอบว่ามีการบันทึก device_id ไว้หรือยัง (บันทึกได้แค่ครั้งเดียว)
-                let existing_device_id = db.get_config("otp24_device_id").await;
-                
-                if let Some(existing) = existing_device_id {
-                    // ถ้ามีอยู่แล้ว ห้ามอัพเดทใหม่ (Lock ถาวร)
-                    info!("OTP24: 🚫 Rejecting device ID sync. Already locked to: {}", existing);
-                    ("403 Forbidden", serde_json::json!({
-                        "status": "error", 
-                        "message": "Device ID ถูกล็อคไว้แล้วในระบบ ไม่สามารถเปลี่ยนแปลงได้"
-                    }).to_string())
-                } else {
-                    // 🔒 ถ้ายังไม่มี ให้บันทึก device_id ลง config เป็นครั้งแรก
-                    db.set_config("otp24_device_id", device_id).await;
-                    info!("OTP24: 🔒 Device ID synced and LOCKED from Extension/App: {}", device_id);
-                    
-                    // บันทึก session data ด้วย (ถ้ามี)
-                    if !csrf_token.is_empty() && !license_key.is_empty() {
-                        let session_payload = serde_json::json!({
-                            "csrf_token": csrf_token,
-                            "license_key": license_key,
-                            "device_id": device_id
-                        });
-                        db.save_otp24_cookie(&session_payload.to_string()).await;
-                    }
-                    
-                    ("200 OK", serde_json::json!({
-                        "status": "success", 
-                        "message": format!("Device ID บันทึกถาวรแล้ว: {}...{}", &device_id[..8.min(device_id.len())], &device_id[device_id.len().saturating_sub(4)..]),
-                        "device_id": device_id
-                    }).to_string())
+                db.set_config("otp24_device_id", device_id).await;
+                if !csrf_token.is_empty() && !license_key.is_empty() {
+                    let session_payload = serde_json::json!({"csrf_token": csrf_token, "license_key": license_key, "device_id": device_id});
+                    db.save_otp24_cookie(&session_payload.to_string()).await;
                 }
+                ("200 OK", serde_json::json!({"status": "success", "message": "Device ID บันทึกถาวรแล้ว", "device_id": device_id}).to_string())
             }
         } else {
             ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
         };
-        
-        let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
-            status_code, json_body.len(), json_body
-        );
+        let response = format!("HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}", status_code, json_body.len(), json_body);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
@@ -3820,32 +3715,16 @@ async fn handle_http_request(mut stream: TcpStream, _peer_addr: SocketAddr, db: 
     if relative.starts_with("api/otp24/admin_settings") && method == "POST" {
         let body_start = request.find("\r\n\r\n").map(|i| i + 4).unwrap_or(n);
         let body_str = &request[body_start..];
-        
         let (status_code, json_body) = if let Ok(json) = serde_json::from_str::<serde_json::Value>(body_str) {
             let device_id = json["device_id"].as_str().unwrap_or("");
             let license_key = json["license_key"].as_str().unwrap_or("");
-            
-            if !device_id.is_empty() {
-                db.set_config("otp24_device_id", device_id).await;
-            }
-            if !license_key.is_empty() {
-                db.set_config("otp24_license_key", license_key).await;
-            }
-            
-            info!("OTP24: 🔧 Admin forcibly updated settings - Device: {}, License: {}", device_id, license_key);
-            
-            ("200 OK", serde_json::json!({
-                "status": "success", 
-                "message": "บันทึกการตั้งค่าลงฐานข้อมูลเรียบร้อยแล้ว"
-            }).to_string())
+            if !device_id.is_empty() { db.set_config("otp24_device_id", device_id).await; }
+            if !license_key.is_empty() { db.set_config("otp24_license_key", license_key).await; }
+            ("200 OK", serde_json::json!({"status": "success", "message": "บันทึกการตั้งค่าลงฐานข้อมูลเรียบร้อยแล้ว"}).to_string())
         } else {
             ("400 Bad Request", serde_json::json!({"status": "error", "message": "Invalid JSON body"}).to_string())
         };
-        
-        let response = format!(
-            "HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}",
-            status_code, json_body.len(), json_body
-        );
+        let response = format!("HTTP/1.1 {}\r\nContent-Type: application/json\r\nContent-Length: {}\r\nAccess-Control-Allow-Origin: *\r\nAccess-Control-Allow-Methods: GET, POST, OPTIONS\r\nAccess-Control-Allow-Headers: *\r\nConnection: close\r\n\r\n{}", status_code, json_body.len(), json_body);
         let _ = stream.write_all(response.as_bytes()).await;
         return;
     }
