@@ -41,19 +41,7 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
   }
 
   Future<void> _init() async {
-    _deviceId = await OTP24Service.getDeviceId();
-    if (mounted) setState(() {});
-    await _syncDevice();
     await _fetchAll();
-  }
-
-  Future<void> _syncDevice() async {
-    final result = await OTP24Service.syncDeviceId();
-    if (mounted) {
-      setState(() {
-        _deviceSynced = result['status'] == 'success';
-      });
-    }
   }
 
   Future<void> _fetchAll() async {
@@ -66,11 +54,14 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
       ]);
 
       final appsData = results[0] as Map<String, dynamic>;
+      final accountData = results[1] as Map<String, dynamic>;
       final cachedStatus = results[2] as Map<int, String>;
 
       if (mounted) {
         setState(() {
           _cachedAppStatus = cachedStatus;
+          _deviceId = accountData['device_id']?.toString() ?? 'EA-Server Managed';
+          _deviceSynced = true;
 
           if (appsData['status'] == 'error') {
             _error = appsData['message']?.toString();
@@ -393,7 +384,7 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
               crossAxisAlignment: CrossAxisAlignment.start,
               children: [
                 Text(
-                  _deviceSynced ? 'Device Synced' : 'Device ID',
+                  'Device Synced',
                   style: GoogleFonts.nunito(
                     color: _textColor,
                     fontSize: 13,
@@ -403,8 +394,8 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
                 const SizedBox(height: 2),
                 Text(
                   _deviceId != null
-                      ? '${_deviceId!.substring(0, _deviceId!.length.clamp(0, 12))}...'
-                      : 'Generating...',
+                      ? '${_deviceId!.substring(0, _deviceId!.length.clamp(0, 15))}...'
+                      : 'Managed by EA-Server',
                   style: const TextStyle(
                     color: Color(0x6645536D),
                     fontSize: 11,
@@ -414,34 +405,18 @@ class _OTP24HomeScreenState extends State<OTP24HomeScreen> {
               ],
             ),
           ),
-          if (!_deviceSynced)
-            TextButton(
-              onPressed: _syncDevice,
-              style: TextButton.styleFrom(
-                backgroundColor: _primaryColor.withOpacity(0.1),
-                shape: RoundedRectangleBorder(
-                    borderRadius: BorderRadius.circular(10)),
-                padding: const EdgeInsets.symmetric(horizontal: 16, vertical: 6),
-              ),
-              child: Text('SYNC',
-                  style: GoogleFonts.nunito(
-                      color: _primaryColor,
-                      fontSize: 11,
-                      fontWeight: FontWeight.w800)),
-            )
-          else
-            Container(
-              padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
-              decoration: BoxDecoration(
-                color: _successColor.withOpacity(0.1),
-                borderRadius: BorderRadius.circular(8),
-              ),
-              child: Text('LOCKED',
-                  style: GoogleFonts.nunito(
-                      color: _successColor,
-                      fontSize: 10,
-                      fontWeight: FontWeight.w800)),
+          Container(
+            padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 5),
+            decoration: BoxDecoration(
+              color: _successColor.withOpacity(0.1),
+              borderRadius: BorderRadius.circular(8),
             ),
+            child: Text('LOCKED',
+                style: GoogleFonts.nunito(
+                    color: _successColor,
+                    fontSize: 10,
+                    fontWeight: FontWeight.w800)),
+          ),
         ],
       ),
     );
