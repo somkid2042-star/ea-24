@@ -176,10 +176,11 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
     let cached = db.get_otp24_cookie().await;
     let (csrf_token, license_key) = if let Some((payload, _)) = cached {
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+        let fallback = db.get_config("otp24_license_key").await;
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
             parsed["license_key"].as_str().map(|s| s.to_string())
-                .or_else(|| db.get_config("otp24_license_key").await)
+                .or(fallback)
                 .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
         )
     } else {
@@ -188,10 +189,11 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
         let cached2 = db.get_otp24_cookie().await;
         if let Some((payload, _)) = cached2 {
             let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+            let fallback = db.get_config("otp24_license_key").await;
             (
                 parsed["csrf_token"].as_str().unwrap_or("").to_string(),
                 parsed["license_key"].as_str().map(|s| s.to_string())
-                    .or_else(|| db.get_config("otp24_license_key").await)
+                    .or(fallback)
                     .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
             )
         } else {
@@ -245,8 +247,9 @@ pub async fn get_nodes(db: &Database, app_id: i64, force_refresh: bool) -> Resul
             let cached_retry = db.get_otp24_cookie().await;
             let (csrf2, key2) = if let Some((p, _)) = cached_retry {
                 let pr: Value = serde_json::from_str(&p).unwrap_or_default();
+                let fallback = db.get_config("otp24_license_key").await;
                 let k2 = pr["license_key"].as_str().map(|s| s.to_string())
-                    .or_else(|| db.get_config("otp24_license_key").await)
+                    .or(fallback)
                     .unwrap_or_default();
                 (pr["csrf_token"].as_str().unwrap_or("").to_string(), k2)
             } else { return Err("Re-login failed".to_string()); };
@@ -337,10 +340,11 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
     let cached = db.get_otp24_cookie().await;
     let (csrf_token, license_key) = if let Some((payload, _)) = cached {
         let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+        let fallback = db.get_config("otp24_license_key").await;
         (
             parsed["csrf_token"].as_str().unwrap_or("").to_string(),
             parsed["license_key"].as_str().map(|s| s.to_string())
-                .or_else(|| db.get_config("otp24_license_key").await)
+                .or(fallback)
                 .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
         )
     } else {
@@ -349,10 +353,11 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
         let cached2 = db.get_otp24_cookie().await;
         if let Some((payload, _)) = cached2 {
             let parsed: Value = serde_json::from_str(&payload).unwrap_or_default();
+            let fallback = db.get_config("otp24_license_key").await;
             (
                 parsed["csrf_token"].as_str().unwrap_or("").to_string(),
                 parsed["license_key"].as_str().map(|s| s.to_string())
-                    .or_else(|| db.get_config("otp24_license_key").await)
+                    .or(fallback)
                     .ok_or_else(|| "otp24_license_key not set in DB".to_string())?,
             )
         } else {
@@ -404,8 +409,9 @@ pub async fn get_cookie(db: &Database, node_id: &str, force_refresh: bool) -> Re
             let cached_retry = db.get_otp24_cookie().await;
             let (csrf2, key2) = if let Some((p, _)) = cached_retry {
                 let pr: Value = serde_json::from_str(&p).unwrap_or_default();
+                let fallback = db.get_config("otp24_license_key").await;
                 let k2 = pr["license_key"].as_str().map(|s| s.to_string())
-                    .or_else(|| db.get_config("otp24_license_key").await)
+                    .or(fallback)
                     .unwrap_or_default();
                 (pr["csrf_token"].as_str().unwrap_or("").to_string(), k2)
             } else { return Err("Re-login failed".to_string()); };
